@@ -207,7 +207,7 @@ tty_ts="$(tty_escape '38;2;219;39;119')"
 
 SCRIPT_NAME="${0##*/}"
 # Keep a single top-level assignment so release automation can stamp the entrypoint in place.
-SCRIPT_VERSION="v1.0.0-beta.2"
+SCRIPT_VERSION="v1.0.0-beta.3"
 
 DEBUG="${AGENTBOX_DEBUG:-${DEBUG:-${RUNNER_DEBUG:-}}}"
 FORCE="${AGENTBOX_FORCE:-}"
@@ -1723,10 +1723,8 @@ bootbox_run() {
     bootbox_display_command+=("AGENTBOX_FORCE=${FORCE}")
   fi
 
-  if [[ -n "${NONINTERACTIVE-}" ]]; then
-    bootbox_command+=("NONINTERACTIVE=${NONINTERACTIVE}")
-    bootbox_display_command+=("NONINTERACTIVE=${NONINTERACTIVE}")
-  fi
+  bootbox_command+=("NONINTERACTIVE=1")
+  bootbox_display_command+=("NONINTERACTIVE=1")
 
   bootbox_command+=(/bin/bash "${BOOTBOX_SCRIPT_PATH}")
   bootbox_display_command+=(/bin/bash "${BOOTBOX_SCRIPT_PATH}")
