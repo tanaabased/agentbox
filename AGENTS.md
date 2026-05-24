@@ -53,6 +53,10 @@ explicitly asked.
 - Any machine behavior change in `boot.sh` must check README setup/after-bootstrap guidance plus
   the affected `envvars`, `options`, or `version` Leia scenarios.
 - Keep planned-action output aligned with actual execution order.
+- Treat the generated agentbox health script as the source of truth for machine posture
+  verification. README and Leia should prefer `health.sh --check` for macOS/SSH/Tailscale posture,
+  while keeping repo materialization, Brewfile satisfaction, and live SSH-login proof as direct
+  checks.
 
 ## Secrets And Logging
 

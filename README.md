@@ -164,13 +164,13 @@ Run `boot.sh --help` for the exact current CLI and environment-variable contract
 ## Verification
 
 - Reboot the Mac and confirm it returns to the expected network state before any GUI login.
-- If Tailscale is enabled, confirm service and network status:
+- Confirm the current bootstrap posture:
 
 ```sh
-sudo brew services info tailscale
-tailscale status
-tailscale ip -4
+sudo /opt/tanaab/agentbox/bin/health.sh --check
 ```
+
+Use `--report` for the same key-value report without failing on drift.
 
 - If authorized keys were provided, verify key-based SSH over Tailscale or LAN from another machine
   before closing the local/admin recovery session:
@@ -179,20 +179,10 @@ tailscale ip -4
 ssh -o PreferredAuthentications=publickey <admin-user>@<tailscale-name-or-ip>
 ```
 
-- Confirm the health daemon and logs:
+- Review the periodic health log:
 
 ```sh
-sudo launchctl print system/dev.tanaab.agentbox.health
 tail -n 50 /var/log/tanaab/agentbox/health.log
-```
-
-- Confirm the base macOS posture:
-
-```sh
-sudo systemsetup -getusingnetworktime
-sudo systemsetup -getrestartfreeze
-spctl --status
-fdesetup status
 ```
 
 - Inspect listening ports and keep public exposure closed:

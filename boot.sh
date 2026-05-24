@@ -19,6 +19,7 @@ DEFAULT_AGENTBOX_HOSTNAME="TANAABAGENTBOX1"
 AGENTBOX_OPT_DIR="/opt/tanaab/agentbox"
 AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
 AGENTBOX_STATE_DIR="/var/db/tanaab/agentbox"
+AGENTBOX_HEALTH_STATE_PATH="${AGENTBOX_STATE_DIR}/health.env"
 AGENTBOX_HEALTH_LABEL="dev.tanaab.agentbox.health"
 AGENTBOX_REPO_HTTPS_URL="https://github.com/tanaabased/agentbox.git"
 AGENTBOX_REPO_ARCHIVE_BASE_URL="https://github.com/tanaabased/agentbox/archive/refs/tags"
@@ -162,6 +163,10 @@ shell_join() {
 
     printf "%q" "${arg}"
   done
+}
+
+shell_quote() {
+  printf "%q" "$1"
 }
 
 # shellcheck disable=SC2292
@@ -1064,43 +1069,311 @@ run_agentbox_ssh_setup() {
   fi
 }
 
-write_agentbox_health_script_without_tailscale() {
-  sudo tee "${AGENTBOX_OPT_DIR}/bin/health.sh" >/dev/null <<'EOHEALTH'
-#!/usr/bin/env bash
-set -euo pipefail
+write_agentbox_health_state() {
+  local tailscale_enabled="1"
+  local ssh_hardening_expected="0"
 
-{
-  printf 'timestamp=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'hostname=%s\n' "$(hostname)"
-  printf 'uptime=%s\n' "$(uptime)"
-  printf 'root_disk_available_kb=%s\n' "$(df -Pk / 2>/dev/null | awk 'NR == 2 { print $4; found = 1 } END { if (!found) print "unknown" }')"
-  printf '%s\n' '---'
-} >> /var/log/tanaab/agentbox/health.log
-EOHEALTH
-}
+  if tailscale_setup_disabled; then
+    tailscale_enabled="0"
+  fi
 
-write_agentbox_health_script_with_tailscale() {
-  sudo tee "${AGENTBOX_OPT_DIR}/bin/health.sh" >/dev/null <<'EOHEALTH'
-#!/usr/bin/env bash
-set -euo pipefail
+  if array_has_values AUTHORIZED_KEY_LINES; then
+    ssh_hardening_expected="1"
+  fi
 
-{
-  printf 'timestamp=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'hostname=%s\n' "$(hostname)"
-  printf 'uptime=%s\n' "$(uptime)"
-  printf 'root_disk_available_kb=%s\n' "$(df -Pk / 2>/dev/null | awk 'NR == 2 { print $4; found = 1 } END { if (!found) print "unknown" }')"
-  printf 'tailscale_ip=%s\n' "$(tailscale ip -4 2>/dev/null || true)"
-  printf '%s\n' '---'
-} >> /var/log/tanaab/agentbox/health.log
-EOHEALTH
+  if ! sudo tee "${AGENTBOX_HEALTH_STATE_PATH}" >/dev/null <<EOHEALTHSTATE
+# Managed by agentbox.
+AGENTBOX_HEALTH_EXPECTED_HOSTNAME=$(shell_quote "${AGENTBOX_HOSTNAME_VALUE}")
+AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=$(shell_quote "${TAILSCALE_HOSTNAME_VALUE}")
+AGENTBOX_HEALTH_TAILSCALE_ENABLED=${tailscale_enabled}
+AGENTBOX_HEALTH_ADMIN_USER=$(shell_quote "${ADMIN_USER}")
+AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED=${ssh_hardening_expected}
+EOHEALTHSTATE
+  then
+    abort "failed to write agentbox health state."
+  fi
+
+  execute sudo chown root:wheel "${AGENTBOX_HEALTH_STATE_PATH}"
+  execute sudo chmod 600 "${AGENTBOX_HEALTH_STATE_PATH}"
 }
 
 write_agentbox_health_script() {
-  if tailscale_setup_disabled; then
-    if ! write_agentbox_health_script_without_tailscale; then
-      abort "failed to write agentbox health script."
+  if ! sudo tee "${AGENTBOX_OPT_DIR}/bin/health.sh" >/dev/null <<'EOHEALTH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_FILE="/var/db/tanaab/agentbox/health.env"
+LOG_FILE="/var/log/tanaab/agentbox/health.log"
+HEALTH_LABEL="dev.tanaab.agentbox.health"
+SSHD_BIN="/usr/sbin/sshd"
+SOCKETFILTERFW="/usr/libexec/ApplicationFirewall/socketfilterfw"
+
+AGENTBOX_HEALTH_EXPECTED_HOSTNAME=""
+AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=""
+AGENTBOX_HEALTH_TAILSCALE_ENABLED="0"
+AGENTBOX_HEALTH_ADMIN_USER=""
+AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
+
+if [[ -r "${STATE_FILE}" ]]; then
+  # shellcheck source=/dev/null
+  . "${STATE_FILE}"
+fi
+
+print_kv() {
+  local key="$1"
+  local value="${2:-}"
+
+  value="${value//$'\n'/ }"
+  printf '%s=%s\n' "${key}" "${value}"
+}
+
+pmset_setting_value() {
+  local key="$1"
+
+  pmset -g custom 2>/dev/null | awk -v key="${key}" '$1 == key { value = $2 } END { print value }'
+}
+
+systemsetup_toggle_value() {
+  local getter="$1"
+
+  systemsetup "${getter}" 2>/dev/null | awk -F': ' 'NF { value = $NF } END { print (tolower(value) == "on" ? "1" : "0") }'
+}
+
+firewall_global_value() {
+  if "${SOCKETFILTERFW}" --getglobalstate 2>/dev/null | grep -qi "enabled"; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+firewall_stealth_value() {
+  if "${SOCKETFILTERFW}" --getstealthmode 2>/dev/null | grep -qi "enabled"; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+remote_login_value() {
+  if systemsetup -getremotelogin 2>/dev/null | grep -Fq "Remote Login: On"; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+sshd_hardened_value() {
+  local user="$1"
+  local config
+
+  if [[ -z "${user}" || ! -x "${SSHD_BIN}" ]]; then
+    printf '0'
+    return 0
+  fi
+
+  config="$("${SSHD_BIN}" -T 2>/dev/null)" || {
+    printf '0'
+    return 0
+  }
+
+  printf "%s\n" "${config}" | grep -Fxq "passwordauthentication no" || {
+    printf '0'
+    return 0
+  }
+  printf "%s\n" "${config}" | grep -Fxq "kbdinteractiveauthentication no" || {
+    printf '0'
+    return 0
+  }
+  printf "%s\n" "${config}" | grep -Fxq "permitrootlogin no" || {
+    printf '0'
+    return 0
+  }
+  printf "%s\n" "${config}" | grep -Fxq "pubkeyauthentication yes" || {
+    printf '0'
+    return 0
+  }
+  printf "%s\n" "${config}" | grep -Fxq "allowusers ${user}" || {
+    printf '0'
+    return 0
+  }
+
+  printf '1'
+}
+
+root_disk_available_kb() {
+  df -Pk / 2>/dev/null | awk 'NR == 2 { print $4; found = 1 } END { if (!found) print "unknown" }'
+}
+
+gatekeeper_status() {
+  if command -v spctl >/dev/null 2>&1; then
+    spctl --status 2>/dev/null || true
+  else
+    printf 'unavailable'
+  fi
+}
+
+filevault_status() {
+  if command -v fdesetup >/dev/null 2>&1; then
+    fdesetup status 2>/dev/null || true
+  else
+    printf 'unavailable'
+  fi
+}
+
+generate_report() {
+  local failures="0"
+  local computer_name=""
+  local host_name=""
+  local local_host_name=""
+  local sleep_value=""
+  local disksleep_value=""
+  local displaysleep_value=""
+  local autorestart_value=""
+  local power_ok="0"
+  local network_time_ok=""
+  local restart_freeze_ok=""
+  local firewall_global_ok=""
+  local firewall_stealth_ok=""
+  local remote_login_ok=""
+  local ssh_hardening_ok="skipped"
+  local health_launchd_loaded_ok="0"
+  local tailscale_backend_state=""
+  local tailscale_hostname=""
+  local tailscale_ip=""
+  local tailscale_ok="skipped"
+  local tailscale_status_json=""
+
+  mark_required() {
+    local key="$1"
+    local value="$2"
+
+    print_kv "${key}" "${value}"
+    if [[ "${value}" != "1" ]]; then
+      failures=$((failures + 1))
     fi
-  elif ! write_agentbox_health_script_with_tailscale; then
+  }
+
+  computer_name="$(scutil --get ComputerName 2>/dev/null || true)"
+  host_name="$(scutil --get HostName 2>/dev/null || true)"
+  local_host_name="$(scutil --get LocalHostName 2>/dev/null || true)"
+  sleep_value="$(pmset_setting_value sleep)"
+  disksleep_value="$(pmset_setting_value disksleep)"
+  displaysleep_value="$(pmset_setting_value displaysleep)"
+  autorestart_value="$(pmset_setting_value autorestart)"
+  network_time_ok="$(systemsetup_toggle_value -getusingnetworktime)"
+  restart_freeze_ok="$(systemsetup_toggle_value -getrestartfreeze)"
+  firewall_global_ok="$(firewall_global_value)"
+  firewall_stealth_ok="$(firewall_stealth_value)"
+  remote_login_ok="$(remote_login_value)"
+
+  if [[ "${sleep_value}" == "0" && "${disksleep_value}" == "0" && "${displaysleep_value}" == "0" && "${autorestart_value}" == "1" ]]; then
+    power_ok="1"
+  fi
+
+  if launchctl print "system/${HEALTH_LABEL}" >/dev/null 2>&1; then
+    health_launchd_loaded_ok="1"
+  fi
+
+  print_kv timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  print_kv expected_hostname "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}"
+  print_kv computer_name "${computer_name}"
+  print_kv host_name "${host_name}"
+  print_kv local_host_name "${local_host_name}"
+
+  if [[ -n "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" &&
+    "${computer_name}" == "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" &&
+    "${host_name}" == "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" &&
+    "${local_host_name}" == "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" ]]; then
+    mark_required macos_identity_ok 1
+  else
+    mark_required macos_identity_ok 0
+  fi
+
+  print_kv sleep "${sleep_value}"
+  print_kv disksleep "${disksleep_value}"
+  print_kv displaysleep "${displaysleep_value}"
+  print_kv autorestart "${autorestart_value}"
+  mark_required headless_power_ok "${power_ok}"
+  mark_required network_time_ok "${network_time_ok}"
+  mark_required restart_freeze_ok "${restart_freeze_ok}"
+  mark_required firewall_global_ok "${firewall_global_ok}"
+  mark_required firewall_stealth_ok "${firewall_stealth_ok}"
+  mark_required remote_login_ok "${remote_login_ok}"
+
+  print_kv ssh_hardening_expected "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}"
+  print_kv admin_user "${AGENTBOX_HEALTH_ADMIN_USER}"
+  if [[ "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}" == "1" ]]; then
+    ssh_hardening_ok="$(sshd_hardened_value "${AGENTBOX_HEALTH_ADMIN_USER}")"
+    mark_required ssh_hardening_ok "${ssh_hardening_ok}"
+  else
+    print_kv ssh_hardening_ok "${ssh_hardening_ok}"
+  fi
+
+  print_kv tailscale_expected "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}"
+  print_kv expected_tailscale_hostname "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}"
+  if [[ "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}" == "1" ]]; then
+    if command -v tailscale >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+      tailscale_status_json="$(tailscale status --json 2>/dev/null || true)"
+      if [[ -n "${tailscale_status_json}" ]]; then
+        tailscale_backend_state="$(printf "%s" "${tailscale_status_json}" | jq -r '.BackendState // ""' 2>/dev/null || true)"
+        tailscale_hostname="$(printf "%s" "${tailscale_status_json}" | jq -r '.Self.HostName // ""' 2>/dev/null || true)"
+        tailscale_ip="$(printf "%s" "${tailscale_status_json}" | jq -r '(.Self.TailscaleIPs // []) | .[0] // ""' 2>/dev/null || true)"
+      fi
+    fi
+
+    print_kv tailscale_backend_state "${tailscale_backend_state}"
+    print_kv tailscale_hostname "${tailscale_hostname}"
+    print_kv tailscale_ip "${tailscale_ip}"
+
+    if [[ "${tailscale_backend_state}" == "Running" &&
+      -n "${tailscale_ip}" &&
+      -n "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}" &&
+      "${tailscale_hostname}" == "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}" ]]; then
+      tailscale_ok="1"
+    else
+      tailscale_ok="0"
+    fi
+    mark_required tailscale_ok "${tailscale_ok}"
+  else
+    print_kv tailscale_ok "${tailscale_ok}"
+  fi
+
+  mark_required health_launchd_loaded_ok "${health_launchd_loaded_ok}"
+  print_kv root_disk_available_kb "$(root_disk_available_kb)"
+  print_kv uptime "$(uptime)"
+  print_kv gatekeeper_status "$(gatekeeper_status)"
+  print_kv filevault_status "$(filevault_status)"
+
+  if [[ "${failures}" -eq 0 ]]; then
+    print_kv posture_ok 1
+    return 0
+  fi
+
+  print_kv posture_ok 0
+  return 1
+}
+
+case "${1:-}" in
+  "")
+    {
+      generate_report || true
+      printf '%s\n' '---'
+    } >> "${LOG_FILE}"
+    ;;
+  --report)
+    generate_report || true
+    ;;
+  --check)
+    generate_report
+    ;;
+  *)
+    printf 'Usage: health.sh [--report|--check]\n' >&2
+    exit 2
+    ;;
+esac
+EOHEALTH
+  then
     abort "failed to write agentbox health script."
   fi
 
@@ -1155,6 +1428,7 @@ run_agentbox_launchd_health_setup() {
   execute sudo mkdir -p "${AGENTBOX_OPT_DIR}/bin" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
   execute sudo chown -R root:wheel "${AGENTBOX_OPT_DIR}" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
   execute sudo chmod 755 "${AGENTBOX_OPT_DIR}" "${AGENTBOX_OPT_DIR}/bin" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
+  write_agentbox_health_state
   write_agentbox_health_script
   write_agentbox_health_plist
 
@@ -1165,40 +1439,9 @@ run_agentbox_launchd_health_setup() {
 }
 
 run_agentbox_post_bootstrap_summary() {
-  local gatekeeper_status
-
   log
   log "${tty_bold}agentbox post-bootstrap summary${tty_reset}"
-  hostname || true
-  scutil --get ComputerName || true
-  scutil --get HostName || true
-  scutil --get LocalHostName || true
-  sudo systemsetup -getusingnetworktime || true
-  sudo systemsetup -getnetworktimeserver || true
-  sudo systemsetup -getrestartfreeze || true
-  pmset -g || true
-  sudo systemsetup -getremotelogin || true
-  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate || true
-  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode || true
-  if command -v spctl >/dev/null 2>&1; then
-    gatekeeper_status="$(spctl --status 2>/dev/null || true)"
-    if [[ -n "${gatekeeper_status}" ]]; then
-      printf "%s\n" "${gatekeeper_status}"
-      if [[ "${gatekeeper_status}" == *"assessments disabled"* ]]; then
-        warn "Gatekeeper assessments are disabled."
-      fi
-    else
-      warn "could not read Gatekeeper status with spctl."
-    fi
-  fi
-  if command -v fdesetup >/dev/null 2>&1; then
-    sudo fdesetup status || true
-  fi
-  if ! tailscale_setup_disabled; then
-    tailscale status || true
-    tailscale ip -4 || true
-  fi
-  sudo launchctl print "system/${AGENTBOX_HEALTH_LABEL}" 2>/dev/null || true
+  sudo "${AGENTBOX_OPT_DIR}/bin/health.sh" --report || true
 }
 
 plan_action() {

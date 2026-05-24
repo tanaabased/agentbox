@@ -57,33 +57,21 @@ test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "https
 # should satisfy the agentbox Brewfile
 brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
 
-# should set macOS system identity from the canonical hostname
-test "$(scutil --get ComputerName)" = "TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
-test "$(scutil --get HostName)" = "TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
-test "$(scutil --get LocalHostName)" = "TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
-
-# should enable headless time and recovery settings
-sudo systemsetup -getusingnetworktime | grep -F "Network Time: On"
-sudo systemsetup -getrestartfreeze | grep -E ": On$"
-
-# should derive the Tailscale hostname from the TANAAB-prefixed canonical hostname
-tailscale status --json | jq -e --arg host "AGENTBOX-TEST$GITHUB_RUN_ID" '.Self.HostName == $host'
-
-# should enable classic SSH
-sudo systemsetup -getremotelogin | grep -F "Remote Login: On"
-
 # should install the envvar-provided public key for the runner user
 test -f "$HOME/.ssh/authorized_keys"
 grep -qxF "$(cat "$TMPDIR/id_agentbox_envvars.pub")" "$HOME/.ssh/authorized_keys"
 test "$(stat -f "%Lp" "$HOME/.ssh")" = "700"
 test "$(stat -f "%Lp" "$HOME/.ssh/authorized_keys")" = "600"
 
-# should harden SSH to key-only login for the runner user
-sudo /usr/sbin/sshd -T | grep -F "passwordauthentication no"
-sudo /usr/sbin/sshd -T | grep -F "kbdinteractiveauthentication no"
-sudo /usr/sbin/sshd -T | grep -F "permitrootlogin no"
-sudo /usr/sbin/sshd -T | grep -F "pubkeyauthentication yes"
-sudo /usr/sbin/sshd -T | grep -F "allowusers $(id -un)"
+# should report healthy macOS, SSH, launchd, and Tailscale posture
+health_report="$(sudo /opt/tanaab/agentbox/bin/health.sh --check)"
+printf "%s\n" "$health_report" | grep -F "posture_ok=1"
+printf "%s\n" "$health_report" | grep -F "expected_hostname=TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
+printf "%s\n" "$health_report" | grep -F "expected_tailscale_hostname=AGENTBOX-TEST$GITHUB_RUN_ID"
+printf "%s\n" "$health_report" | grep -F "macos_identity_ok=1"
+printf "%s\n" "$health_report" | grep -F "ssh_hardening_ok=1"
+printf "%s\n" "$health_report" | grep -F "tailscale_ok=1"
+printf "%s\n" "$health_report" | grep -F "health_launchd_loaded_ok=1"
 
 # should allow key-based SSH login with the generated private key
 ssh \
@@ -100,17 +88,9 @@ ssh \
   -i "$TMPDIR/id_agentbox_envvars" \
   "$(id -un)@localhost" true
 
-# should run tailscaled as a service and remain joined to Tailscale
-sudo brew services info tailscale >/dev/null
-pgrep -x tailscaled >/dev/null
-tailscale status >/dev/null
-tailscale ip -4 | grep -E "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"
-
-# should install the launchd health check
+# should install the launchd health check tool
 test -x /opt/tanaab/agentbox/bin/health.sh
-grep -F "root_disk_available_kb=" /opt/tanaab/agentbox/bin/health.sh
-test -f /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist
-sudo launchctl print system/dev.tanaab.agentbox.health >/dev/null
+printf "%s\n" "$health_report" | grep -F "root_disk_available_kb="
 ```
 
 ## Destroy tests
