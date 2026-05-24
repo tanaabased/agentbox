@@ -8,7 +8,7 @@ The hosted `boot.sh` wrapper installs the base tooling it needs, materializes th
 `~/tanaab/agentbox`, applies the repo [`Brewfile`](./Brewfile) through
 [Bootbox](https://github.com/tanaabased/bootbox), and runs the agentbox setup flow.
 
-> Supports macOS 26 or newer on `x64` and `arm64`. Requires a sudo-capable admin user and a
+> Supports macOS 26 or newer on `x64` and `arm64`. Requires a sudo-capable admin user.
 > Tailscale is recommended and enabled by default; pass a falsey auth-key value to skip Tailscale
 > setup. Designed for Mac hardware you physically control; Mac VPS behavior is unverified.
 
@@ -77,6 +77,8 @@ explicit `file:` references, and existing public-key paths:
 ```sh
 agentboxboot \
   --tailscale-authkey "$TS_AUTHKEY" \
+  --tailscale-tag tag:ci \
+  --tailscale-tag tag:agentbox \
   --authorized-key file:~/.ssh/id_ed25519.pub \
   --hostname TANAABAGENTBOX1
 
@@ -118,6 +120,8 @@ they do not land in shell history.
 
 - `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key, required when the Mac
   is not already joined; use `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
+- `AGENTBOX_TAILSCALE_TAG` or `--tailscale-tag`: optional Tailscale tag to advertise during join;
+  repeat `--tailscale-tag` for multiple tags.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH.
@@ -127,6 +131,9 @@ they do not land in shell history.
 - `NONINTERACTIVE`, `CI`, or `--yes`: skip interactive prompts.
 
 Run `boot.sh --help` for the exact current CLI and environment-variable contract.
+
+Tailscale tags must use full `tag:<name>` form, must already be defined in the tailnet policy file
+under `tagOwners`, and must be allowed for the auth key or account used to join the Mac.
 
 ## After Bootstrap
 

@@ -21,6 +21,7 @@ boot.sh --help | grep -F "boot.sh [options]"
 boot.sh --help | grep -F -- "--agentbox-version"
 boot.sh --help | grep -F -- "--authorized-key"
 boot.sh --help | grep -F -- "--tailscale-authkey"
+boot.sh --help | grep -F -- "--tailscale-tag"
 boot.sh --help | grep -F -- "--hostname"
 boot.sh --help | grep -F -- "--version"
 boot.sh --help | grep -F -- "--debug"
@@ -31,6 +32,7 @@ boot.sh --help | grep -F -- "--yes"
 boot.sh --help | grep -F "AGENTBOX_VERSION"
 boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEY"
 boot.sh --help | grep -F "AGENTBOX_TAILSCALE_AUTHKEY"
+boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAG"
 boot.sh --help | grep -F "AGENTBOX_HOSTNAME"
 boot.sh --help | grep -F "AGENTBOX_FORCE"
 boot.sh --help | grep -F "AGENTBOX_DEBUG"
@@ -41,12 +43,19 @@ boot.sh --help | grep -F "CI"
 if boot.sh --help | grep -F -- "--authorized-keys"; then exit 1; fi
 if boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEYS"; then exit 1; fi
 
+# should keep hidden plural Tailscale tag inputs out of help
+if boot.sh --help | grep -F -- "--tailscale-tags"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"; then exit 1; fi
+
+# should still accept hidden plural Tailscale tag inputs before an early help exit
+boot.sh --tailscale-tags tag:ci,tag:agentbox --help | grep -F "Usage:"
+AGENTBOX_TAILSCALE_TAGS=tag:ci,tag:agentbox boot.sh --help | grep -F "Usage:"
+
 # should not expose removed legacy surfaces
 if boot.sh --help | grep -F -- "--op-token"; then exit 1; fi
 if boot.sh --help | grep -F -- "--ssh-key"; then exit 1; fi
 if boot.sh --help | grep -F -- "--me"; then exit 1; fi
 if boot.sh --help | grep -F -- "--tanaab"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"; then exit 1; fi
 if boot.sh --help | grep -F "PIROME"; then exit 1; fi
 if boot.sh --help | grep -F "OP_SERVICE_ACCOUNT_TOKEN"; then exit 1; fi
 if boot.sh --help | grep -F ".codex-plugin"; then exit 1; fi

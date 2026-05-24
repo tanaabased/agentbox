@@ -102,6 +102,14 @@ append_array_value() {
   fi
 }
 
+append_raw_array_value() {
+  local array_name="$1"
+  local quoted
+
+  printf -v quoted "%q" "$2"
+  eval "${array_name}+=(${quoted})"
+}
+
 array_has_values() {
   local array_name="$1"
   local count
@@ -109,6 +117,15 @@ array_has_values() {
   # Bash 3.2 with nounset treats empty array expansion as unbound.
   eval "count=\${#${array_name}[@]}"
   [[ "${count}" -gt 0 ]]
+}
+
+array_count() {
+  local array_name="$1"
+  local count
+
+  # Bash 3.2 with nounset treats empty array expansion as unbound.
+  eval "count=\${#${array_name}[@]}"
+  printf "%s" "${count}"
 }
 
 append_csv_to_array() {
@@ -125,12 +142,39 @@ append_csv_to_array() {
   read -r -a values <<< "${2}"
   IFS="${old_ifs}"
 
-  if [[ "${#values[@]}" -eq 0 ]]; then
+  if ! array_has_values values; then
     return 0
   fi
 
   for entry in "${values[@]}"; do
     append_array_value "${array_name}" "${entry}"
+  done
+}
+
+append_tailscale_tag_csv_specs() {
+  local old_ifs="${IFS}"
+  local entry
+  local -a values=()
+
+  if [[ -z "${1}" ]]; then
+    return 0
+  fi
+
+  IFS=","
+  read -r -a values <<< "${1}"
+  IFS="${old_ifs}"
+
+  if [[ "${1}" == *, ]]; then
+    values+=("")
+  fi
+
+  if ! array_has_values values; then
+    append_raw_array_value TAILSCALE_TAG_SPECS ""
+    return 0
+  fi
+
+  for entry in "${values[@]}"; do
+    append_raw_array_value TAILSCALE_TAG_SPECS "${entry}"
   done
 }
 
@@ -196,9 +240,12 @@ AGENTBOX_HOSTNAME_VALUE="${AGENTBOX_HOSTNAME:-${DEFAULT_AGENTBOX_HOSTNAME}}"
 TAILSCALE_AUTHKEY="${AGENTBOX_TAILSCALE_AUTHKEY:-}"
 ADMIN_USER=""
 AUTHORIZED_KEY_CLI_SEEN="0"
+TAILSCALE_TAG_CLI_SEEN="0"
 declare -a PLANNED_ACTIONS=()
 declare -a AUTHORIZED_KEY_SPECS=()
 declare -a AUTHORIZED_KEY_LINES=()
+declare -a TAILSCALE_TAG_SPECS=()
+declare -a TAILSCALE_TAGS=()
 BOOT_TMPDIR=""
 BOOTBOX_SCRIPT_PATH=""
 CORE_NEEDS_REMEDIATION="0"
@@ -220,6 +267,14 @@ if [[ -n "${AGENTBOX_AUTHORIZED_KEYS:-}" ]]; then
   append_csv_to_array AUTHORIZED_KEY_SPECS "${AGENTBOX_AUTHORIZED_KEYS}"
 fi
 
+if [[ -n "${AGENTBOX_TAILSCALE_TAG:-}" ]]; then
+  append_array_value TAILSCALE_TAG_SPECS "${AGENTBOX_TAILSCALE_TAG}"
+fi
+
+if [[ -n "${AGENTBOX_TAILSCALE_TAGS:-}" ]]; then
+  append_tailscale_tag_csv_specs "${AGENTBOX_TAILSCALE_TAGS}"
+fi
+
 debug_enabled() {
   value_enabled "${DEBUG:-}"
 }
@@ -239,6 +294,30 @@ tailscale_authkey_display() {
   fi
 
   mask_secret_for_display "${TAILSCALE_AUTHKEY:-}"
+}
+
+tailscale_tags_csv() {
+  local old_ifs="${IFS}"
+
+  if ! array_has_values TAILSCALE_TAGS; then
+    return 0
+  fi
+
+  IFS=","
+  printf "%s" "${TAILSCALE_TAGS[*]}"
+  IFS="${old_ifs}"
+}
+
+tailscale_tags_display() {
+  local tags
+
+  if ! array_has_values TAILSCALE_TAGS; then
+    printf "none"
+    return 0
+  fi
+
+  tags="$(tailscale_tags_csv)"
+  printf "%s" "${tags}"
 }
 
 debug() {
@@ -319,6 +398,7 @@ usage() {
   local debug_display="off"
   local force_display="off"
   local tailscale_authkey_display_value="none"
+  local tailscale_tags_display_value="none"
   local authorized_keys_display="none"
 
   if debug_enabled; then
@@ -330,8 +410,12 @@ usage() {
   fi
 
   tailscale_authkey_display_value="$(tailscale_authkey_display)"
-  if [[ "${#AUTHORIZED_KEY_SPECS[@]}" -gt 0 ]]; then
-    authorized_keys_display="${#AUTHORIZED_KEY_SPECS[@]} provided"
+  if array_has_values TAILSCALE_TAG_SPECS; then
+    tailscale_tags_display_value="$(array_count TAILSCALE_TAG_SPECS) provided"
+  fi
+
+  if array_has_values AUTHORIZED_KEY_SPECS; then
+    authorized_keys_display="$(array_count AUTHORIZED_KEY_SPECS) provided"
   fi
 
   cat <<EOS
@@ -341,6 +425,7 @@ ${tty_tp}Options:${tty_reset}
   --agentbox-version  installs a tagged release, accepts 1.2.3 or v1.2.3 ${tty_dim}[default: $(agentbox_version_display)]${tty_reset}
   --authorized-key    adds an SSH public key or public-key file path ${tty_dim}[default: ${authorized_keys_display}]${tty_reset}
   --tailscale-authkey uses a Tailscale auth key to join; falsey disables setup ${tty_dim}[default: ${tailscale_authkey_display_value}]${tty_reset}
+  --tailscale-tag     advertises a Tailscale tag during join ${tty_dim}[default: ${tailscale_tags_display_value}]${tty_reset}
   --hostname          sets the system hostname and Tailscale name source ${tty_dim}[default: ${AGENTBOX_HOSTNAME_VALUE}]${tty_reset}
   --version           shows version of this script
   --debug             shows debug messages ${tty_dim}[default: ${debug_display}]${tty_reset}
@@ -352,6 +437,7 @@ ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_VERSION               tagged release to install, accepts 1.2.3 or v1.2.3
   AGENTBOX_AUTHORIZED_KEY        SSH public key or public-key file path
   AGENTBOX_TAILSCALE_AUTHKEY     Tailscale auth key for joining; falsey disables setup
+  AGENTBOX_TAILSCALE_TAG         Tailscale tag to advertise during join
   AGENTBOX_HOSTNAME              system hostname and Tailscale name source
   AGENTBOX_FORCE                 set truthy to force supported operations
   AGENTBOX_DEBUG                 set truthy to show debug messages
@@ -390,6 +476,13 @@ reset_authorized_key_specs_for_cli() {
   if [[ "${AUTHORIZED_KEY_CLI_SEEN}" == "0" ]]; then
     AUTHORIZED_KEY_SPECS=()
     AUTHORIZED_KEY_CLI_SEEN="1"
+  fi
+}
+
+reset_tailscale_tag_specs_for_cli() {
+  if [[ "${TAILSCALE_TAG_CLI_SEEN}" == "0" ]]; then
+    TAILSCALE_TAG_SPECS=()
+    TAILSCALE_TAG_CLI_SEEN="1"
   fi
 }
 
@@ -438,6 +531,30 @@ parse_args() {
       --tailscale-authkey=*)
         require_inline_option_value "--tailscale-authkey" "${1#*=}"
         TAILSCALE_AUTHKEY="${1#*=}"
+        shift
+        ;;
+      --tailscale-tag)
+        require_next_option_value "--tailscale-tag" "$#"
+        reset_tailscale_tag_specs_for_cli
+        append_array_value TAILSCALE_TAG_SPECS "$2"
+        shift 2
+        ;;
+      --tailscale-tag=*)
+        require_inline_option_value "--tailscale-tag" "${1#*=}"
+        reset_tailscale_tag_specs_for_cli
+        append_array_value TAILSCALE_TAG_SPECS "${1#*=}"
+        shift
+        ;;
+      --tailscale-tags)
+        require_next_option_value "--tailscale-tags" "$#"
+        reset_tailscale_tag_specs_for_cli
+        append_tailscale_tag_csv_specs "$2"
+        shift 2
+        ;;
+      --tailscale-tags=*)
+        require_inline_option_value "--tailscale-tags" "${1#*=}"
+        reset_tailscale_tag_specs_for_cli
+        append_tailscale_tag_csv_specs "${1#*=}"
         shift
         ;;
       --hostname)
@@ -893,6 +1010,48 @@ resolve_authorized_key_specs() {
   done
 }
 
+tailscale_tag_valid() {
+  [[ "${1:-}" =~ ^tag:[a-z0-9][a-z0-9-]*$ ]]
+}
+
+append_tailscale_tag() {
+  local tag="$1"
+  local existing
+
+  if array_has_values TAILSCALE_TAGS; then
+    for existing in "${TAILSCALE_TAGS[@]}"; do
+      if [[ "${existing}" == "${tag}" ]]; then
+        return 0
+      fi
+    done
+  fi
+
+  TAILSCALE_TAGS+=("${tag}")
+}
+
+resolve_tailscale_tag_specs() {
+  local spec
+  local tag
+
+  TAILSCALE_TAGS=()
+  if tailscale_setup_disabled || ! array_has_values TAILSCALE_TAG_SPECS; then
+    return 0
+  fi
+
+  for spec in "${TAILSCALE_TAG_SPECS[@]}"; do
+    tag="$(trim_whitespace "${spec}")"
+    if [[ -z "${tag}" ]]; then
+      abort "Tailscale tag values must not be empty."
+    fi
+
+    if ! tailscale_tag_valid "${tag}"; then
+      abort "Tailscale tag ${tty_ts}${tag}${tty_reset} must use tag:<name> format with lowercase letters, numbers, and hyphens."
+    fi
+
+    append_tailscale_tag "${tag}"
+  done
+}
+
 install_authorized_keys_for_user() {
   local user="$1"
   local home
@@ -944,7 +1103,7 @@ run_agentbox_ssh_setup() {
     execute sudo systemsetup -setremotelogin on
   fi
 
-  if [[ "${#AUTHORIZED_KEY_LINES[@]}" -gt 0 ]]; then
+  if array_has_values AUTHORIZED_KEY_LINES; then
     install_authorized_keys_for_user "${ADMIN_USER}"
     warn "SSH password-login hardening is deferred until key-based SSH has been verified."
   else
@@ -1189,6 +1348,7 @@ validate_inputs() {
   fi
 
   resolve_authorized_key_specs
+  resolve_tailscale_tag_specs
 
   if ! hostname_valid "${AGENTBOX_HOSTNAME_VALUE}"; then
     abort "hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} must be DNS-safe."
@@ -1365,13 +1525,17 @@ plan_wrapper_execution() {
   plan_action "${tty_tp}ensure${tty_reset} headless power and firewall settings"
   plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile"
   plan_action "${tty_tp}ensure${tty_reset} classic SSH is enabled for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
-  if [[ "${#AUTHORIZED_KEY_LINES[@]}" -gt 0 ]]; then
-    plan_action "${tty_tp}install${tty_reset} ${tty_ts}${#AUTHORIZED_KEY_LINES[@]}${tty_reset} authorized key entries for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
+  if array_has_values AUTHORIZED_KEY_LINES; then
+    plan_action "${tty_tp}install${tty_reset} ${tty_ts}$(array_count AUTHORIZED_KEY_LINES)${tty_reset} authorized key entries for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
   fi
   if tailscale_setup_disabled; then
     plan_action "${tty_tp}skip${tty_reset} Tailscale setup because the auth-key input is disabled"
   else
-    plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as a launchd service and Tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}"
+    if array_has_values TAILSCALE_TAGS; then
+      plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as a launchd service and Tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset} with tags ${tty_ts}$(tailscale_tags_display)${tty_reset}"
+    else
+      plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as a launchd service and Tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}"
+    fi
   fi
   plan_action "${tty_tp}install or refresh${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
   plan_action "${tty_tp}print${tty_reset} a nonfatal post-bootstrap health summary"
@@ -1468,6 +1632,7 @@ run_agentbox_tailscale_setup() {
   local current_hostname=""
   local backend_state=""
   local tailnet_name=""
+  local advertise_tags=""
   local -a tailscale_args=(
     up
     "--auth-key=${TAILSCALE_AUTHKEY}"
@@ -1482,6 +1647,12 @@ run_agentbox_tailscale_setup() {
   if tailscale_setup_disabled; then
     log "${tty_tp}skipping${tty_reset} Tailscale setup because the auth-key input is disabled"
     return 0
+  fi
+
+  if array_has_values TAILSCALE_TAGS; then
+    advertise_tags="$(tailscale_tags_csv)"
+    tailscale_args+=("--advertise-tags=${advertise_tags}")
+    tailscale_display_args+=("--advertise-tags=${advertise_tags}")
   fi
 
   check_sudo_access "before Tailscale service setup"
@@ -1551,7 +1722,8 @@ main() {
   debug raw AGENTBOX_TARGET="$(agentbox_target_display)"
   debug raw AGENTBOX_HOSTNAME="${AGENTBOX_HOSTNAME_VALUE}"
   debug raw INVOKING_ADMIN_USER="${ADMIN_USER}"
-  debug raw AGENTBOX_AUTHORIZED_KEY_COUNT="${#AUTHORIZED_KEY_LINES[@]}"
+  debug raw AGENTBOX_AUTHORIZED_KEY_COUNT="$(array_count AUTHORIZED_KEY_LINES)"
+  debug raw TAILSCALE_TAGS="$(tailscale_tags_display)"
   if tailscale_setup_disabled; then
     debug raw TAILSCALE_SETUP="disabled"
     debug raw TAILSCALE_HOSTNAME="disabled"

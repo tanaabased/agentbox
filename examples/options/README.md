@@ -36,6 +36,8 @@ boot.sh \
   --debug \
   --hostname "TANAABAGENTBOX-TEST$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
+  --tailscale-tag tag:ci \
+  --tailscale-tag tag:agentbox \
   --authorized-key "file:$TMPDIR/id_agentbox_options_file.pub" \
   --authorized-key "$(cat "$TMPDIR/id_agentbox_options_raw.pub")"
 test -f "$HOME/tanaab/agentbox/Brewfile"
@@ -46,6 +48,8 @@ AGENTBOX_TAILSCALE_AUTHKEY="" boot.sh \
   --force \
   --debug \
   --hostname "TANAABAGENTBOX-TEST$GITHUB_RUN_ID" \
+  --tailscale-tag tag:ci \
+  --tailscale-tag tag:agentbox \
   --authorized-key "file:$TMPDIR/id_agentbox_options_file.pub" \
   --authorized-key "$(cat "$TMPDIR/id_agentbox_options_raw.pub")"
 ```
@@ -75,6 +79,9 @@ test "$(scutil --get LocalHostName)" = "TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
 
 # should derive the Tailscale hostname from the TANAAB-prefixed canonical hostname
 tailscale status --json | jq -e --arg host "AGENTBOX-TEST$GITHUB_RUN_ID" '.Self.HostName == $host'
+
+# should advertise the requested Tailscale tags
+tailscale status --json | jq -e '(["tag:ci", "tag:agentbox"] - (.Self.Tags // [])) | length == 0'
 
 # should enable classic SSH
 sudo systemsetup -getremotelogin | grep -F "Remote Login: On"
