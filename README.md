@@ -7,12 +7,16 @@ launchd-managed health checks so the machine is ready for whatever agent runtime
 `agentbox` prepares the admin side of the Mac. Install agent runtimes and
 application workloads later as **non-admin, non-sudo users**.
 
+The bootstrap intentionally stops before runtime installation because OpenClaw, Claude Code, Codex,
+Ollama, browser automation, chat bots, API keys, and project services each need their own
+user-space setup.
+
 **What it does**
 
 - Materializes this repo at `~/tanaab/agentbox` through the hosted `boot.sh` wrapper.
 - Applies the repo [`Brewfile`](./Brewfile) through
   [Bootbox](https://github.com/tanaabased/bootbox).
-- Sets macOS system identity and headless power/firewall defaults.
+- Sets macOS system identity and headless power, time, recovery, and firewall defaults.
 - Enables classic SSH, installs optional authorized keys, and hardens sshd to key-only login when
   keys are provided.
 - Installs Tailscale from Homebrew and optionally joins the tailnet.
@@ -61,13 +65,15 @@ softwareupdate --list
 sudo softwareupdate --install --all --restart
 ```
 
-- Decide FileVault deliberately. For a physically controlled headless agentbox, the default
-  recommendation is FileVault off, no auto-login, and services started by launchd.
+- Keep automatic/background security updates enabled in System Settings.
+- Decide FileVault deliberately. macOS 26 on Apple silicon supports SSH unlock after restart when
+  Remote Login and network connectivity are available, but physical recovery access is still the
+  safest assumption for a headless agentbox.
 - Consider installing an HDMI dummy plug / headless display adapter, such as
   [this example](https://www.amazon.com/dp/B0CKKLTWMN?ref=fed_asin_title), for smoother headless
   display behavior.
-- Temporarily enable Remote Login if needed for initial access. `boot.sh` enables classic SSH
-  programmatically.
+- Temporarily enable Remote Login only if you need SSH access before running `boot.sh`; the
+  bootstrap enables classic SSH programmatically.
 - Create or choose a preauthorized Tailscale auth key with any desired device tags, or decide to
   skip Tailscale setup.
 - Optionally choose SSH public keys for `boot.sh` to install for the admin user.
@@ -152,7 +158,8 @@ they do not land in shell history.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH; providing keys also enables key-only SSH hardening.
-- `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive to install.
+- `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive to install,
+  including prerelease tags such as `v1.0.0-beta.1`.
 - `AGENTBOX_FORCE` or `--force`: replace supported existing targets.
 - `AGENTBOX_DEBUG` or `--debug`: show debug output with secrets masked.
 - `NONINTERACTIVE`, `CI`, or `--yes`: skip interactive prompts.
@@ -162,13 +169,13 @@ Run `boot.sh --help` for the exact current CLI and environment-variable contract
 ## Verification
 
 - Reboot the Mac and confirm it returns to the expected network state before any GUI login.
-- If Tailscale is enabled, confirm service and network status:
+- Confirm the current agentbox health:
 
 ```sh
-sudo brew services info tailscale
-tailscale status
-tailscale ip -4
+sudo /opt/tanaab/agentbox/bin/health.sh --check
 ```
+
+Use `--report` for the same key-value report without failing on drift.
 
 - If authorized keys were provided, verify key-based SSH over Tailscale or LAN from another machine
   before closing the local/admin recovery session:
@@ -177,10 +184,9 @@ tailscale ip -4
 ssh -o PreferredAuthentications=publickey <admin-user>@<tailscale-name-or-ip>
 ```
 
-- Confirm the health daemon and logs:
+- Review the periodic health log:
 
 ```sh
-sudo launchctl print system/dev.tanaab.agentbox.health
 tail -n 50 /var/log/tanaab/agentbox/health.log
 ```
 

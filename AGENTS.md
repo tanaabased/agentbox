@@ -53,6 +53,10 @@ explicitly asked.
 - Any machine behavior change in `boot.sh` must check README setup/after-bootstrap guidance plus
   the affected `envvars`, `options`, or `version` Leia scenarios.
 - Keep planned-action output aligned with actual execution order.
+- Treat the generated agentbox health script as the source of truth for machine health
+  verification. README and Leia should prefer `health.sh --check` for macOS/SSH/Tailscale state,
+  while keeping repo materialization, Brewfile satisfaction, and live SSH-login proof as direct
+  checks.
 
 ## Secrets And Logging
 
@@ -77,6 +81,15 @@ explicitly asked.
   macOS runners, but should not be treated as routine local validation.
 - Prefer direct command pipelines, command substitutions, and deterministic inline values over
   writing files just to inspect them later.
+- Do not capture command output into shell variables just to grep it later. Leia failure output must
+  surface useful stdout/stderr in CI; prefer direct commands, `cmd --report`, or
+  `cmd | tee /dev/stderr | grep ...` when an assertion needs both matching and diagnostics. If
+  capture is needed to preserve a failing command's status, print the captured output before
+  assertions.
+- For health-report assertions, print and match the targeted `--report` lines before running the
+  final `--check` gate so CI logs show the health mismatch that caused the failure.
+- Treat each blank-line-separated Leia block as a separate script. Do not rely on shell variables,
+  functions, or working-directory changes persisting across `should` blocks.
 - Use `TMPDIR` for durable fixtures, unavoidable logs, and helper internals only.
 - Keep generated SSH public/private key fixtures in `TMPDIR`; they are real test inputs, not scratch
   assertion files.
@@ -130,5 +143,8 @@ explicitly asked.
   reintroduce the Tailscale GUI cask or Tailscale SSH mode.
 - Preserve managed sshd hardening through `/etc/ssh/sshd_config.d/agentbox.conf`; do not patch
   `/etc/ssh/sshd_config` directly.
+- Keep agentbox health checks strict for real machines. Managed macOS runner health skips must be
+  recorded in the generated state file, set only from known runner environments, and kept narrowly
+  scoped to unavailable virtualized/managed settings.
 - Prefer targeted edits to `boot.sh`; avoid whole-file rewrites unless the script contract is being
   intentionally replaced.
