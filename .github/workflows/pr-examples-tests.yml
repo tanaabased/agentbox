@@ -22,7 +22,7 @@ jobs:
           - envvars
           - no-tailscale
           - options
-          # Add version after the first published agentbox tag exists.
+          - version
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
