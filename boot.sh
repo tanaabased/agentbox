@@ -1996,7 +1996,7 @@ verify_agentbox_tailscaled_launchd_setup() {
 
   admin_uid="$(id -u "${ADMIN_USER}" 2>/dev/null || true)"
 
-  if ! sudo launchctl print "system/${AGENTBOX_TAILSCALED_LABEL}" >/dev/null 2>&1; then
+  if ! agentbox_tailscaled_launchd_loaded; then
     abort "agentbox tailscaled LaunchDaemon is not loaded in the system launchd domain."
   fi
 
@@ -2007,6 +2007,10 @@ verify_agentbox_tailscaled_launchd_setup() {
   if [[ -n "${admin_uid}" ]] && launchctl print "gui/${admin_uid}/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
     abort "legacy Homebrew tailscale LaunchAgent is still loaded in the invoking user's launchd domain."
   fi
+}
+
+agentbox_tailscaled_launchd_loaded() {
+  sudo launchctl print "system/${AGENTBOX_TAILSCALED_LABEL}" >/dev/null 2>&1
 }
 
 run_agentbox_tailscaled_launchd_setup() {
@@ -2021,6 +2025,12 @@ run_agentbox_tailscaled_launchd_setup() {
   execute sudo chmod 755 "${AGENTBOX_LOG_DIR}"
   remove_homebrew_tailscale_launchd_services
   write_agentbox_tailscaled_plist "${tailscaled_bin}"
+
+  if agentbox_tailscaled_launchd_loaded; then
+    log "${tty_tp}skipping${tty_reset} ${tty_ts}tailscaled${tty_reset} restart; agentbox system LaunchDaemon is already loaded"
+    verify_agentbox_tailscaled_launchd_setup
+    return 0
+  fi
 
   sudo launchctl bootout system "${AGENTBOX_TAILSCALED_PLIST_PATH}" >/dev/null 2>&1 || true
   execute sudo launchctl bootstrap system "${AGENTBOX_TAILSCALED_PLIST_PATH}"
