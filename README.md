@@ -154,7 +154,8 @@ they do not land in shell history.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH; providing keys also enables key-only SSH hardening.
-- `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive to install.
+- `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive to install,
+  including prerelease tags such as `v1.0.0-beta.1`.
 - `AGENTBOX_FORCE` or `--force`: replace supported existing targets.
 - `AGENTBOX_DEBUG` or `--debug`: show debug output with secrets masked.
 - `NONINTERACTIVE`, `CI`, or `--yes`: skip interactive prompts.
@@ -164,7 +165,7 @@ Run `boot.sh --help` for the exact current CLI and environment-variable contract
 ## Verification
 
 - Reboot the Mac and confirm it returns to the expected network state before any GUI login.
-- Confirm the current bootstrap posture:
+- Confirm the current agentbox health:
 
 ```sh
 sudo /opt/tanaab/agentbox/bin/health.sh --check

@@ -53,8 +53,8 @@ explicitly asked.
 - Any machine behavior change in `boot.sh` must check README setup/after-bootstrap guidance plus
   the affected `envvars`, `options`, or `version` Leia scenarios.
 - Keep planned-action output aligned with actual execution order.
-- Treat the generated agentbox health script as the source of truth for machine posture
-  verification. README and Leia should prefer `health.sh --check` for macOS/SSH/Tailscale posture,
+- Treat the generated agentbox health script as the source of truth for machine health
+  verification. README and Leia should prefer `health.sh --check` for macOS/SSH/Tailscale state,
   while keeping repo materialization, Brewfile satisfaction, and live SSH-login proof as direct
   checks.
 
@@ -87,7 +87,7 @@ explicitly asked.
   capture is needed to preserve a failing command's status, print the captured output before
   assertions.
 - For health-report assertions, print and match the targeted `--report` lines before running the
-  final `--check` gate so CI logs show the posture mismatch that caused the failure.
+  final `--check` gate so CI logs show the health mismatch that caused the failure.
 - Treat each blank-line-separated Leia block as a separate script. Do not rely on shell variables,
   functions, or working-directory changes persisting across `should` blocks.
 - Use `TMPDIR` for durable fixtures, unavoidable logs, and helper internals only.
@@ -143,5 +143,7 @@ explicitly asked.
   reintroduce the Tailscale GUI cask or Tailscale SSH mode.
 - Preserve managed sshd hardening through `/etc/ssh/sshd_config.d/agentbox.conf`; do not patch
   `/etc/ssh/sshd_config` directly.
+- Keep agentbox health checks strict for real machines. GitHub Actions-only health skips must be
+  recorded in the generated state file and kept narrowly scoped to runner-unavailable settings.
 - Prefer targeted edits to `boot.sh`; avoid whole-file rewrites unless the script contract is being
   intentionally replaced.

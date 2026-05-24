@@ -285,7 +285,7 @@ show_version() {
 }
 
 is_semver_value() {
-  [[ "${1:-}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]
+  [[ "${1:-}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z-]*(\.[0-9A-Za-z][0-9A-Za-z-]*)*)?$ ]]
 }
 
 normalize_release_tag() {
@@ -362,7 +362,7 @@ usage() {
 Usage: ${tty_dim}[NONINTERACTIVE=1] [CI=1]${tty_reset} ${tty_bold}${SCRIPT_NAME}${tty_reset} ${tty_dim}[options]${tty_reset}
 
 ${tty_tp}Options:${tty_reset}
-  --agentbox-version  installs a tagged release, accepts 1.2.3 or v1.2.3 ${tty_dim}[default: $(agentbox_version_display)]${tty_reset}
+  --agentbox-version  installs a tagged release, accepts 1.2.3 or v1.2.3-beta.1 ${tty_dim}[default: $(agentbox_version_display)]${tty_reset}
   --authorized-key    adds an SSH public key or public-key file path ${tty_dim}[default: ${authorized_keys_display}]${tty_reset}
   --tailscale-authkey uses a Tailscale auth key to join; falsey disables setup ${tty_dim}[default: ${tailscale_authkey_display_value}]${tty_reset}
   --hostname          sets the system hostname and Tailscale name source ${tty_dim}[default: ${AGENTBOX_HOSTNAME_VALUE}]${tty_reset}
@@ -373,7 +373,7 @@ ${tty_tp}Options:${tty_reset}
   -y, --yes           runs with all defaults and no prompts, sets NONINTERACTIVE=1
 
 ${tty_tp}Environment Variables:${tty_reset}
-  AGENTBOX_VERSION               tagged release to install, accepts 1.2.3 or v1.2.3
+  AGENTBOX_VERSION               tagged release to install, accepts 1.2.3 or v1.2.3-beta.1
   AGENTBOX_AUTHORIZED_KEY        SSH public key or public-key file path
   AGENTBOX_TAILSCALE_AUTHKEY     Tailscale auth key for joining; falsey disables setup
   AGENTBOX_HOSTNAME              system hostname and Tailscale name source
@@ -593,7 +593,7 @@ prepare_agentbox_source() {
 
   if [[ -n "${AGENTBOX_VERSION_VALUE}" ]]; then
     if ! is_semver_value "${AGENTBOX_VERSION_VALUE}"; then
-      abort "agentbox version ${tty_ts}${AGENTBOX_VERSION_VALUE}${tty_reset} must use 1.2.3 or v1.2.3 format."
+      abort "agentbox version ${tty_ts}${AGENTBOX_VERSION_VALUE}${tty_reset} must use 1.2.3, v1.2.3, or v1.2.3-beta.1 format."
     fi
 
     AGENTBOX_VERSION_TAG="$(normalize_release_tag "${AGENTBOX_VERSION_VALUE}")"
@@ -1072,6 +1072,7 @@ run_agentbox_ssh_setup() {
 write_agentbox_health_state() {
   local tailscale_enabled="1"
   local ssh_hardening_expected="0"
+  local github_actions_runner="0"
 
   if tailscale_setup_disabled; then
     tailscale_enabled="0"
@@ -1081,6 +1082,10 @@ write_agentbox_health_state() {
     ssh_hardening_expected="1"
   fi
 
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    github_actions_runner="1"
+  fi
+
   if ! sudo tee "${AGENTBOX_HEALTH_STATE_PATH}" >/dev/null <<EOHEALTHSTATE
 # Managed by agentbox.
 AGENTBOX_HEALTH_EXPECTED_HOSTNAME=$(shell_quote "${AGENTBOX_HOSTNAME_VALUE}")
@@ -1088,6 +1093,7 @@ AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=$(shell_quote "${TAILSCALE_HOSTNAME_
 AGENTBOX_HEALTH_TAILSCALE_ENABLED=${tailscale_enabled}
 AGENTBOX_HEALTH_ADMIN_USER=$(shell_quote "${ADMIN_USER}")
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED=${ssh_hardening_expected}
+AGENTBOX_HEALTH_GITHUB_ACTIONS_RUNNER=${github_actions_runner}
 EOHEALTHSTATE
   then
     abort "failed to write agentbox health state."
@@ -1113,6 +1119,7 @@ AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=""
 AGENTBOX_HEALTH_TAILSCALE_ENABLED="0"
 AGENTBOX_HEALTH_ADMIN_USER=""
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
+AGENTBOX_HEALTH_GITHUB_ACTIONS_RUNNER="0"
 
 if [[ -r "${STATE_FILE}" ]]; then
   # shellcheck source=/dev/null
@@ -1230,6 +1237,7 @@ generate_report() {
   local disksleep_value=""
   local displaysleep_value=""
   local autorestart_value=""
+  local autorestart_ok="skipped"
   local power_ok="0"
   local network_time_ok=""
   local restart_freeze_ok=""
@@ -1267,7 +1275,18 @@ generate_report() {
   firewall_stealth_ok="$(firewall_stealth_value)"
   remote_login_ok="$(remote_login_value)"
 
-  if [[ "${sleep_value}" == "0" && "${disksleep_value}" == "0" && "${displaysleep_value}" == "0" && "${autorestart_value}" == "1" ]]; then
+  if [[ -z "${autorestart_value}" && "${AGENTBOX_HEALTH_GITHUB_ACTIONS_RUNNER}" == "1" ]]; then
+    autorestart_ok="skipped"
+  elif [[ "${autorestart_value}" == "1" ]]; then
+    autorestart_ok="1"
+  else
+    autorestart_ok="0"
+  fi
+
+  if [[ "${sleep_value}" == "0" &&
+    "${disksleep_value}" == "0" &&
+    "${displaysleep_value}" == "0" &&
+    "${autorestart_ok}" != "0" ]]; then
     power_ok="1"
   fi
 
@@ -1276,6 +1295,7 @@ generate_report() {
   fi
 
   print_kv timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  print_kv github_actions_runner "${AGENTBOX_HEALTH_GITHUB_ACTIONS_RUNNER}"
   print_kv expected_hostname "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}"
   print_kv computer_name "${computer_name}"
   print_kv host_name "${host_name}"
@@ -1294,11 +1314,16 @@ generate_report() {
   print_kv disksleep "${disksleep_value}"
   print_kv displaysleep "${displaysleep_value}"
   print_kv autorestart "${autorestart_value}"
+  print_kv autorestart_ok "${autorestart_ok}"
   mark_required headless_power_ok "${power_ok}"
   mark_required network_time_ok "${network_time_ok}"
   mark_required restart_freeze_ok "${restart_freeze_ok}"
   mark_required firewall_global_ok "${firewall_global_ok}"
-  mark_required firewall_stealth_ok "${firewall_stealth_ok}"
+  if [[ "${AGENTBOX_HEALTH_GITHUB_ACTIONS_RUNNER}" == "1" && "${firewall_stealth_ok}" != "1" ]]; then
+    print_kv firewall_stealth_ok "${firewall_stealth_ok}"
+  else
+    mark_required firewall_stealth_ok "${firewall_stealth_ok}"
+  fi
   mark_required remote_login_ok "${remote_login_ok}"
 
   print_kv ssh_hardening_expected "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}"
@@ -1346,11 +1371,11 @@ generate_report() {
   print_kv filevault_status "$(filevault_status)"
 
   if [[ "${failures}" -eq 0 ]]; then
-    print_kv posture_ok 1
+    print_kv agentbox_ok 1
     return 0
   fi
 
-  print_kv posture_ok 0
+  print_kv agentbox_ok 0
   return 1
 }
 
