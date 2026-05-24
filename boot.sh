@@ -92,6 +92,15 @@ append_array_value() {
   fi
 }
 
+array_has_values() {
+  local array_name="$1"
+  local count
+
+  # Bash 3.2 with nounset treats empty array expansion as unbound.
+  eval "count=\${#${array_name}[@]}"
+  [[ "${count}" -gt 0 ]]
+}
+
 append_csv_to_array() {
   local array_name="$1"
   local old_ifs="${IFS}"
@@ -700,11 +709,13 @@ append_authorized_key_line() {
   local line="$1"
   local existing
 
-  for existing in "${AUTHORIZED_KEY_LINES[@]}"; do
-    if [[ "${existing}" == "${line}" ]]; then
-      return 0
-    fi
-  done
+  if array_has_values AUTHORIZED_KEY_LINES; then
+    for existing in "${AUTHORIZED_KEY_LINES[@]}"; do
+      if [[ "${existing}" == "${line}" ]]; then
+        return 0
+      fi
+    done
+  fi
 
   AUTHORIZED_KEY_LINES+=("${line}")
 }
@@ -788,6 +799,10 @@ resolve_authorized_key_specs() {
   local spec
 
   AUTHORIZED_KEY_LINES=()
+  if ! array_has_values AUTHORIZED_KEY_SPECS; then
+    return 0
+  fi
+
   for spec in "${AUTHORIZED_KEY_SPECS[@]}"; do
     resolve_authorized_key_spec "${spec}"
   done
@@ -813,17 +828,19 @@ install_authorized_keys_for_user() {
   execute sudo chown "${user}:staff" "${authorized_keys}"
   execute sudo chmod 600 "${authorized_keys}"
 
-  while IFS= read -r key || [[ -n "${key}" ]]; do
-    key="$(trim_whitespace "${key}")"
-    if [[ -z "${key}" || "${key}" == \#* ]]; then
-      continue
-    fi
+  if array_has_values AUTHORIZED_KEY_LINES; then
+    while IFS= read -r key || [[ -n "${key}" ]]; do
+      key="$(trim_whitespace "${key}")"
+      if [[ -z "${key}" || "${key}" == \#* ]]; then
+        continue
+      fi
 
-    if ! sudo grep -qxF -- "${key}" "${authorized_keys}"; then
-      printf "%s\n" "${key}" | sudo tee -a "${authorized_keys}" >/dev/null
-      installed_count=$((installed_count + 1))
-    fi
-  done < <(printf "%s\n" "${AUTHORIZED_KEY_LINES[@]}")
+      if ! sudo grep -qxF -- "${key}" "${authorized_keys}"; then
+        printf "%s\n" "${key}" | sudo tee -a "${authorized_keys}" >/dev/null
+        installed_count=$((installed_count + 1))
+      fi
+    done < <(printf "%s\n" "${AUTHORIZED_KEY_LINES[@]}")
+  fi
 
   execute sudo chown "${user}:staff" "${authorized_keys}"
   execute sudo chmod 600 "${authorized_keys}"
@@ -935,7 +952,7 @@ plan_action() {
 }
 
 have_planned_actions() {
-  [[ "${#PLANNED_ACTIONS[@]}" -gt 0 ]]
+  array_has_values PLANNED_ACTIONS
 }
 
 show_planned_actions() {

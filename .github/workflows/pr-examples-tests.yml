@@ -57,6 +57,9 @@ jobs:
           TMPDIR: ${{ github.workspace }}/examples/${{ matrix.example }}/.tmp
           AGENTBOX_TAILSCALE_AUTHKEY: ${{ secrets.TANAAB_HOLONET_LOGIN }}
         run: |
+          scripts/cleanup-agentbox-runner.sh
+          mkdir -p "$TMPDIR"
+
           # should generate public key fixtures for option authorized-key installation
           rm -f "$TMPDIR/id_agentbox_options_file" "$TMPDIR/id_agentbox_options_file.pub"
           rm -f "$TMPDIR/id_agentbox_options_raw" "$TMPDIR/id_agentbox_options_raw.pub"
