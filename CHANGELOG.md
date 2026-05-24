@@ -1,5 +1,7 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+- Added an agentbox-owned system LaunchDaemon for root-level `tailscaled` management. ([#6](https://github.com/tanaabased/agentbox/pull/6))
+
 ## v1.0.0-beta.3 - [May 24, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.3)
 
 - Updated Bootbox delegation to run noninteractively after the agentbox wrapper confirmation gate. ([#5](https://github.com/tanaabased/agentbox/pull/5))
