@@ -7,6 +7,10 @@ launchd-managed health checks so the machine is ready for whatever agent runtime
 `agentbox` prepares the admin side of the Mac. Install agent runtimes and
 application workloads later as **non-admin, non-sudo users**.
 
+The bootstrap intentionally stops before runtime installation because OpenClaw, Claude Code, Codex,
+Ollama, browser automation, chat bots, API keys, and project services each need their own
+user-space setup.
+
 **What it does**
 
 - Materializes this repo at `~/tanaab/agentbox` through the hosted `boot.sh` wrapper.
