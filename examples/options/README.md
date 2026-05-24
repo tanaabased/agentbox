@@ -31,6 +31,8 @@ boot.sh \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --authorized-key "file:$TMPDIR/id_agentbox_options_file.pub" \
   --authorized-key "$(cat "$TMPDIR/id_agentbox_options_raw.pub")"
+test -f "$HOME/tanaab/agentbox/Brewfile"
+command -v tailscale >/dev/null
 ```
 
 ## Testing

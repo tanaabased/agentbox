@@ -29,6 +29,8 @@ boot.sh \
   --hostname "TANAABAGENTBOXVER$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --authorized-key "file:$TMPDIR/id_agentbox_version.pub"
+test -f "$HOME/tanaab/agentbox/Brewfile"
+command -v tailscale >/dev/null
 test "$(git -C "$HOME/tanaab/agentbox" remote get-url origin)" = "https://github.com/tanaabased/agentbox.git"
 sudo tailscale logout >/dev/null 2>&1 || true
 
@@ -40,6 +42,8 @@ boot.sh \
   --hostname "TANAABAGENTBOXVER$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --authorized-key "file:$TMPDIR/id_agentbox_version.pub"
+test -f "$HOME/tanaab/agentbox/Brewfile"
+command -v tailscale >/dev/null
 ```
 
 ## Testing

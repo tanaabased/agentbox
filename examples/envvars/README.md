@@ -28,6 +28,8 @@ AGENTBOX_HOSTNAME="TANAABAGENTBOXENV$GITHUB_RUN_ID" \
 AGENTBOX_TAILSCALE_TAGS="tag:agentbox" \
 AGENTBOX_AUTHORIZED_KEY="$(cat "$TMPDIR/id_agentbox_envvars.pub")" \
 boot.sh
+test -f "$HOME/tanaab/agentbox/Brewfile"
+command -v tailscale >/dev/null
 ```
 
 ## Testing
