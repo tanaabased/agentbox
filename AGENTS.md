@@ -25,14 +25,18 @@ explicitly asked.
 
 ## Build Artifacts
 
-- Do not hand-edit generated files under `dist/`; make source changes in `boot.sh`, `site/`, or
-  `scripts/build-dist.js`.
+- Do not edit, regenerate, stage, or commit files under `dist/` during local agent work.
+- `dist/` is CI/release-owned output. GitHub Actions may regenerate and stamp it during build,
+  test, release, or hosting workflows.
+- Make source changes in `boot.sh`, `site/`, or `scripts/build-dist.js`; leave `dist/` unchanged
+  unless the user explicitly asks for a local generated-artifact update.
+- If a local command accidentally changes `dist/`, restore those files before committing.
 - Treat `boot.sh` as the source entrypoint and `dist/boot.sh` as the release-shaped hosted artifact
   prepared by build and release workflows.
 - Preserve the source script's single top-level `SCRIPT_VERSION` assignment pattern so release
   stamping with `version-injector` keeps working.
-- Run `bun run build` only when the task touches hosted output, Netlify/release behavior, or the
-  user explicitly asks for generated artifact verification.
+- Do not run `bun run build` locally unless the user explicitly asks for local generated-output
+  verification. Prefer GitHub Actions for build/release artifact validation.
 
 ## CLI Contract
 
@@ -86,8 +90,8 @@ explicitly asked.
 
 ## Release And Distribution
 
-- Netlify publishes the committed `dist/` folder. Preserve that contract unless the task explicitly
-  changes hosting behavior.
+- Netlify publishes committed `dist/`, but local agents should not update it directly; CI/release
+  workflows own generated `dist/` changes.
 - Release workflows use the Bootbox-style shell-script distribution flow. Keep `dist/boot.sh` as
   the stamped hosted entrypoint.
 - Do not add unrelated package archives or upload behavior unless the release contract explicitly
