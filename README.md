@@ -68,8 +68,8 @@ sudo softwareupdate --install --all --restart
 - Consider installing an HDMI dummy plug / headless display adapter, such as
   [this example](https://www.amazon.com/dp/B0CKKLTWMN?ref=fed_asin_title), for smoother headless
   display behavior.
-- Temporarily enable Remote Login if needed for initial access. `boot.sh` enables classic SSH
-  programmatically.
+- Temporarily enable Remote Login only if you need SSH access before running `boot.sh`; the
+  bootstrap enables classic SSH programmatically.
 - Create or choose a preauthorized Tailscale auth key with any desired device tags, or decide to
   skip Tailscale setup.
 - Optionally choose SSH public keys for `boot.sh` to install for the admin user.
