@@ -12,7 +12,7 @@ application workloads later as **non-admin, non-sudo users**.
 - Materializes this repo at `~/tanaab/agentbox` through the hosted `boot.sh` wrapper.
 - Applies the repo [`Brewfile`](./Brewfile) through
   [Bootbox](https://github.com/tanaabased/bootbox).
-- Sets macOS system identity and headless power/firewall defaults.
+- Sets macOS system identity and headless power, time, recovery, and firewall defaults.
 - Enables classic SSH, installs optional authorized keys, and hardens sshd to key-only login when
   keys are provided.
 - Installs Tailscale from Homebrew and optionally joins the tailnet.
@@ -61,8 +61,10 @@ softwareupdate --list
 sudo softwareupdate --install --all --restart
 ```
 
-- Decide FileVault deliberately. For a physically controlled headless agentbox, the default
-  recommendation is FileVault off, no auto-login, and services started by launchd.
+- Keep automatic/background security updates enabled in System Settings.
+- Decide FileVault deliberately. macOS 26 on Apple silicon supports SSH unlock after restart when
+  Remote Login and network connectivity are available, but physical recovery access is still the
+  safest assumption for a headless agentbox.
 - Consider installing an HDMI dummy plug / headless display adapter, such as
   [this example](https://www.amazon.com/dp/B0CKKLTWMN?ref=fed_asin_title), for smoother headless
   display behavior.
@@ -182,6 +184,15 @@ ssh -o PreferredAuthentications=publickey <admin-user>@<tailscale-name-or-ip>
 ```sh
 sudo launchctl print system/dev.tanaab.agentbox.health
 tail -n 50 /var/log/tanaab/agentbox/health.log
+```
+
+- Confirm the base macOS posture:
+
+```sh
+sudo systemsetup -getusingnetworktime
+sudo systemsetup -getrestartfreeze
+spctl --status
+fdesetup status
 ```
 
 - Inspect listening ports and keep public exposure closed:

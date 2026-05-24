@@ -716,6 +716,25 @@ ensure_pmset_setting() {
   execute sudo pmset -a "${key}" "${desired}"
 }
 
+systemsetup_toggle_enabled() {
+  local getter="$1"
+
+  sudo systemsetup "${getter}" 2>/dev/null | awk -F': ' 'NF { value = $NF } END { exit (tolower(value) == "on" ? 0 : 1) }'
+}
+
+ensure_systemsetup_enabled() {
+  local getter="$1"
+  local setter="$2"
+  local label="$3"
+
+  if systemsetup_toggle_enabled "${getter}"; then
+    log "${tty_tp}skipping${tty_reset} ${tty_ts}${label}${tty_reset}; already enabled"
+    return 0
+  fi
+
+  execute sudo systemsetup "${setter}" on
+}
+
 firewall_global_enabled() {
   sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -qi "enabled"
 }
@@ -725,13 +744,15 @@ firewall_stealth_enabled() {
 }
 
 run_agentbox_macos_settings() {
-  log "${tty_tp}applying${tty_reset} headless macOS power and firewall settings"
+  log "${tty_tp}applying${tty_reset} headless macOS power, time, recovery, and firewall settings"
 
   ensure_pmset_setting sleep 0
   ensure_pmset_setting disksleep 0
   ensure_pmset_setting displaysleep 0
   ensure_pmset_setting powernap 0 1
   ensure_pmset_setting autorestart 1
+  ensure_systemsetup_enabled -getusingnetworktime -setusingnetworktime "network time"
+  ensure_systemsetup_enabled -getrestartfreeze -setrestartfreeze "restart after freeze"
 
   if firewall_global_enabled; then
     log "${tty_tp}skipping${tty_reset} firewall global state; already enabled"
@@ -1052,6 +1073,7 @@ set -euo pipefail
   printf 'timestamp=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'hostname=%s\n' "$(hostname)"
   printf 'uptime=%s\n' "$(uptime)"
+  printf 'root_disk_available_kb=%s\n' "$(df -Pk / 2>/dev/null | awk 'NR == 2 { print $4; found = 1 } END { if (!found) print "unknown" }')"
   printf '%s\n' '---'
 } >> /var/log/tanaab/agentbox/health.log
 EOHEALTH
@@ -1066,6 +1088,7 @@ set -euo pipefail
   printf 'timestamp=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'hostname=%s\n' "$(hostname)"
   printf 'uptime=%s\n' "$(uptime)"
+  printf 'root_disk_available_kb=%s\n' "$(df -Pk / 2>/dev/null | awk 'NR == 2 { print $4; found = 1 } END { if (!found) print "unknown" }')"
   printf 'tailscale_ip=%s\n' "$(tailscale ip -4 2>/dev/null || true)"
   printf '%s\n' '---'
 } >> /var/log/tanaab/agentbox/health.log
@@ -1142,16 +1165,35 @@ run_agentbox_launchd_health_setup() {
 }
 
 run_agentbox_post_bootstrap_summary() {
+  local gatekeeper_status
+
   log
   log "${tty_bold}agentbox post-bootstrap summary${tty_reset}"
   hostname || true
   scutil --get ComputerName || true
   scutil --get HostName || true
   scutil --get LocalHostName || true
+  sudo systemsetup -getusingnetworktime || true
+  sudo systemsetup -getnetworktimeserver || true
+  sudo systemsetup -getrestartfreeze || true
   pmset -g || true
   sudo systemsetup -getremotelogin || true
   sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate || true
   sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode || true
+  if command -v spctl >/dev/null 2>&1; then
+    gatekeeper_status="$(spctl --status 2>/dev/null || true)"
+    if [[ -n "${gatekeeper_status}" ]]; then
+      printf "%s\n" "${gatekeeper_status}"
+      if [[ "${gatekeeper_status}" == *"assessments disabled"* ]]; then
+        warn "Gatekeeper assessments are disabled."
+      fi
+    else
+      warn "could not read Gatekeeper status with spctl."
+    fi
+  fi
+  if command -v fdesetup >/dev/null 2>&1; then
+    sudo fdesetup status || true
+  fi
   if ! tailscale_setup_disabled; then
     tailscale status || true
     tailscale ip -4 || true
@@ -1465,7 +1507,7 @@ plan_wrapper_execution() {
 
   plan_agentbox_fetch
   plan_action "${tty_tp}ensure${tty_reset} macOS ComputerName, HostName, and LocalHostName are ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
-  plan_action "${tty_tp}ensure${tty_reset} headless power and firewall settings"
+  plan_action "${tty_tp}ensure${tty_reset} headless power, time, recovery, and firewall settings"
   plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile"
   plan_action "${tty_tp}ensure${tty_reset} classic SSH is enabled for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
   if array_has_values AUTHORIZED_KEY_LINES; then

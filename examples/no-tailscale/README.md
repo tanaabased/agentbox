@@ -52,6 +52,10 @@ test "$(scutil --get ComputerName)" = "TANAABAGENTBOX-NOTS$GITHUB_RUN_ID"
 test "$(scutil --get HostName)" = "TANAABAGENTBOX-NOTS$GITHUB_RUN_ID"
 test "$(scutil --get LocalHostName)" = "TANAABAGENTBOX-NOTS$GITHUB_RUN_ID"
 
+# should enable headless time and recovery settings
+sudo systemsetup -getusingnetworktime | grep -F "Network Time: On"
+sudo systemsetup -getrestartfreeze | grep -E ": On$"
+
 # should enable classic SSH
 sudo systemsetup -getremotelogin | grep -F "Remote Login: On"
 
@@ -85,6 +89,7 @@ ssh \
 
 # should install the launchd health check
 test -x /opt/tanaab/agentbox/bin/health.sh
+grep -F "root_disk_available_kb=" /opt/tanaab/agentbox/bin/health.sh
 if grep -F "tailscale" /opt/tanaab/agentbox/bin/health.sh; then exit 1; fi
 test -f /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist
 sudo launchctl print system/dev.tanaab.agentbox.health >/dev/null

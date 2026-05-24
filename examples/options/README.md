@@ -73,6 +73,10 @@ test "$(scutil --get ComputerName)" = "TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
 test "$(scutil --get HostName)" = "TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
 test "$(scutil --get LocalHostName)" = "TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
 
+# should enable headless time and recovery settings
+sudo systemsetup -getusingnetworktime | grep -F "Network Time: On"
+sudo systemsetup -getrestartfreeze | grep -E ": On$"
+
 # should derive the Tailscale hostname from the TANAAB-prefixed canonical hostname
 tailscale status --json | jq -e --arg host "AGENTBOX-TEST$GITHUB_RUN_ID" '.Self.HostName == $host'
 
@@ -129,6 +133,7 @@ tailscale ip -4 | grep -E "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"
 
 # should install the launchd health check
 test -x /opt/tanaab/agentbox/bin/health.sh
+grep -F "root_disk_available_kb=" /opt/tanaab/agentbox/bin/health.sh
 test -f /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist
 sudo launchctl print system/dev.tanaab.agentbox.health >/dev/null
 ```
