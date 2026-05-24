@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 env:
-  AGENTBOX_TAILSCALE_AUTHKEY: ${{ secrets.AGENTBOX_TAILSCALE_AUTHKEY }}
+  AGENTBOX_TAILSCALE_AUTHKEY: ${{ secrets.TANAAB_HOLONET_LOGIN }}
   HOMEBREW_NO_AUTO_UPDATE: '1'
   STAMPED_VERSION: v9.9.9-ci.${{ github.event.pull_request.head.sha }}
 
@@ -26,13 +26,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-      - name: Require Tailscale auth key
-        shell: bash
-        run: |
-          if [[ -z "${AGENTBOX_TAILSCALE_AUTHKEY}" ]]; then
-            echo "::error::secrets.AGENTBOX_TAILSCALE_AUTHKEY is required for mutating agentbox Leia examples."
-            exit 1
-          fi
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -57,7 +50,3 @@ jobs:
         run: |
           mkdir -p "$TMPDIR"
           bun run leia "examples/${{ matrix.example }}/README.md" -c "Destroy tests" --stdin
-      - name: Cleanup agentbox runner state
-        if: always()
-        shell: bash
-        run: scripts/cleanup-agentbox-runner.sh
