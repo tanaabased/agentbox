@@ -25,7 +25,6 @@ ssh-keygen -t ed25519 -N "" -C "agentbox-envvars@example.test" -f "$TMPDIR/id_ag
 AGENTBOX_DEBUG=1 \
 AGENTBOX_FORCE=1 \
 AGENTBOX_HOSTNAME="TANAABAGENTBOXENV$GITHUB_RUN_ID" \
-AGENTBOX_TAILSCALE_TAGS="tag:agentbox" \
 AGENTBOX_AUTHORIZED_KEY="$(cat "$TMPDIR/id_agentbox_envvars.pub")" \
 boot.sh
 test -f "$HOME/tanaab/agentbox/Brewfile"

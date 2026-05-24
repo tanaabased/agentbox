@@ -32,7 +32,6 @@ boot.sh --help | grep -F "AGENTBOX_VERSION"
 boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEY"
 boot.sh --help | grep -F "AGENTBOX_TAILSCALE_AUTHKEY"
 boot.sh --help | grep -F "AGENTBOX_HOSTNAME"
-boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"
 boot.sh --help | grep -F "AGENTBOX_FORCE"
 boot.sh --help | grep -F "AGENTBOX_DEBUG"
 boot.sh --help | grep -F "NONINTERACTIVE"
@@ -47,6 +46,7 @@ if boot.sh --help | grep -F -- "--op-token"; then exit 1; fi
 if boot.sh --help | grep -F -- "--ssh-key"; then exit 1; fi
 if boot.sh --help | grep -F -- "--me"; then exit 1; fi
 if boot.sh --help | grep -F -- "--tanaab"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"; then exit 1; fi
 if boot.sh --help | grep -F "PIROME"; then exit 1; fi
 if boot.sh --help | grep -F "OP_SERVICE_ACCOUNT_TOKEN"; then exit 1; fi
 if boot.sh --help | grep -F ".codex-plugin"; then exit 1; fi
