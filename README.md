@@ -125,8 +125,10 @@ agentbootbox \
 ## Tailscale
 
 Tailscale is the recommended remote access path, but it is not mandatory. When enabled, `boot.sh`
-starts `tailscaled`, checks whether the Mac is already joined, and only requires an auth key for a
-first join.
+installs an agentbox-owned system LaunchDaemon for `tailscaled`, checks whether the Mac is already
+joined, and only requires an auth key for a first join. The daemon is installed as
+`/Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist` and runs as `root`; agentbox does not
+use `brew services` as the Tailscale launchd wrapper.
 
 To skip Tailscale setup, pass a falsey auth-key value:
 
@@ -175,7 +177,10 @@ Run `boot.sh --help` for the exact current CLI and environment-variable contract
 sudo /opt/tanaab/agentbox/bin/health.sh --check
 ```
 
-Use `--report` for the same key-value report without failing on drift.
+Use `--report` for the same key-value report without failing on drift. When Tailscale is enabled,
+the report should include `tailscaled_launchd_loaded_ok=1` and
+`tailscaled_homebrew_launchd_absent_ok=1`, confirming the agentbox system daemon is loaded and the
+legacy Homebrew launchd wrapper is not.
 
 - If authorized keys were provided, verify key-based SSH over Tailscale or LAN from another machine
   before closing the local/admin recovery session:

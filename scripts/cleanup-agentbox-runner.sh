@@ -76,17 +76,19 @@ if [[ "${#AUTHORIZED_KEY_FILES[@]}" -gt 0 ]]; then
 fi
 
 sudo launchctl bootout system /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist >/dev/null 2>&1 || true
+sudo launchctl bootout system /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist >/dev/null 2>&1 || true
+sudo launchctl bootout system /Library/LaunchDaemons/homebrew.mxcl.tailscale.plist >/dev/null 2>&1 || true
+launchctl bootout "gui/$(id -u)/homebrew.mxcl.tailscale" >/dev/null 2>&1 || true
 sudo rm -f /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist
+sudo rm -f /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist
+sudo rm -f /Library/LaunchDaemons/homebrew.mxcl.tailscale.plist
+sudo rm -f "${HOME}/Library/LaunchAgents/homebrew.mxcl.tailscale.plist"
 sudo rm -rf /opt/tanaab/agentbox /var/log/tanaab/agentbox /var/db/tanaab/agentbox
 sudo rm -f /etc/ssh/sshd_config.d/agentbox.conf
 sudo launchctl kickstart -k system/com.openssh.sshd >/dev/null 2>&1 || true
 
 if command -v tailscale >/dev/null 2>&1; then
   sudo tailscale logout >/dev/null 2>&1 || true
-fi
-
-if command -v brew >/dev/null 2>&1; then
-  sudo brew services stop tailscale >/dev/null 2>&1 || true
 fi
 
 rm -rf "${HOME}/tanaab/agentbox"
