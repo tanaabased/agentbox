@@ -1723,10 +1723,8 @@ bootbox_run() {
     bootbox_display_command+=("AGENTBOX_FORCE=${FORCE}")
   fi
 
-  if [[ -n "${NONINTERACTIVE-}" ]]; then
-    bootbox_command+=("NONINTERACTIVE=${NONINTERACTIVE}")
-    bootbox_display_command+=("NONINTERACTIVE=${NONINTERACTIVE}")
-  fi
+  bootbox_command+=("NONINTERACTIVE=1")
+  bootbox_display_command+=("NONINTERACTIVE=1")
 
   bootbox_command+=(/bin/bash "${BOOTBOX_SCRIPT_PATH}")
   bootbox_display_command+=(/bin/bash "${BOOTBOX_SCRIPT_PATH}")

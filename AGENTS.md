@@ -131,6 +131,8 @@ explicitly asked.
   override hidden from normal help and README docs.
 - Keep `BOOTBOX_URL` fixed and preserve Bootbox `TANAAB_*` environment isolation unless Bootbox's
   interface changes.
+- Keep Bootbox delegation noninteractive; the agentbox wrapper owns the user-facing confirmation
+  gate.
 - Preserve the public `AGENTBOX_*` namespace and do not leak upstream Bootbox names into the
   agentbox public interface.
 - Keep the default public source as `https://github.com/tanaabased/agentbox.git`, the fixed target
