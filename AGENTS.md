@@ -6,12 +6,13 @@ explicitly asked.
 
 ## Purpose
 
-- This repo prepares a physically accessible macOS 26.x Mac as a headless Tanaab agentbox base
-  profile.
-- Keep the repo focused on base-machine setup: macOS settings, SSH, Tailscale, launchd, recovery,
-  and validation.
-- Do not add agent runtime setup, trading credentials, app-specific services, router port
-  forwarding, or public WAN exposure here.
+- This repo owns the admin/bootstrap layer for a physically accessible macOS 26.x Mac: headless
+  access, macOS settings, base packages, SSH/Tailscale connectivity, launchd health, recovery, and
+  security hardening.
+- The boundary ends when the Mac is ready to run user-space agents such as OpenCLAW under
+  non-admin, non-sudo users.
+- Do not add agent runtime setup, trading credentials, app-specific services, runtime-user
+  provisioning, router port forwarding, or public WAN exposure here.
 
 ## Source Of Truth
 
