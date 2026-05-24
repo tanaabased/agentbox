@@ -1,6 +1,6 @@
 # agentbox
 
-`agentbox` configures a physically accessible macOS 26+ Mac for headless operation, with
+`agentbox` configures a physically accessible macOS 26.x Mac for headless operation, with
 recommended Tailscale access, classic SSH, and launchd-managed base services ready for future agent
 hosting.
 
@@ -8,7 +8,8 @@ The hosted `boot.sh` wrapper installs the base tooling it needs, materializes th
 `~/tanaab/agentbox`, applies the repo [`Brewfile`](./Brewfile) through
 [Bootbox](https://github.com/tanaabased/bootbox), and runs the agentbox setup flow.
 
-> Supports macOS 26 or newer on `x64` and `arm64`. Requires a sudo-capable admin user.
+> Supports macOS 26.x on `x64` and `arm64`; newer major versions are blocked until validated.
+> Requires a sudo-capable admin user.
 > Tailscale is recommended and enabled by default; pass a falsey auth-key value to skip Tailscale
 > setup. Designed for Mac hardware you physically control; Mac VPS behavior is unverified.
 

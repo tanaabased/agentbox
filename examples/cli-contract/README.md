@@ -39,6 +39,9 @@ boot.sh --help | grep -F "AGENTBOX_DEBUG"
 boot.sh --help | grep -F "NONINTERACTIVE"
 boot.sh --help | grep -F "CI"
 
+# should keep the unsupported macOS override out of help
+if boot.sh --help | grep -F "AGENTBOX_ALLOW_UNSUPPORTED_MACOS"; then exit 1; fi
+
 # should keep hidden plural authorized-key inputs out of help
 if boot.sh --help | grep -F -- "--authorized-keys"; then exit 1; fi
 if boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEYS"; then exit 1; fi

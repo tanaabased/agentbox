@@ -11,6 +11,8 @@ set -euo pipefail
 # Option precedence: CLI options override environment variables, which override defaults.
 
 MACOS_OLDEST_SUPPORTED="26.0"
+MACOS_UNSUPPORTED_AT_OR_AFTER="27.0"
+MACOS_SUPPORTED_RANGE="26.x"
 REQUIRED_CURL_VERSION="7.41.0"
 BOOTBOX_URL="https://bootbox.tanaab.sh/bootbox.sh"
 DEFAULT_AGENTBOX_HOSTNAME="TANAABAGENTBOX1"
@@ -281,6 +283,10 @@ debug_enabled() {
 
 force_enabled() {
   value_enabled "${FORCE:-}"
+}
+
+unsupported_macos_allowed() {
+  value_enabled "${AGENTBOX_ALLOW_UNSUPPORTED_MACOS:-}"
 }
 
 tailscale_setup_disabled() {
@@ -1332,6 +1338,19 @@ your macOS version ${tty_red}${macos_version}${tty_reset} is ${tty_bold}too old$
 check the project README for current support details: ${tty_underline}${tty_magenta}https://github.com/tanaabased/agentbox${tty_reset}
 EOABORT
 )"
+  fi
+
+  if version_compare "${macos_version}" "${MACOS_UNSUPPORTED_AT_OR_AFTER}"; then
+    if unsupported_macos_allowed; then
+      warn "macOS ${macos_version} is outside the validated support range ${MACOS_SUPPORTED_RANGE}; continuing because AGENTBOX_ALLOW_UNSUPPORTED_MACOS is truthy."
+    else
+      abort_multi "$(cat <<EOABORT
+your macOS version ${tty_red}${macos_version}${tty_reset} is newer than the validated support range ${tty_ts}${MACOS_SUPPORTED_RANGE}${tty_reset}.
+agentbox stops before machine mutation on unvalidated major macOS versions.
+to intentionally test anyway, set ${tty_bold}AGENTBOX_ALLOW_UNSUPPORTED_MACOS=1${tty_reset} and rerun.
+EOABORT
+)"
+    fi
   fi
 }
 

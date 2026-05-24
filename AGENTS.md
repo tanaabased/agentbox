@@ -6,7 +6,7 @@ explicitly asked.
 
 ## Purpose
 
-- This repo prepares a physically accessible macOS 26+ Mac as a headless Tanaab agentbox base
+- This repo prepares a physically accessible macOS 26.x Mac as a headless Tanaab agentbox base
   profile.
 - Keep the repo focused on base-machine setup: macOS settings, SSH, Tailscale, launchd, recovery,
   and validation.
@@ -106,6 +106,8 @@ explicitly asked.
 
 - Preserve sudo preflight before Bootbox download, repo materialization, Brewfile application, or
   other machine mutation.
+- Preserve the macOS 26.x support gate before sudo preflight, and keep the unsupported-major
+  override hidden from normal help and README docs.
 - Keep `BOOTBOX_URL` fixed and preserve Bootbox `TANAAB_*` environment isolation unless Bootbox's
   interface changes.
 - Preserve the public `AGENTBOX_*` namespace and do not leak upstream Bootbox names into the
