@@ -78,6 +78,8 @@ fi
 sudo launchctl bootout system /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist >/dev/null 2>&1 || true
 sudo rm -f /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist
 sudo rm -rf /opt/tanaab/agentbox /var/log/tanaab/agentbox /var/db/tanaab/agentbox
+sudo rm -f /etc/ssh/sshd_config.d/agentbox.conf
+sudo launchctl kickstart -k system/com.openssh.sshd >/dev/null 2>&1 || true
 
 if command -v tailscale >/dev/null 2>&1; then
   sudo tailscale logout >/dev/null 2>&1 || true

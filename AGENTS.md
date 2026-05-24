@@ -56,6 +56,8 @@ explicitly asked.
   generated secret files.
 - Do not commit machine-specific SSH `authorized_keys` files. Pass public authorized keys at
   bootstrap with `AGENTBOX_AUTHORIZED_KEY` or repeatable `--authorized-key`.
+- Keep SSH password-login hardening coupled to provided authorized keys; do not disable password
+  login for runs that did not configure key-based access.
 - Treat real `AGENTBOX_TAILSCALE_AUTHKEY` values as runtime-only secrets. Mask them in CLI output
   and prefer environment variable usage over CLI flags in secret-sensitive examples. Explicit
   falsey values disable Tailscale setup and are not secrets.
@@ -74,6 +76,8 @@ explicitly asked.
 - Use `TMPDIR` for durable fixtures, unavoidable logs, and helper internals only.
 - Keep generated SSH public/private key fixtures in `TMPDIR`; they are real test inputs, not scratch
   assertion files.
+- When a mutating example provides authorized keys, verify localhost SSH login with the generated
+  private key fixture instead of only inspecting `authorized_keys`.
 - Put repeated destructive runner cleanup in `scripts/cleanup-agentbox-runner.sh` instead of
   duplicating cleanup blocks across README scenarios.
 
@@ -120,5 +124,7 @@ explicitly asked.
 - Preserve formula-based Tailscale install and recommended setup, while allowing explicit falsey
   auth-key values to skip Tailscale setup. Keep classic SSH as the access model, and do not
   reintroduce the Tailscale GUI cask or Tailscale SSH mode.
+- Preserve managed sshd hardening through `/etc/ssh/sshd_config.d/agentbox.conf`; do not patch
+  `/etc/ssh/sshd_config` directly.
 - Prefer targeted edits to `boot.sh`; avoid whole-file rewrites unless the script contract is being
   intentionally replaced.

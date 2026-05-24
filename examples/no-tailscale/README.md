@@ -61,6 +61,28 @@ grep -qxF "$(cat "$TMPDIR/id_agentbox_no_tailscale.pub")" "$HOME/.ssh/authorized
 test "$(stat -f "%Lp" "$HOME/.ssh")" = "700"
 test "$(stat -f "%Lp" "$HOME/.ssh/authorized_keys")" = "600"
 
+# should harden SSH to key-only login for the runner user
+sudo /usr/sbin/sshd -T | grep -F "passwordauthentication no"
+sudo /usr/sbin/sshd -T | grep -F "kbdinteractiveauthentication no"
+sudo /usr/sbin/sshd -T | grep -F "permitrootlogin no"
+sudo /usr/sbin/sshd -T | grep -F "pubkeyauthentication yes"
+sudo /usr/sbin/sshd -T | grep -F "allowusers $(id -un)"
+
+# should allow key-based SSH login with the generated private key
+ssh \
+  -F /dev/null \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o IdentitiesOnly=yes \
+  -o PreferredAuthentications=publickey \
+  -o PasswordAuthentication=no \
+  -o KbdInteractiveAuthentication=no \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o LogLevel=ERROR \
+  -i "$TMPDIR/id_agentbox_no_tailscale" \
+  "$(id -un)@localhost" true
+
 # should install the launchd health check
 test -x /opt/tanaab/agentbox/bin/health.sh
 if grep -F "tailscale" /opt/tanaab/agentbox/bin/health.sh; then exit 1; fi

@@ -22,6 +22,10 @@ AGENTBOX_STATE_DIR="/var/db/tanaab/agentbox"
 AGENTBOX_HEALTH_LABEL="dev.tanaab.agentbox.health"
 AGENTBOX_REPO_HTTPS_URL="https://github.com/tanaabased/agentbox.git"
 AGENTBOX_REPO_ARCHIVE_BASE_URL="https://github.com/tanaabased/agentbox/archive/refs/tags"
+SSHD_BIN="/usr/sbin/sshd"
+SSHD_CONFIG_PATH="/etc/ssh/sshd_config"
+SSHD_CONFIG_DIR="/etc/ssh/sshd_config.d"
+SSHD_AGENTBOX_CONFIG_PATH="${SSHD_CONFIG_DIR}/agentbox.conf"
 
 abort() {
   printf "%serror%s: %s\n" "${tty_red-}" "${tty_reset-}" "$*" >&2
@@ -951,6 +955,77 @@ remote_login_enabled() {
   sudo systemsetup -getremotelogin 2>/dev/null | grep -Fq "Remote Login: On"
 }
 
+sshd_config_drop_in_supported() {
+  [[ -f "${SSHD_CONFIG_PATH}" ]] && grep -Eq '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/\*([[:space:]]|$)' "${SSHD_CONFIG_PATH}"
+}
+
+restore_agentbox_sshd_config() {
+  local backup_path="$1"
+
+  if [[ -n "${backup_path}" && -f "${backup_path}" ]]; then
+    sudo cp "${backup_path}" "${SSHD_AGENTBOX_CONFIG_PATH}"
+    sudo chown root:wheel "${SSHD_AGENTBOX_CONFIG_PATH}"
+    sudo chmod 644 "${SSHD_AGENTBOX_CONFIG_PATH}"
+  else
+    sudo rm -f "${SSHD_AGENTBOX_CONFIG_PATH}"
+  fi
+}
+
+sshd_effective_config_hardened() {
+  local user="$1"
+  local config
+
+  config="$(sudo "${SSHD_BIN}" -T 2>/dev/null)" || return 1
+  printf "%s\n" "${config}" | grep -Fxq "passwordauthentication no" || return 1
+  printf "%s\n" "${config}" | grep -Fxq "kbdinteractiveauthentication no" || return 1
+  printf "%s\n" "${config}" | grep -Fxq "permitrootlogin no" || return 1
+  printf "%s\n" "${config}" | grep -Fxq "pubkeyauthentication yes" || return 1
+  printf "%s\n" "${config}" | grep -Fxq "allowusers ${user}" || return 1
+}
+
+harden_sshd_for_user() {
+  local user="$1"
+  local backup_path=""
+
+  if [[ ! -x "${SSHD_BIN}" ]]; then
+    abort "sshd binary not found at ${tty_ts}${SSHD_BIN}${tty_reset}."
+  fi
+
+  if ! sshd_config_drop_in_supported; then
+    abort "sshd config drop-ins are not enabled in ${tty_ts}${SSHD_CONFIG_PATH}${tty_reset}; cannot safely install agentbox SSH hardening."
+  fi
+
+  if sudo test -e "${SSHD_AGENTBOX_CONFIG_PATH}"; then
+    backup_path="${BOOT_TMPDIR}/agentbox.sshd_config.backup"
+    execute sudo cp "${SSHD_AGENTBOX_CONFIG_PATH}" "${backup_path}"
+  fi
+
+  log "${tty_tp}hardening${tty_reset} SSH for key-only access by ${tty_ts}${user}${tty_reset}"
+  execute sudo mkdir -p "${SSHD_CONFIG_DIR}"
+  if ! sudo tee "${SSHD_AGENTBOX_CONFIG_PATH}" >/dev/null <<EOSSHD
+# Managed by agentbox.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PermitRootLogin no
+PubkeyAuthentication yes
+AllowUsers ${user}
+EOSSHD
+  then
+    abort "failed to write agentbox sshd config."
+  fi
+
+  execute sudo chown root:wheel "${SSHD_AGENTBOX_CONFIG_PATH}"
+  execute sudo chmod 644 "${SSHD_AGENTBOX_CONFIG_PATH}"
+
+  if ! sudo "${SSHD_BIN}" -t || ! sshd_effective_config_hardened "${user}"; then
+    restore_agentbox_sshd_config "${backup_path}"
+    abort "agentbox sshd hardening config failed validation or did not become effective; changes were rolled back."
+  fi
+
+  execute sudo launchctl kickstart -k system/com.openssh.sshd
+}
+
 run_agentbox_ssh_setup() {
   if remote_login_enabled; then
     log "${tty_tp}skipping${tty_reset} classic SSH enablement; Remote Login is already on"
@@ -961,10 +1036,10 @@ run_agentbox_ssh_setup() {
 
   if array_has_values AUTHORIZED_KEY_LINES; then
     install_authorized_keys_for_user "${ADMIN_USER}"
-    warn "SSH password-login hardening is deferred until key-based SSH has been verified."
+    harden_sshd_for_user "${ADMIN_USER}"
   else
     log "${tty_tp}skipping${tty_reset} SSH authorized key install because no keys were provided"
-    warn "classic SSH is enabled, but key-based access was not configured by this bootstrap run."
+    warn "classic SSH is enabled, but key-based access and password-login hardening were not configured by this bootstrap run."
   fi
 }
 
@@ -1395,6 +1470,7 @@ plan_wrapper_execution() {
   plan_action "${tty_tp}ensure${tty_reset} classic SSH is enabled for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
   if array_has_values AUTHORIZED_KEY_LINES; then
     plan_action "${tty_tp}install${tty_reset} ${tty_ts}$(array_count AUTHORIZED_KEY_LINES)${tty_reset} authorized key entries for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
+    plan_action "${tty_tp}harden${tty_reset} SSH to key-only access for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
   fi
   if tailscale_setup_disabled; then
     plan_action "${tty_tp}skip${tty_reset} Tailscale setup because the auth-key input is disabled"

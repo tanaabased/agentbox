@@ -72,8 +72,9 @@ Run it with flags when you want to keep the command explicit:
 agentboxboot --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
 ```
 
-Authorized keys are optional runtime inputs for classic SSH. Supported values are public-key lines,
-explicit `file:` references, and existing public-key paths:
+Authorized keys are optional runtime inputs for classic SSH. When provided, `boot.sh` installs them
+for the invoking admin user and hardens SSH to key-only access for that user. Supported values are
+public-key lines, explicit `file:` references, and existing public-key paths:
 
 ```sh
 agentboxboot \
@@ -108,9 +109,9 @@ The default hostname is `TANAABAGENTBOX1`. The configured hostname is used for m
 identity, and Tanaab-prefixed hostnames derive a shorter Tailscale hostname by stripping the leading
 `TANAAB` prefix. For example, `TANAABAGENTBOX1` joins Tailscale as `AGENTBOX1`.
 
-Out of scope for this pass: Wi-Fi management, runtime users, SSH password-login hardening, Screen
-Sharing or auto-login automation, Caddy, app runtimes, and Tailscale SSH. Remote shell access uses
-classic SSH, usually over Tailscale when enabled.
+Out of scope for this pass: Wi-Fi management, runtime users, Screen Sharing or auto-login
+automation, Caddy, app runtimes, and Tailscale SSH. Remote shell access uses classic SSH, usually
+over Tailscale when enabled.
 
 ## Configuration
 
@@ -121,7 +122,7 @@ they do not land in shell history.
   is not already joined; use `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
-  classic SSH.
+  classic SSH; providing keys also enables key-only SSH hardening.
 - `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive to install.
 - `AGENTBOX_FORCE` or `--force`: replace supported existing targets.
 - `AGENTBOX_DEBUG` or `--debug`: show debug output with secrets masked.
@@ -145,10 +146,11 @@ tailscale status
 tailscale ip -4
 ```
 
-- If Tailscale is enabled, verify classic SSH over Tailscale from another machine:
+- If authorized keys were provided, verify key-based SSH over Tailscale or LAN from another machine
+  before closing the local/admin recovery session:
 
 ```sh
-ssh <admin-user>@<tailscale-name-or-ip>
+ssh -o PreferredAuthentications=publickey <admin-user>@<tailscale-name-or-ip>
 ```
 
 - Confirm the health daemon and logs:
