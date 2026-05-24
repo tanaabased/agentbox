@@ -1,5 +1,7 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+## v1.0.0-beta.4 - [May 24, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.4)
+
 - Added an agentbox-owned system LaunchDaemon for root-level `tailscaled` management. ([#6](https://github.com/tanaabased/agentbox/pull/6))
 
 ## v1.0.0-beta.3 - [May 24, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.3)

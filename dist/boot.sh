@@ -21,6 +21,10 @@ AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
 AGENTBOX_STATE_DIR="/var/db/tanaab/agentbox"
 AGENTBOX_HEALTH_STATE_PATH="${AGENTBOX_STATE_DIR}/health.env"
 AGENTBOX_HEALTH_LABEL="dev.tanaab.agentbox.health"
+AGENTBOX_TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
+AGENTBOX_TAILSCALED_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_TAILSCALED_LABEL}.plist"
+HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
+HOMEBREW_TAILSCALE_SYSTEM_PLIST_PATH="/Library/LaunchDaemons/${HOMEBREW_TAILSCALE_LABEL}.plist"
 AGENTBOX_REPO_HTTPS_URL="https://github.com/tanaabased/agentbox.git"
 AGENTBOX_REPO_ARCHIVE_BASE_URL="https://github.com/tanaabased/agentbox/archive/refs/tags"
 SSHD_BIN="/usr/sbin/sshd"
@@ -207,7 +211,7 @@ tty_ts="$(tty_escape '38;2;219;39;119')"
 
 SCRIPT_NAME="${0##*/}"
 # Keep a single top-level assignment so release automation can stamp the entrypoint in place.
-SCRIPT_VERSION="v1.0.0-beta.3"
+SCRIPT_VERSION="v1.0.0-beta.4"
 
 DEBUG="${AGENTBOX_DEBUG:-${DEBUG:-${RUNNER_DEBUG:-}}}"
 FORCE="${AGENTBOX_FORCE:-}"
@@ -1111,6 +1115,8 @@ set -euo pipefail
 STATE_FILE="/var/db/tanaab/agentbox/health.env"
 LOG_FILE="/var/log/tanaab/agentbox/health.log"
 HEALTH_LABEL="dev.tanaab.agentbox.health"
+TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
+HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
 SSHD_BIN="/usr/sbin/sshd"
 SOCKETFILTERFW="/usr/libexec/ApplicationFirewall/socketfilterfw"
 
@@ -1230,6 +1236,7 @@ filevault_status() {
 
 generate_report() {
   local failures="0"
+  local admin_uid=""
   local computer_name=""
   local host_name=""
   local local_host_name=""
@@ -1246,6 +1253,9 @@ generate_report() {
   local remote_login_ok=""
   local ssh_hardening_ok="skipped"
   local health_launchd_loaded_ok="0"
+  local tailscaled_launchd_loaded_ok="skipped"
+  local tailscaled_homebrew_launchd_absent_ok="skipped"
+  local tailscaled_homebrew_user_launchd_absent_ok="skipped"
   local tailscale_backend_state=""
   local tailscale_hostname=""
   local tailscale_ip=""
@@ -1274,6 +1284,7 @@ generate_report() {
   firewall_global_ok="$(firewall_global_value)"
   firewall_stealth_ok="$(firewall_stealth_value)"
   remote_login_ok="$(remote_login_value)"
+  admin_uid="$(id -u "${AGENTBOX_HEALTH_ADMIN_USER}" 2>/dev/null || true)"
 
   if [[ -z "${autorestart_value}" && "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}" == "1" ]]; then
     autorestart_ok="skipped"
@@ -1338,6 +1349,22 @@ generate_report() {
   print_kv tailscale_expected "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}"
   print_kv expected_tailscale_hostname "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}"
   if [[ "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}" == "1" ]]; then
+    tailscaled_launchd_loaded_ok="0"
+    tailscaled_homebrew_launchd_absent_ok="1"
+    tailscaled_homebrew_user_launchd_absent_ok="1"
+
+    if launchctl print "system/${TAILSCALED_LABEL}" >/dev/null 2>&1; then
+      tailscaled_launchd_loaded_ok="1"
+    fi
+
+    if launchctl print "system/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
+      tailscaled_homebrew_launchd_absent_ok="0"
+    fi
+
+    if [[ -n "${admin_uid}" ]] && launchctl print "gui/${admin_uid}/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
+      tailscaled_homebrew_user_launchd_absent_ok="0"
+    fi
+
     if command -v tailscale >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
       tailscale_status_json="$(tailscale status --json 2>/dev/null || true)"
       if [[ -n "${tailscale_status_json}" ]]; then
@@ -1359,8 +1386,14 @@ generate_report() {
     else
       tailscale_ok="0"
     fi
+    mark_required tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
+    mark_required tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
+    mark_required tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
     mark_required tailscale_ok "${tailscale_ok}"
   else
+    print_kv tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
+    print_kv tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
+    print_kv tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
     print_kv tailscale_ok "${tailscale_ok}"
   fi
 
@@ -1783,7 +1816,7 @@ plan_wrapper_execution() {
   if tailscale_setup_disabled; then
     plan_action "${tty_tp}skip${tty_reset} Tailscale setup because the auth-key input is disabled"
   else
-    plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as a launchd service and Tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}"
+    plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system LaunchDaemon and Tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}"
   fi
   plan_action "${tty_tp}install or refresh${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
   plan_action "${tty_tp}print${tty_reset} a nonfatal post-bootstrap health summary"
@@ -1875,6 +1908,137 @@ tailscale_status_has_identity() {
   [[ "${has_identity}" == "1" ]]
 }
 
+tailscaled_bin_path() {
+  local formula_prefix=""
+  local command_path=""
+
+  formula_prefix="$(brew --prefix tailscale 2>/dev/null || true)"
+  if [[ -n "${formula_prefix}" && -x "${formula_prefix}/bin/tailscaled" ]]; then
+    printf "%s/bin/tailscaled" "${formula_prefix}"
+    return 0
+  fi
+
+  command_path="$(command -v tailscaled 2>/dev/null || true)"
+  if [[ -n "${command_path}" && -x "${command_path}" ]]; then
+    printf "%s" "${command_path}"
+    return 0
+  fi
+
+  return 1
+}
+
+remove_homebrew_tailscale_launchd_services() {
+  local admin_uid=""
+  local homebrew_user_plist_path="${HOME}/Library/LaunchAgents/${HOMEBREW_TAILSCALE_LABEL}.plist"
+
+  admin_uid="$(id -u "${ADMIN_USER}" 2>/dev/null || true)"
+
+  sudo launchctl bootout "system/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1 || true
+  sudo launchctl bootout system "${HOMEBREW_TAILSCALE_SYSTEM_PLIST_PATH}" >/dev/null 2>&1 || true
+  if [[ -f "${HOMEBREW_TAILSCALE_SYSTEM_PLIST_PATH}" ]]; then
+    execute sudo rm -f "${HOMEBREW_TAILSCALE_SYSTEM_PLIST_PATH}"
+  fi
+
+  if [[ -n "${admin_uid}" ]]; then
+    launchctl bootout "gui/${admin_uid}/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1 || true
+    launchctl bootout "gui/${admin_uid}" "${homebrew_user_plist_path}" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -f "${homebrew_user_plist_path}" ]]; then
+    execute sudo rm -f "${homebrew_user_plist_path}"
+  fi
+}
+
+write_agentbox_tailscaled_plist() {
+  local tailscaled_bin="$1"
+
+  if ! sudo tee "${AGENTBOX_TAILSCALED_PLIST_PATH}" >/dev/null <<EOPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>${AGENTBOX_TAILSCALED_LABEL}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>${tailscaled_bin}</string>
+    </array>
+
+    <key>UserName</key>
+    <string>root</string>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>${AGENTBOX_LOG_DIR}/tailscaled.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>${AGENTBOX_LOG_DIR}/tailscaled.stderr.log</string>
+  </dict>
+</plist>
+EOPLIST
+  then
+    abort "failed to write agentbox tailscaled LaunchDaemon."
+  fi
+
+  execute sudo chown root:wheel "${AGENTBOX_TAILSCALED_PLIST_PATH}"
+  execute sudo chmod 644 "${AGENTBOX_TAILSCALED_PLIST_PATH}"
+}
+
+verify_agentbox_tailscaled_launchd_setup() {
+  local admin_uid=""
+
+  admin_uid="$(id -u "${ADMIN_USER}" 2>/dev/null || true)"
+
+  if ! agentbox_tailscaled_launchd_loaded; then
+    abort "agentbox tailscaled LaunchDaemon is not loaded in the system launchd domain."
+  fi
+
+  if sudo launchctl print "system/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
+    abort "legacy Homebrew tailscale LaunchDaemon is still loaded in the system launchd domain."
+  fi
+
+  if [[ -n "${admin_uid}" ]] && launchctl print "gui/${admin_uid}/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
+    abort "legacy Homebrew tailscale LaunchAgent is still loaded in the invoking user's launchd domain."
+  fi
+}
+
+agentbox_tailscaled_launchd_loaded() {
+  sudo launchctl print "system/${AGENTBOX_TAILSCALED_LABEL}" >/dev/null 2>&1
+}
+
+run_agentbox_tailscaled_launchd_setup() {
+  local tailscaled_bin=""
+
+  tailscaled_bin="$(tailscaled_bin_path)" || {
+    abort "tailscaled binary was not found after installing the agentbox Brewfile."
+  }
+
+  execute sudo mkdir -p "${AGENTBOX_LOG_DIR}"
+  execute sudo chown root:wheel "${AGENTBOX_LOG_DIR}"
+  execute sudo chmod 755 "${AGENTBOX_LOG_DIR}"
+  remove_homebrew_tailscale_launchd_services
+  write_agentbox_tailscaled_plist "${tailscaled_bin}"
+
+  if agentbox_tailscaled_launchd_loaded; then
+    log "${tty_tp}skipping${tty_reset} ${tty_ts}tailscaled${tty_reset} restart; agentbox system LaunchDaemon is already loaded"
+    verify_agentbox_tailscaled_launchd_setup
+    return 0
+  fi
+
+  sudo launchctl bootout system "${AGENTBOX_TAILSCALED_PLIST_PATH}" >/dev/null 2>&1 || true
+  execute sudo launchctl bootstrap system "${AGENTBOX_TAILSCALED_PLIST_PATH}"
+  execute sudo launchctl enable "system/${AGENTBOX_TAILSCALED_LABEL}"
+  execute sudo launchctl kickstart -k "system/${AGENTBOX_TAILSCALED_LABEL}"
+  verify_agentbox_tailscaled_launchd_setup
+}
+
 run_agentbox_tailscale_setup() {
   local status_json=""
   local current_hostname=""
@@ -1902,7 +2066,7 @@ run_agentbox_tailscale_setup() {
   require_command jq
 
   log "${tty_tp}starting${tty_reset} ${tty_ts}tailscaled${tty_reset} as a system launchd service"
-  execute sudo brew services start tailscale
+  run_agentbox_tailscaled_launchd_setup
 
   status_json="$(capture_tailscale_status_json || true)"
   if [[ -n "${status_json}" ]] && tailscale_status_has_identity "${status_json}"; then
