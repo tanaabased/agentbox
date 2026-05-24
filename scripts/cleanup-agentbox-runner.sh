@@ -69,9 +69,11 @@ remove_authorized_key_file() {
   rm -f "${clean_file}"
 }
 
-for authorized_key_file in "${AUTHORIZED_KEY_FILES[@]}"; do
-  remove_authorized_key_file "${authorized_key_file}"
-done
+if [[ "${#AUTHORIZED_KEY_FILES[@]}" -gt 0 ]]; then
+  for authorized_key_file in "${AUTHORIZED_KEY_FILES[@]}"; do
+    remove_authorized_key_file "${authorized_key_file}"
+  done
+fi
 
 sudo launchctl bootout system /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist >/dev/null 2>&1 || true
 sudo rm -f /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist

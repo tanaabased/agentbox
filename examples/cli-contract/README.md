@@ -14,7 +14,8 @@ command -v boot.sh >/dev/null
 
 ```bash
 # should show agentbox usage
-boot.sh --help | grep -F "Usage: boot.sh"
+boot.sh --help | grep -F "Usage:"
+boot.sh --help | grep -F "boot.sh [options]"
 
 # should document public options
 boot.sh --help | grep -F -- "--agentbox-version"
@@ -31,7 +32,6 @@ boot.sh --help | grep -F "AGENTBOX_VERSION"
 boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEY"
 boot.sh --help | grep -F "AGENTBOX_TAILSCALE_AUTHKEY"
 boot.sh --help | grep -F "AGENTBOX_HOSTNAME"
-boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"
 boot.sh --help | grep -F "AGENTBOX_FORCE"
 boot.sh --help | grep -F "AGENTBOX_DEBUG"
 boot.sh --help | grep -F "NONINTERACTIVE"
@@ -46,6 +46,7 @@ if boot.sh --help | grep -F -- "--op-token"; then exit 1; fi
 if boot.sh --help | grep -F -- "--ssh-key"; then exit 1; fi
 if boot.sh --help | grep -F -- "--me"; then exit 1; fi
 if boot.sh --help | grep -F -- "--tanaab"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"; then exit 1; fi
 if boot.sh --help | grep -F "PIROME"; then exit 1; fi
 if boot.sh --help | grep -F "OP_SERVICE_ACCOUNT_TOKEN"; then exit 1; fi
 if boot.sh --help | grep -F ".codex-plugin"; then exit 1; fi
@@ -61,7 +62,8 @@ if AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" boot.sh --help | grep -F "t
 # should fail on unknown options with usage context
 output="$(boot.sh --not-real 2>&1)" && exit 1
 printf "%s\n" "$output" | grep -F "unrecognized option"
-printf "%s\n" "$output" | grep -F "Usage: boot.sh"
+printf "%s\n" "$output" | grep -F "Usage:"
+printf "%s\n" "$output" | grep -F "boot.sh [options]"
 ```
 
 ## Destroy tests

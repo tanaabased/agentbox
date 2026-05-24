@@ -14,7 +14,6 @@ MACOS_OLDEST_SUPPORTED="26.0"
 REQUIRED_CURL_VERSION="7.41.0"
 BOOTBOX_URL="https://bootbox.tanaab.sh/bootbox.sh"
 DEFAULT_AGENTBOX_HOSTNAME="TANAABAGENTBOX1"
-DEFAULT_TAILSCALE_TAGS="tag:agentbox"
 AGENTBOX_OPT_DIR="/opt/tanaab/agentbox"
 AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
 AGENTBOX_STATE_DIR="/var/db/tanaab/agentbox"
@@ -90,6 +89,15 @@ append_array_value() {
     printf -v quoted "%q" "${value}"
     eval "${array_name}+=(${quoted})"
   fi
+}
+
+array_has_values() {
+  local array_name="$1"
+  local count
+
+  # Bash 3.2 with nounset treats empty array expansion as unbound.
+  eval "count=\${#${array_name}[@]}"
+  [[ "${count}" -gt 0 ]]
 }
 
 append_csv_to_array() {
@@ -175,7 +183,6 @@ FORCE="${AGENTBOX_FORCE:-}"
 AGENTBOX_VERSION_VALUE="${AGENTBOX_VERSION:-}"
 AGENTBOX_HOSTNAME_VALUE="${AGENTBOX_HOSTNAME:-${DEFAULT_AGENTBOX_HOSTNAME}}"
 TAILSCALE_AUTHKEY="${AGENTBOX_TAILSCALE_AUTHKEY:-}"
-TAILSCALE_TAGS="${AGENTBOX_TAILSCALE_TAGS:-${DEFAULT_TAILSCALE_TAGS}}"
 ADMIN_USER=""
 AUTHORIZED_KEY_CLI_SEEN="0"
 declare -a PLANNED_ACTIONS=()
@@ -322,7 +329,6 @@ ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_AUTHORIZED_KEY        raw public key or public-key file path for SSH
   AGENTBOX_TAILSCALE_AUTHKEY     raw Tailscale auth key
   AGENTBOX_HOSTNAME              system hostname and Tailscale name source
-  AGENTBOX_TAILSCALE_TAGS        comma-separated Tailscale tags to advertise ${tty_dim}[default: ${TAILSCALE_TAGS:-none}]${tty_reset}
   AGENTBOX_FORCE                 set truthy to force supported operations
   AGENTBOX_DEBUG                 set truthy to show debug messages
   NONINTERACTIVE                 installs without prompting for user input
@@ -700,11 +706,13 @@ append_authorized_key_line() {
   local line="$1"
   local existing
 
-  for existing in "${AUTHORIZED_KEY_LINES[@]}"; do
-    if [[ "${existing}" == "${line}" ]]; then
-      return 0
-    fi
-  done
+  if array_has_values AUTHORIZED_KEY_LINES; then
+    for existing in "${AUTHORIZED_KEY_LINES[@]}"; do
+      if [[ "${existing}" == "${line}" ]]; then
+        return 0
+      fi
+    done
+  fi
 
   AUTHORIZED_KEY_LINES+=("${line}")
 }
@@ -788,6 +796,10 @@ resolve_authorized_key_specs() {
   local spec
 
   AUTHORIZED_KEY_LINES=()
+  if ! array_has_values AUTHORIZED_KEY_SPECS; then
+    return 0
+  fi
+
   for spec in "${AUTHORIZED_KEY_SPECS[@]}"; do
     resolve_authorized_key_spec "${spec}"
   done
@@ -813,17 +825,19 @@ install_authorized_keys_for_user() {
   execute sudo chown "${user}:staff" "${authorized_keys}"
   execute sudo chmod 600 "${authorized_keys}"
 
-  while IFS= read -r key || [[ -n "${key}" ]]; do
-    key="$(trim_whitespace "${key}")"
-    if [[ -z "${key}" || "${key}" == \#* ]]; then
-      continue
-    fi
+  if array_has_values AUTHORIZED_KEY_LINES; then
+    while IFS= read -r key || [[ -n "${key}" ]]; do
+      key="$(trim_whitespace "${key}")"
+      if [[ -z "${key}" || "${key}" == \#* ]]; then
+        continue
+      fi
 
-    if ! sudo grep -qxF -- "${key}" "${authorized_keys}"; then
-      printf "%s\n" "${key}" | sudo tee -a "${authorized_keys}" >/dev/null
-      installed_count=$((installed_count + 1))
-    fi
-  done < <(printf "%s\n" "${AUTHORIZED_KEY_LINES[@]}")
+      if ! sudo grep -qxF -- "${key}" "${authorized_keys}"; then
+        printf "%s\n" "${key}" | sudo tee -a "${authorized_keys}" >/dev/null
+        installed_count=$((installed_count + 1))
+      fi
+    done < <(printf "%s\n" "${AUTHORIZED_KEY_LINES[@]}")
+  fi
 
   execute sudo chown "${user}:staff" "${authorized_keys}"
   execute sudo chmod 600 "${authorized_keys}"
@@ -935,7 +949,7 @@ plan_action() {
 }
 
 have_planned_actions() {
-  [[ "${#PLANNED_ACTIONS[@]}" -gt 0 ]]
+  array_has_values PLANNED_ACTIONS
 }
 
 show_planned_actions() {
@@ -1290,11 +1304,6 @@ run_agentbox_tailscale_setup() {
   require_command brew
   require_command tailscale
 
-  if [[ -n "${TAILSCALE_TAGS}" ]]; then
-    tailscale_args+=("--advertise-tags=${TAILSCALE_TAGS}")
-    tailscale_display_args+=("--advertise-tags=${TAILSCALE_TAGS}")
-  fi
-
   log "${tty_tp}starting${tty_reset} ${tty_ts}tailscaled${tty_reset} as a system launchd service"
   execute sudo brew services start tailscale
 
@@ -1333,7 +1342,6 @@ main() {
   debug raw INVOKING_ADMIN_USER="${ADMIN_USER}"
   debug raw AGENTBOX_AUTHORIZED_KEY_COUNT="${#AUTHORIZED_KEY_LINES[@]}"
   debug raw TAILSCALE_HOSTNAME="${TAILSCALE_HOSTNAME_VALUE}"
-  debug raw AGENTBOX_TAILSCALE_TAGS="${TAILSCALE_TAGS}"
   debug raw AGENTBOX_TAILSCALE_AUTHKEY="$(mask_secret_for_display "${TAILSCALE_AUTHKEY}")"
   debug raw BOOTBOX_URL="${BOOTBOX_URL}"
   debug raw CURL="${CURL}"

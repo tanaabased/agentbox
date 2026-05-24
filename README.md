@@ -49,7 +49,7 @@ sudo softwareupdate --install --all --restart
   recommendation is FileVault off, no auto-login, and services started by launchd.
 - Temporarily enable Remote Login if needed for initial access. `boot.sh` enables classic SSH
   programmatically.
-- Create or choose a preauthorized Tailscale auth key with the intended `tag:agentbox` tag.
+- Create or choose a preauthorized Tailscale auth key for the tailnet.
 - Optionally choose SSH public keys for `boot.sh` to install for the admin user.
 
 ## Usage
@@ -112,7 +112,6 @@ raw values do not land in shell history.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH.
-- `AGENTBOX_TAILSCALE_TAGS`: Tailscale advertise tags; defaults to `tag:agentbox`.
 - `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive to install.
 - `AGENTBOX_FORCE` or `--force`: replace supported existing targets.
 - `AGENTBOX_DEBUG` or `--debug`: show debug output with secrets masked.

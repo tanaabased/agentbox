@@ -26,9 +26,11 @@ ssh-keygen -t ed25519 -N "" -C "agentbox-version@example.test" -f "$TMPDIR/id_ag
 
 # should run boot.sh successfully using the default HTTPS source
 boot.sh \
-  --hostname "TANAABAGENTBOXVER${GITHUB_RUN_ID:-LOCAL}" \
+  --hostname "TANAABAGENTBOXVER$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --authorized-key "file:$TMPDIR/id_agentbox_version.pub"
+test -f "$HOME/tanaab/agentbox/Brewfile"
+command -v tailscale >/dev/null
 test "$(git -C "$HOME/tanaab/agentbox" remote get-url origin)" = "https://github.com/tanaabased/agentbox.git"
 sudo tailscale logout >/dev/null 2>&1 || true
 
@@ -37,9 +39,11 @@ boot.sh \
   --force \
   --debug \
   --agentbox-version "$AGENTBOX_EXAMPLE_VERSION_TAG" \
-  --hostname "TANAABAGENTBOXVER${GITHUB_RUN_ID:-LOCAL}" \
+  --hostname "TANAABAGENTBOXVER$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --authorized-key "file:$TMPDIR/id_agentbox_version.pub"
+test -f "$HOME/tanaab/agentbox/Brewfile"
+command -v tailscale >/dev/null
 ```
 
 ## Testing
@@ -54,12 +58,12 @@ test -f "$HOME/tanaab/agentbox/Brewfile"
 brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
 
 # should set macOS system identity from the canonical hostname
-test "$(scutil --get ComputerName)" = "TANAABAGENTBOXVER${GITHUB_RUN_ID:-LOCAL}"
-test "$(scutil --get HostName)" = "TANAABAGENTBOXVER${GITHUB_RUN_ID:-LOCAL}"
-test "$(scutil --get LocalHostName)" = "TANAABAGENTBOXVER${GITHUB_RUN_ID:-LOCAL}"
+test "$(scutil --get ComputerName)" = "TANAABAGENTBOXVER$GITHUB_RUN_ID"
+test "$(scutil --get HostName)" = "TANAABAGENTBOXVER$GITHUB_RUN_ID"
+test "$(scutil --get LocalHostName)" = "TANAABAGENTBOXVER$GITHUB_RUN_ID"
 
 # should derive the Tailscale hostname from the TANAAB-prefixed canonical hostname
-tailscale status --json | jq -e --arg host "AGENTBOXVER${GITHUB_RUN_ID:-LOCAL}" '.Self.HostName == $host'
+tailscale status --json | jq -e --arg host "AGENTBOXVER$GITHUB_RUN_ID" '.Self.HostName == $host'
 
 # should enable classic SSH and install the provided public key
 sudo systemsetup -getremotelogin | grep -F "Remote Login: On"
