@@ -59,8 +59,8 @@ explicitly asked.
 - Treat real `AGENTBOX_TAILSCALE_AUTHKEY` values as runtime-only secrets. Mask them in CLI output
   and prefer environment variable usage over CLI flags in secret-sensitive examples. Explicit
   falsey values disable Tailscale setup and are not secrets.
-- Treat Tailscale tags as non-secret policy inputs. They may be shown in planned/debug output, but
-  they must stay aligned with Tailscale `tagOwners` policy requirements.
+- Treat Tailscale tag assignment as auth-key and tailnet-policy configuration, not an agentbox CLI
+  input.
 - Preserve token masking in debug output and do not reintroduce raw argument logging.
 - Do not add the Tailscale GUI cask unless the project intentionally changes away from headless
   daemon setup.
@@ -117,8 +117,6 @@ explicitly asked.
 - Keep `--agentbox-version` aligned with GitHub tag archive installs.
 - Preserve `AGENTBOX_HOSTNAME` as the canonical hostname input and, when Tailscale is enabled, the
   current TANAAB-prefixed Tailscale hostname derivation.
-- Preserve the public singular plus hidden plural Tailscale tag input pattern when changing tag
-  advertisement behavior.
 - Preserve formula-based Tailscale install and recommended setup, while allowing explicit falsey
   auth-key values to skip Tailscale setup. Keep classic SSH as the access model, and do not
   reintroduce the Tailscale GUI cask or Tailscale SSH mode.

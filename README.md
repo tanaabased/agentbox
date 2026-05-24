@@ -78,8 +78,6 @@ explicit `file:` references, and existing public-key paths:
 ```sh
 agentboxboot \
   --tailscale-authkey "$TS_AUTHKEY" \
-  --tailscale-tag tag:ci \
-  --tailscale-tag tag:agentbox \
   --authorized-key file:~/.ssh/id_ed25519.pub \
   --hostname TANAABAGENTBOX1
 
@@ -121,8 +119,6 @@ they do not land in shell history.
 
 - `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key, required when the Mac
   is not already joined; use `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
-- `AGENTBOX_TAILSCALE_TAG` or `--tailscale-tag`: optional Tailscale tag to advertise during join;
-  repeat `--tailscale-tag` for multiple tags.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH.
@@ -133,8 +129,8 @@ they do not land in shell history.
 
 Run `boot.sh --help` for the exact current CLI and environment-variable contract.
 
-Tailscale tags must use full `tag:<name>` form, must already be defined in the tailnet policy file
-under `tagOwners`, and must be allowed for the auth key or account used to join the Mac.
+To tag newly joined machines in Tailscale, create or use an auth key that applies the desired tags;
+agentbox passes the auth key to `tailscale up` and does not manage tag policy itself.
 
 ## After Bootstrap
 

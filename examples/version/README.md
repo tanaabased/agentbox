@@ -28,8 +28,6 @@ ssh-keygen -t ed25519 -N "" -C "agentbox-version@example.test" -f "$TMPDIR/id_ag
 boot.sh \
   --hostname "TANAABAGENTBOXVER$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
-  --tailscale-tag tag:ci \
-  --tailscale-tag tag:agentbox \
   --authorized-key "file:$TMPDIR/id_agentbox_version.pub"
 test -f "$HOME/tanaab/agentbox/Brewfile"
 command -v tailscale >/dev/null
@@ -43,8 +41,6 @@ boot.sh \
   --agentbox-version "$AGENTBOX_EXAMPLE_VERSION_TAG" \
   --hostname "TANAABAGENTBOXVER$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
-  --tailscale-tag tag:ci \
-  --tailscale-tag tag:agentbox \
   --authorized-key "file:$TMPDIR/id_agentbox_version.pub"
 test -f "$HOME/tanaab/agentbox/Brewfile"
 command -v tailscale >/dev/null
@@ -68,9 +64,6 @@ test "$(scutil --get LocalHostName)" = "TANAABAGENTBOXVER$GITHUB_RUN_ID"
 
 # should derive the Tailscale hostname from the TANAAB-prefixed canonical hostname
 tailscale status --json | jq -e --arg host "AGENTBOXVER$GITHUB_RUN_ID" '.Self.HostName == $host'
-
-# should advertise the requested Tailscale tags
-tailscale status --json | jq -e '(["tag:ci", "tag:agentbox"] - (.Self.Tags // [])) | length == 0'
 
 # should enable classic SSH and install the provided public key
 sudo systemsetup -getremotelogin | grep -F "Remote Login: On"
