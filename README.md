@@ -1,22 +1,43 @@
 # agentbox
 
-`agentbox` configures a physically accessible macOS 26.x Mac for headless operation, with
-recommended Tailscale access, classic SSH, and launchd-managed base services ready for future agent
-hosting.
+`agentbox` prepares a physically accessible macOS 26.x Mac for secure headless operation. It
+installs a small base profile with Homebrew packages, classic SSH, optional Tailscale access, and
+launchd-managed health checks so the machine is ready for whatever agent runtime you add later.
 
-The hosted `boot.sh` wrapper installs the base tooling it needs, materializes this repo at
-`~/tanaab/agentbox`, applies the repo [`Brewfile`](./Brewfile) through
-[Bootbox](https://github.com/tanaabased/bootbox), and runs the agentbox setup flow.
+`agentbox` prepares the admin side of the Mac. Install agent runtimes and
+application workloads later as **non-admin, non-sudo users**.
 
-> Supports macOS 26.x on `x64` and `arm64`; newer major versions are blocked until validated.
-> Requires a sudo-capable admin user.
-> Tailscale is recommended and enabled by default; pass a falsey auth-key value to skip Tailscale
-> setup. Designed for Mac hardware you physically control; Mac VPS behavior is unverified.
+**What it does**
+
+- Materializes this repo at `~/tanaab/agentbox` through the hosted `boot.sh` wrapper.
+- Applies the repo [`Brewfile`](./Brewfile) through
+  [Bootbox](https://github.com/tanaabased/bootbox).
+- Sets macOS system identity and headless power/firewall defaults.
+- Enables classic SSH, installs optional authorized keys, and hardens sshd to key-only login when
+  keys are provided.
+- Installs Tailscale from Homebrew and optionally joins the tailnet.
+- Installs a launchd health check under `/opt/tanaab/agentbox`.
+
+**What it does not do**
+
+- Install an agent runtime, app stack, Caddy, or project-specific services.
+- Create runtime users or manage user passwords.
+- Configure Wi-Fi, Screen Sharing, auto-login, Tailscale SSH, or router port forwarding.
+- Open public WAN access to SSH or future services.
+
+**Caveats**
+
+- Supports macOS 26.x on `x64` and `arm64`; newer major versions are blocked until validated.
+- Requires a sudo-capable admin user.
+- Designed for Mac hardware you physically control; Mac VPS behavior is unverified.
+- Tailscale is recommended and enabled by default, but can be skipped with a falsey auth-key value.
+- Authorized keys enable SSH key-only hardening. Bad keys can lock out remote SSH, so keep physical
+  or admin recovery access available.
 
 ## Quickstart
 
-Complete the Manual Setup Checklist first, then use the hosted bootstrap script when preparing a
-real machine:
+Complete the [Manual Setup Checklist](#manual-setup-checklist) first, then run the hosted bootstrap
+script on the Mac you are preparing:
 
 ```sh
 curl -fsSL https://agentbox.boot.tanaab.sh/boot.sh | \
@@ -24,13 +45,6 @@ curl -fsSL https://agentbox.boot.tanaab.sh/boot.sh | \
   AGENTBOX_HOSTNAME=TANAABAGENTBOX1 \
   bash
 ```
-
-This default flow:
-
-- materializes `~/tanaab/agentbox`
-- applies the repo [`Brewfile`](./Brewfile)
-- configures headless macOS settings, classic SSH, Tailscale, and health launchd
-- joins Tailscale using the provided auth key when the Mac is not already joined
 
 ## Manual Setup Checklist
 
@@ -49,9 +63,13 @@ sudo softwareupdate --install --all --restart
 
 - Decide FileVault deliberately. For a physically controlled headless agentbox, the default
   recommendation is FileVault off, no auto-login, and services started by launchd.
+- Consider installing an HDMI dummy plug / headless display adapter, such as
+  [this example](https://www.amazon.com/dp/B0CKKLTWMN?ref=fed_asin_title), for smoother headless
+  display behavior.
 - Temporarily enable Remote Login if needed for initial access. `boot.sh` enables classic SSH
   programmatically.
-- Create or choose a preauthorized Tailscale auth key for the first tailnet join.
+- Create or choose a preauthorized Tailscale auth key with any desired device tags, or decide to
+  skip Tailscale setup.
 - Optionally choose SSH public keys for `boot.sh` to install for the admin user.
 
 ## Usage
@@ -60,16 +78,16 @@ For repeated use, install the hosted script as a local command in a directory yo
 
 ```sh
 mkdir -p "$HOME/.local/bin"
-curl -fsSL https://agentbox.boot.tanaab.sh/boot.sh -o "$HOME/.local/bin/agentboxboot"
-chmod +x "$HOME/.local/bin/agentboxboot"
+curl -fsSL https://agentbox.boot.tanaab.sh/boot.sh -o "$HOME/.local/bin/agentbootbox"
+chmod +x "$HOME/.local/bin/agentbootbox"
 
-agentboxboot --help
+agentbootbox --help
 ```
 
 Run it with flags when you want to keep the command explicit:
 
 ```sh
-agentboxboot --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
+agentbootbox --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
 ```
 
 Authorized keys are optional runtime inputs for classic SSH. When provided, `boot.sh` installs them
@@ -77,12 +95,12 @@ for the invoking admin user and hardens SSH to key-only access for that user. Su
 public-key lines, explicit `file:` references, and existing public-key paths:
 
 ```sh
-agentboxboot \
+agentbootbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --authorized-key file:~/.ssh/id_ed25519.pub \
   --hostname TANAABAGENTBOX1
 
-agentboxboot \
+agentbootbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --authorized-key "ssh-ed25519 AAAA... user@example" \
   --authorized-key file:~/.ssh/backup.pub \
@@ -92,34 +110,45 @@ agentboxboot \
 Use `--agentbox-version` to install a tagged release archive instead of cloning the default branch:
 
 ```sh
-agentboxboot \
+agentbootbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --agentbox-version 1.2.3 \
   --hostname TANAABAGENTBOX1
 ```
 
+## Tailscale
+
+Tailscale is the recommended remote access path, but it is not mandatory. When enabled, `boot.sh`
+starts `tailscaled`, checks whether the Mac is already joined, and only requires an auth key for a
+first join.
+
 To skip Tailscale setup, pass a falsey auth-key value:
 
 ```sh
-agentboxboot --tailscale-authkey off --hostname TANAABAGENTBOX1
-AGENTBOX_TAILSCALE_AUTHKEY=off agentboxboot --hostname TANAABAGENTBOX1
+agentbootbox --tailscale-authkey off --hostname TANAABAGENTBOX1
+AGENTBOX_TAILSCALE_AUTHKEY=off agentbootbox --hostname TANAABAGENTBOX1
 ```
 
 The default hostname is `TANAABAGENTBOX1`. The configured hostname is used for macOS system
-identity, and Tanaab-prefixed hostnames derive a shorter Tailscale hostname by stripping the leading
-`TANAAB` prefix. For example, `TANAABAGENTBOX1` joins Tailscale as `AGENTBOX1`.
+identity. When Tailscale is enabled, a leading `TANAAB` prefix is stripped for the Tailscale node
+name, so `TANAABAGENTBOX1` joins as `AGENTBOX1`.
 
-Out of scope for this pass: Wi-Fi management, runtime users, Screen Sharing or auto-login
-automation, Caddy, app runtimes, and Tailscale SSH. Remote shell access uses classic SSH, usually
-over Tailscale when enabled.
+To tag newly joined machines, create or use a Tailscale auth key that applies the desired tags.
+agentbox passes the auth key to `tailscale up` and does not manage tailnet tag policy itself.
+
+After joining, use the Tailscale admin console to confirm the node name, decide whether node key
+expiry should be disabled for this infrastructure node, and keep ACLs restrictive.
+
+If your tailnet uses MagicDNS or another friendly DNS name, such as `tanaab.net`, verify the node is
+reachable through that name as well as its Tailscale IP.
 
 ## Configuration
 
 The public configuration surface is intentionally small. Prefer environment variables for secrets so
 they do not land in shell history.
 
-- `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key, required when the Mac
-  is not already joined; use `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
+- `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key for first join; use
+  `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH; providing keys also enables key-only SSH hardening.
@@ -130,15 +159,10 @@ they do not land in shell history.
 
 Run `boot.sh --help` for the exact current CLI and environment-variable contract.
 
-To tag newly joined machines in Tailscale, create or use an auth key that applies the desired tags;
-agentbox passes the auth key to `tailscale up` and does not manage tag policy itself.
+## Verification
 
-## After Bootstrap
-
-- In the Tailscale admin console, confirm the node joined with the expected name, decide whether
-  node key expiry should be disabled for this infrastructure node, and keep ACLs restrictive.
-- Reboot the Mac, then verify it returns to Tailscale before any GUI login.
-- Confirm Tailscale service and network status:
+- Reboot the Mac and confirm it returns to the expected network state before any GUI login.
+- If Tailscale is enabled, confirm service and network status:
 
 ```sh
 sudo brew services info tailscale
