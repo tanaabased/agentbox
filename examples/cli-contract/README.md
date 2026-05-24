@@ -72,10 +72,14 @@ AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "falsey disables setup"
 AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "[default: disabled]"
 
 # should fail on unknown options with usage context
-output="$(boot.sh --not-real 2>&1)" && exit 1
-printf "%s\n" "$output" | grep -F "unrecognized option"
-printf "%s\n" "$output" | grep -F "Usage:"
-printf "%s\n" "$output" | grep -F "boot.sh [options]"
+set +e
+output="$(boot.sh --not-real 2>&1)"
+status="$?"
+set -e
+printf "%s\n" "$output" | tee /dev/stderr | grep -F "unrecognized option"
+printf "%s\n" "$output" | tee /dev/stderr | grep -F "Usage:"
+printf "%s\n" "$output" | tee /dev/stderr | grep -F "boot.sh [options]"
+test "$status" -ne 0
 ```
 
 ## Destroy tests

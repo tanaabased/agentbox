@@ -76,14 +76,13 @@ test "$(stat -f "%Lp" "$HOME/.ssh")" = "700"
 test "$(stat -f "%Lp" "$HOME/.ssh/authorized_keys")" = "600"
 
 # should report healthy macOS, SSH, launchd, and Tailscale posture
-health_report="$(sudo /opt/tanaab/agentbox/bin/health.sh --check)"
-printf "%s\n" "$health_report" | grep -F "posture_ok=1"
-printf "%s\n" "$health_report" | grep -F "expected_hostname=TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
-printf "%s\n" "$health_report" | grep -F "expected_tailscale_hostname=AGENTBOX-TEST$GITHUB_RUN_ID"
-printf "%s\n" "$health_report" | grep -F "macos_identity_ok=1"
-printf "%s\n" "$health_report" | grep -F "ssh_hardening_ok=1"
-printf "%s\n" "$health_report" | grep -F "tailscale_ok=1"
-printf "%s\n" "$health_report" | grep -F "health_launchd_loaded_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_hostname=TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_tailscale_hostname=AGENTBOX-TEST$GITHUB_RUN_ID"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "macos_identity_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_hardening_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "health_launchd_loaded_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --check
 
 # should allow key-based SSH login with both generated private keys
 ssh \
@@ -115,7 +114,7 @@ ssh \
 
 # should install the launchd health check tool
 test -x /opt/tanaab/agentbox/bin/health.sh
-printf "%s\n" "$health_report" | grep -F "root_disk_available_kb="
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "root_disk_available_kb="
 ```
 
 ## Destroy tests
