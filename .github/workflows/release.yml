@@ -29,7 +29,7 @@ jobs:
           echo "RELEASE_DATE=$(date -d "${{ github.event.release.published_at }}" "+%B %e, %Y" | tr -s ' ')" >> "${GITHUB_ENV}"
           echo "SITEMAP_LASTMOD=${{ github.event.release.published_at }}" >> "${GITHUB_ENV}"
       - name: Prepare release
-        uses: tanaabased/prepare-release-action@v1
+        uses: tanaabased/prepare-release-action@v99
         with:
           commands: |
             bun run build
