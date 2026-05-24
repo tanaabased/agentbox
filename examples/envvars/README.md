@@ -29,6 +29,14 @@ AGENTBOX_AUTHORIZED_KEY="$(cat "$TMPDIR/id_agentbox_envvars.pub")" \
 boot.sh
 test -f "$HOME/tanaab/agentbox/Brewfile"
 command -v tailscale >/dev/null
+
+# should rerun successfully without a Tailscale auth key when already joined
+AGENTBOX_TAILSCALE_AUTHKEY="" \
+AGENTBOX_DEBUG=1 \
+AGENTBOX_FORCE=1 \
+AGENTBOX_HOSTNAME="TANAABAGENTBOX-TEST$GITHUB_RUN_ID" \
+AGENTBOX_AUTHORIZED_KEY="$(cat "$TMPDIR/id_agentbox_envvars.pub")" \
+boot.sh
 ```
 
 ## Testing
@@ -66,7 +74,7 @@ grep -qxF "$(cat "$TMPDIR/id_agentbox_envvars.pub")" "$HOME/.ssh/authorized_keys
 test "$(stat -f "%Lp" "$HOME/.ssh")" = "700"
 test "$(stat -f "%Lp" "$HOME/.ssh/authorized_keys")" = "600"
 
-# should run tailscaled as a service and join Tailscale
+# should run tailscaled as a service and remain joined to Tailscale
 sudo brew services info tailscale >/dev/null
 pgrep -x tailscaled >/dev/null
 tailscale status >/dev/null

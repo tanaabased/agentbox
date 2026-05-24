@@ -315,8 +315,8 @@ Usage: ${tty_dim}[NONINTERACTIVE=1] [CI=1]${tty_reset} ${tty_bold}${SCRIPT_NAME}
 
 ${tty_tp}Options:${tty_reset}
   --agentbox-version  installs a tagged release, accepts 1.2.3 or v1.2.3 ${tty_dim}[default: $(agentbox_version_display)]${tty_reset}
-  --authorized-key    adds a raw public key or public-key file path for SSH ${tty_dim}[default: ${authorized_keys_display}]${tty_reset}
-  --tailscale-authkey sets a raw one-time or preauthorized Tailscale auth key ${tty_dim}[default: ${tailscale_authkey_display}]${tty_reset}
+  --authorized-key    adds an SSH public key or public-key file path ${tty_dim}[default: ${authorized_keys_display}]${tty_reset}
+  --tailscale-authkey uses a Tailscale auth key to join ${tty_dim}[default: ${tailscale_authkey_display}]${tty_reset}
   --hostname          sets the system hostname and Tailscale name source ${tty_dim}[default: ${AGENTBOX_HOSTNAME_VALUE}]${tty_reset}
   --version           shows version of this script
   --debug             shows debug messages ${tty_dim}[default: ${debug_display}]${tty_reset}
@@ -326,8 +326,8 @@ ${tty_tp}Options:${tty_reset}
 
 ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_VERSION               tagged release to install, accepts 1.2.3 or v1.2.3
-  AGENTBOX_AUTHORIZED_KEY        raw public key or public-key file path for SSH
-  AGENTBOX_TAILSCALE_AUTHKEY     raw Tailscale auth key
+  AGENTBOX_AUTHORIZED_KEY        SSH public key or public-key file path
+  AGENTBOX_TAILSCALE_AUTHKEY     Tailscale auth key for joining
   AGENTBOX_HOSTNAME              system hostname and Tailscale name source
   AGENTBOX_FORCE                 set truthy to force supported operations
   AGENTBOX_DEBUG                 set truthy to show debug messages
@@ -618,25 +618,89 @@ warn_if_xcode_clt_missing() {
 }
 
 run_agentbox_hostname_setup() {
+  if macos_identity_matches; then
+    log "${tty_tp}skipping${tty_reset} macOS system identity; already set to ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
+    return 0
+  fi
+
   log "${tty_tp}setting${tty_reset} macOS system identity to ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
   execute sudo scutil --set ComputerName "${AGENTBOX_HOSTNAME_VALUE}"
   execute sudo scutil --set HostName "${AGENTBOX_HOSTNAME_VALUE}"
   execute sudo scutil --set LocalHostName "${AGENTBOX_HOSTNAME_VALUE}"
 }
 
+scutil_value_matches() {
+  local key="$1"
+  local expected="$2"
+  local actual
+
+  actual="$(scutil --get "${key}" 2>/dev/null || true)"
+  [[ "${actual}" == "${expected}" ]]
+}
+
+macos_identity_matches() {
+  scutil_value_matches ComputerName "${AGENTBOX_HOSTNAME_VALUE}" &&
+    scutil_value_matches HostName "${AGENTBOX_HOSTNAME_VALUE}" &&
+    scutil_value_matches LocalHostName "${AGENTBOX_HOSTNAME_VALUE}"
+}
+
+pmset_setting_value() {
+  local key="$1"
+
+  pmset -g custom 2>/dev/null | awk -v key="${key}" '$1 == key { value = $2 } END { if (value != "") print value }'
+}
+
+ensure_pmset_setting() {
+  local key="$1"
+  local desired="$2"
+  local optional="${3:-0}"
+  local current
+
+  current="$(pmset_setting_value "${key}")"
+  if [[ "${current}" == "${desired}" ]]; then
+    log "${tty_tp}skipping${tty_reset} ${tty_ts}pmset ${key}${tty_reset}; already ${tty_ts}${desired}${tty_reset}"
+    return 0
+  fi
+
+  if [[ "${optional}" == "1" ]]; then
+    debug "${tty_tp}running${tty_reset}" sudo pmset -a "${key}" "${desired}"
+    if ! sudo pmset -a "${key}" "${desired}"; then
+      warn "could not set pmset ${key}=${desired} on this Mac; continuing."
+    fi
+    return 0
+  fi
+
+  execute sudo pmset -a "${key}" "${desired}"
+}
+
+firewall_global_enabled() {
+  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -qi "enabled"
+}
+
+firewall_stealth_enabled() {
+  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode 2>/dev/null | grep -qi "enabled"
+}
+
 run_agentbox_macos_settings() {
   log "${tty_tp}applying${tty_reset} headless macOS power and firewall settings"
 
-  execute sudo pmset -a sleep 0
-  execute sudo pmset -a disksleep 0
-  execute sudo pmset -a displaysleep 0
-  if ! sudo pmset -a powernap 0; then
-    warn "could not disable powernap on this Mac; continuing."
+  ensure_pmset_setting sleep 0
+  ensure_pmset_setting disksleep 0
+  ensure_pmset_setting displaysleep 0
+  ensure_pmset_setting powernap 0 1
+  ensure_pmset_setting autorestart 1
+
+  if firewall_global_enabled; then
+    log "${tty_tp}skipping${tty_reset} firewall global state; already enabled"
+  else
+    execute sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
   fi
 
-  execute sudo pmset -a autorestart 1
-  execute sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
-  execute sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode on
+  if firewall_stealth_enabled; then
+    log "${tty_tp}skipping${tty_reset} firewall stealth mode; already enabled"
+  else
+    execute sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode on
+  fi
 }
 
 user_home_dir() {
@@ -789,7 +853,7 @@ resolve_authorized_key_spec() {
     abort "authorized key file ${tty_ts}${path}${tty_reset} does not exist."
   fi
 
-  abort "authorized key value must be a raw public key line or a readable public-key file path."
+  abort "authorized key value must be a public key line or readable public-key file path."
 }
 
 resolve_authorized_key_specs() {
@@ -844,9 +908,18 @@ install_authorized_keys_for_user() {
   log "${tty_tp}installed${tty_reset} ${installed_count} new SSH authorized key entries for ${tty_ts}${user}${tty_reset}"
 }
 
+remote_login_enabled() {
+  sudo systemsetup -getremotelogin 2>/dev/null | grep -Fq "Remote Login: On"
+}
+
 run_agentbox_ssh_setup() {
-  log "${tty_tp}enabling${tty_reset} classic SSH for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
-  execute sudo systemsetup -setremotelogin on
+  if remote_login_enabled; then
+    log "${tty_tp}skipping${tty_reset} classic SSH enablement; Remote Login is already on"
+  else
+    log "${tty_tp}enabling${tty_reset} classic SSH for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
+    execute sudo systemsetup -setremotelogin on
+  fi
+
   if [[ "${#AUTHORIZED_KEY_LINES[@]}" -gt 0 ]]; then
     install_authorized_keys_for_user "${ADMIN_USER}"
     warn "SSH password-login hardening is deferred until key-based SSH has been verified."
@@ -915,7 +988,12 @@ EOPLIST
 }
 
 run_agentbox_launchd_health_setup() {
-  log "${tty_tp}installing${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
+  if sudo launchctl print "system/${AGENTBOX_HEALTH_LABEL}" >/dev/null 2>&1; then
+    log "${tty_tp}refreshing${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
+  else
+    log "${tty_tp}installing${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
+  fi
+
   execute sudo mkdir -p "${AGENTBOX_OPT_DIR}/bin" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
   execute sudo chown -R root:wheel "${AGENTBOX_OPT_DIR}" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
   execute sudo chmod 755 "${AGENTBOX_OPT_DIR}" "${AGENTBOX_OPT_DIR}/bin" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
@@ -1061,14 +1139,6 @@ validate_inputs() {
 
   if ! id "${ADMIN_USER}" >/dev/null 2>&1; then
     abort "current admin user ${tty_ts}${ADMIN_USER}${tty_reset} does not exist on this Mac."
-  fi
-
-  if [[ -z "${TAILSCALE_AUTHKEY}" ]]; then
-    abort_multi "$(cat <<EOABORT
-you must provide a Tailscale auth key before using this wrapper.
-set ${tty_bold}AGENTBOX_TAILSCALE_AUTHKEY${tty_reset}, or pass ${tty_bold}--tailscale-authkey${tty_reset}. Prefer the environment variable to avoid shell-history exposure.
-EOABORT
-)"
   fi
 
   resolve_authorized_key_specs
@@ -1239,15 +1309,15 @@ plan_wrapper_execution() {
   fi
 
   plan_agentbox_fetch
-  plan_action "${tty_tp}set${tty_reset} macOS ComputerName, HostName, and LocalHostName to ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
-  plan_action "${tty_tp}apply${tty_reset} headless power and firewall settings"
+  plan_action "${tty_tp}ensure${tty_reset} macOS ComputerName, HostName, and LocalHostName are ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
+  plan_action "${tty_tp}ensure${tty_reset} headless power and firewall settings"
   plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile"
-  plan_action "${tty_tp}enable${tty_reset} classic SSH for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
+  plan_action "${tty_tp}ensure${tty_reset} classic SSH is enabled for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
   if [[ "${#AUTHORIZED_KEY_LINES[@]}" -gt 0 ]]; then
     plan_action "${tty_tp}install${tty_reset} ${tty_ts}${#AUTHORIZED_KEY_LINES[@]}${tty_reset} authorized key entries for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
   fi
-  plan_action "${tty_tp}configure${tty_reset} ${tty_ts}tailscaled${tty_reset} as a launchd service and join Tailscale as ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset} from hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} using masked auth key $(mask_secret_for_display "${TAILSCALE_AUTHKEY}")"
-  plan_action "${tty_tp}install${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
+  plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as a launchd service and Tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}"
+  plan_action "${tty_tp}install or refresh${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
   plan_action "${tty_tp}print${tty_reset} a nonfatal post-bootstrap health summary"
 }
 
@@ -1288,7 +1358,60 @@ run_bootbox_for_agentbox_brewfile() {
     --brewfile "${AGENTBOX_BREWFILE}"
 }
 
+abort_missing_tailscale_authkey() {
+  abort_multi "$(cat <<EOABORT
+you must provide a Tailscale auth key before this Mac can join Tailscale.
+set ${tty_bold}AGENTBOX_TAILSCALE_AUTHKEY${tty_reset}, or pass ${tty_bold}--tailscale-authkey${tty_reset}. Prefer the environment variable to avoid shell-history exposure.
+EOABORT
+)"
+}
+
+show_tailscale_status_summary() {
+  log "${tty_tp}tailscale status:${tty_reset}"
+  debug "${tty_tp}running${tty_reset}" tailscale status
+  tailscale status || true
+  debug "${tty_tp}running${tty_reset}" tailscale ip -4
+  tailscale ip -4 || true
+}
+
+capture_tailscale_status_json() {
+  local attempts="0"
+  local output
+
+  while [[ "${attempts}" -lt 3 ]]; do
+    attempts=$((attempts + 1))
+
+    if output="$(tailscale status --json 2>/dev/null)" && [[ -n "${output}" ]]; then
+      printf "%s" "${output}"
+      return 0
+    fi
+
+    sleep 1
+  done
+
+  return 1
+}
+
+json_value() {
+  local json="$1"
+  local filter="$2"
+
+  printf "%s" "${json}" | jq -r "${filter}" 2>/dev/null
+}
+
+tailscale_status_has_identity() {
+  local status_json="$1"
+  local has_identity
+
+  has_identity="$(json_value "${status_json}" 'if ((.Self.HostName // "") != "") and (((.Self.TailscaleIPs // []) | length) > 0) then "1" else "0" end' || true)"
+  [[ "${has_identity}" == "1" ]]
+}
+
 run_agentbox_tailscale_setup() {
+  local status_json=""
+  local current_hostname=""
+  local backend_state=""
+  local tailnet_name=""
   local -a tailscale_args=(
     up
     "--auth-key=${TAILSCALE_AUTHKEY}"
@@ -1303,9 +1426,40 @@ run_agentbox_tailscale_setup() {
   check_sudo_access "before Tailscale service setup"
   require_command brew
   require_command tailscale
+  require_command jq
 
   log "${tty_tp}starting${tty_reset} ${tty_ts}tailscaled${tty_reset} as a system launchd service"
   execute sudo brew services start tailscale
+
+  status_json="$(capture_tailscale_status_json || true)"
+  if [[ -n "${status_json}" ]] && tailscale_status_has_identity "${status_json}"; then
+    current_hostname="$(json_value "${status_json}" '.Self.HostName // empty' || true)"
+    backend_state="$(json_value "${status_json}" '.BackendState // empty' || true)"
+    tailnet_name="$(json_value "${status_json}" '.CurrentTailnet.Name // .CurrentTailnet.MagicDNSSuffix // empty' || true)"
+
+    if [[ -n "${tailnet_name}" ]]; then
+      log "${tty_tp}detected${tty_reset} Tailscale tailnet ${tty_ts}${tailnet_name}${tty_reset}"
+    fi
+
+    if [[ "${current_hostname}" == "${TAILSCALE_HOSTNAME_VALUE}" ]]; then
+      if [[ "${backend_state}" == "Running" ]]; then
+        log "${tty_tp}skipping${tty_reset} Tailscale join; already joined as ${tty_ts}${current_hostname}${tty_reset}"
+      else
+        warn "Tailscale is already joined as ${current_hostname}, but backend state is ${backend_state:-unknown}; skipping reauth."
+      fi
+
+      show_tailscale_status_summary
+      return 0
+    fi
+
+    warn "Tailscale is already joined as ${current_hostname}; expected ${TAILSCALE_HOSTNAME_VALUE}. skipping reauth for this run."
+    show_tailscale_status_summary
+    return 0
+  fi
+
+  if [[ -z "${TAILSCALE_AUTHKEY}" ]]; then
+    abort_missing_tailscale_authkey
+  fi
 
   log "${tty_tp}joining${tty_reset} ${tty_ts}tailscale${tty_reset} as ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}"
   debug "${tty_tp}running${tty_reset}" sudo tailscale "${tailscale_display_args[@]}"
@@ -1313,11 +1467,7 @@ run_agentbox_tailscale_setup() {
     abort "agentbox Tailscale setup failed."
   fi
 
-  log "${tty_tp}tailscale status:${tty_reset}"
-  debug "${tty_tp}running${tty_reset}" tailscale status
-  tailscale status || true
-  debug "${tty_tp}running${tty_reset}" tailscale ip -4
-  tailscale ip -4 || true
+  show_tailscale_status_summary
 }
 
 main() {

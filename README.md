@@ -8,8 +8,8 @@ The hosted `boot.sh` wrapper installs the base tooling it needs, materializes th
 [Bootbox](https://github.com/tanaabased/bootbox), and runs the agentbox setup flow.
 
 > Supports macOS 26 or newer on `x64` and `arm64`. Requires a sudo-capable admin user and a
-> Tailscale auth key. Designed for Mac hardware you physically control; Mac VPS behavior is
-> unverified.
+> Tailscale auth key for first-time tailnet joins. Designed for Mac hardware you physically
+> control; Mac VPS behavior is unverified.
 
 ## Quickstart
 
@@ -28,7 +28,7 @@ This default flow:
 - materializes `~/tanaab/agentbox`
 - applies the repo [`Brewfile`](./Brewfile)
 - configures headless macOS settings, classic SSH, Tailscale, and health launchd
-- joins Tailscale using the provided auth key
+- joins Tailscale using the provided auth key when the Mac is not already joined
 
 ## Manual Setup Checklist
 
@@ -49,7 +49,7 @@ sudo softwareupdate --install --all --restart
   recommendation is FileVault off, no auto-login, and services started by launchd.
 - Temporarily enable Remote Login if needed for initial access. `boot.sh` enables classic SSH
   programmatically.
-- Create or choose a preauthorized Tailscale auth key for the tailnet.
+- Create or choose a preauthorized Tailscale auth key for the first tailnet join.
 - Optionally choose SSH public keys for `boot.sh` to install for the admin user.
 
 ## Usage
@@ -70,8 +70,8 @@ Run it with flags when you want to keep the command explicit:
 agentboxboot --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
 ```
 
-Authorized keys are optional runtime inputs for classic SSH. Supported values are raw public-key
-lines, explicit `file:` references, and existing public-key paths:
+Authorized keys are optional runtime inputs for classic SSH. Supported values are public-key lines,
+explicit `file:` references, and existing public-key paths:
 
 ```sh
 agentboxboot \
@@ -106,9 +106,10 @@ classic SSH over Tailscale.
 ## Configuration
 
 The public configuration surface is intentionally small. Prefer environment variables for secrets so
-raw values do not land in shell history.
+they do not land in shell history.
 
-- `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: required raw Tailscale auth key.
+- `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key, required when the Mac
+  is not already joined.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH.
@@ -121,7 +122,7 @@ Run `boot.sh --help` for the exact current CLI and environment-variable contract
 
 ## After Bootstrap
 
-- In the Tailscale admin console, confirm the node joined with the expected name/tag, decide whether
+- In the Tailscale admin console, confirm the node joined with the expected name, decide whether
   node key expiry should be disabled for this infrastructure node, and keep ACLs restrictive.
 - Reboot the Mac, then verify it returns to Tailscale before any GUI login.
 - Confirm Tailscale service and network status:
