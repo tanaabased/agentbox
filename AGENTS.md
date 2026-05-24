@@ -143,7 +143,8 @@ explicitly asked.
   reintroduce the Tailscale GUI cask or Tailscale SSH mode.
 - Preserve managed sshd hardening through `/etc/ssh/sshd_config.d/agentbox.conf`; do not patch
   `/etc/ssh/sshd_config` directly.
-- Keep agentbox health checks strict for real machines. GitHub Actions-only health skips must be
-  recorded in the generated state file and kept narrowly scoped to runner-unavailable settings.
+- Keep agentbox health checks strict for real machines. Managed macOS runner health skips must be
+  recorded in the generated state file, set only from known runner environments, and kept narrowly
+  scoped to unavailable virtualized/managed settings.
 - Prefer targeted edits to `boot.sh`; avoid whole-file rewrites unless the script contract is being
   intentionally replaced.

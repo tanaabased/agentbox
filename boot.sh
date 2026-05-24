@@ -1072,7 +1072,7 @@ run_agentbox_ssh_setup() {
 write_agentbox_health_state() {
   local tailscale_enabled="1"
   local ssh_hardening_expected="0"
-  local github_actions_runner="0"
+  local managed_macos_runner="0"
 
   if tailscale_setup_disabled; then
     tailscale_enabled="0"
@@ -1083,7 +1083,7 @@ write_agentbox_health_state() {
   fi
 
   if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
-    github_actions_runner="1"
+    managed_macos_runner="1"
   fi
 
   if ! sudo tee "${AGENTBOX_HEALTH_STATE_PATH}" >/dev/null <<EOHEALTHSTATE
@@ -1093,7 +1093,7 @@ AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=$(shell_quote "${TAILSCALE_HOSTNAME_
 AGENTBOX_HEALTH_TAILSCALE_ENABLED=${tailscale_enabled}
 AGENTBOX_HEALTH_ADMIN_USER=$(shell_quote "${ADMIN_USER}")
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED=${ssh_hardening_expected}
-AGENTBOX_HEALTH_GITHUB_ACTIONS_RUNNER=${github_actions_runner}
+AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER=${managed_macos_runner}
 EOHEALTHSTATE
   then
     abort "failed to write agentbox health state."
@@ -1119,7 +1119,7 @@ AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=""
 AGENTBOX_HEALTH_TAILSCALE_ENABLED="0"
 AGENTBOX_HEALTH_ADMIN_USER=""
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
-AGENTBOX_HEALTH_GITHUB_ACTIONS_RUNNER="0"
+AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
 
 if [[ -r "${STATE_FILE}" ]]; then
   # shellcheck source=/dev/null
@@ -1275,7 +1275,7 @@ generate_report() {
   firewall_stealth_ok="$(firewall_stealth_value)"
   remote_login_ok="$(remote_login_value)"
 
-  if [[ -z "${autorestart_value}" && "${AGENTBOX_HEALTH_GITHUB_ACTIONS_RUNNER}" == "1" ]]; then
+  if [[ -z "${autorestart_value}" && "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}" == "1" ]]; then
     autorestart_ok="skipped"
   elif [[ "${autorestart_value}" == "1" ]]; then
     autorestart_ok="1"
@@ -1295,7 +1295,7 @@ generate_report() {
   fi
 
   print_kv timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  print_kv github_actions_runner "${AGENTBOX_HEALTH_GITHUB_ACTIONS_RUNNER}"
+  print_kv managed_macos_runner "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}"
   print_kv expected_hostname "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}"
   print_kv computer_name "${computer_name}"
   print_kv host_name "${host_name}"
@@ -1319,7 +1319,7 @@ generate_report() {
   mark_required network_time_ok "${network_time_ok}"
   mark_required restart_freeze_ok "${restart_freeze_ok}"
   mark_required firewall_global_ok "${firewall_global_ok}"
-  if [[ "${AGENTBOX_HEALTH_GITHUB_ACTIONS_RUNNER}" == "1" && "${firewall_stealth_ok}" != "1" ]]; then
+  if [[ "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}" == "1" && "${firewall_stealth_ok}" != "1" ]]; then
     print_kv firewall_stealth_ok "${firewall_stealth_ok}"
   else
     mark_required firewall_stealth_ok "${firewall_stealth_ok}"
