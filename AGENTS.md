@@ -31,6 +31,9 @@ explicitly asked.
   test, release, or hosting workflows.
 - Make source changes in `boot.sh`, `site/`, or `scripts/build-dist.js`; leave `dist/` unchanged
   unless the user explicitly asks for a local generated-artifact update.
+- Keep `/llms.txt` concise in `site/llms.txt`; `scripts/build-dist.js` copies it into `dist/`.
+  Do not hand-edit `dist/llms.txt` or add full-context variants unless the hosted docs surface
+  becomes larger.
 - If a local command accidentally changes `dist/`, restore those files before committing.
 - Treat `boot.sh` as the source entrypoint and `dist/boot.sh` as the release-shaped hosted artifact
   prepared by build and release workflows.
