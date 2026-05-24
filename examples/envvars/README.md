@@ -24,7 +24,7 @@ ssh-keygen -t ed25519 -N "" -C "agentbox-envvars@example.test" -f "$TMPDIR/id_ag
 # should run boot.sh successfully using envvars
 AGENTBOX_DEBUG=1 \
 AGENTBOX_FORCE=1 \
-AGENTBOX_HOSTNAME="TANAABAGENTBOXENV${GITHUB_RUN_ID:-LOCAL}" \
+AGENTBOX_HOSTNAME="TANAABAGENTBOXENV$GITHUB_RUN_ID" \
 AGENTBOX_TAILSCALE_TAGS="tag:agentbox" \
 AGENTBOX_AUTHORIZED_KEY="$(cat "$TMPDIR/id_agentbox_envvars.pub")" \
 boot.sh
@@ -49,12 +49,12 @@ test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "https
 brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
 
 # should set macOS system identity from the canonical hostname
-test "$(scutil --get ComputerName)" = "TANAABAGENTBOXENV${GITHUB_RUN_ID:-LOCAL}"
-test "$(scutil --get HostName)" = "TANAABAGENTBOXENV${GITHUB_RUN_ID:-LOCAL}"
-test "$(scutil --get LocalHostName)" = "TANAABAGENTBOXENV${GITHUB_RUN_ID:-LOCAL}"
+test "$(scutil --get ComputerName)" = "TANAABAGENTBOXENV$GITHUB_RUN_ID"
+test "$(scutil --get HostName)" = "TANAABAGENTBOXENV$GITHUB_RUN_ID"
+test "$(scutil --get LocalHostName)" = "TANAABAGENTBOXENV$GITHUB_RUN_ID"
 
 # should derive the Tailscale hostname from the TANAAB-prefixed canonical hostname
-tailscale status --json | jq -e --arg host "AGENTBOXENV${GITHUB_RUN_ID:-LOCAL}" '.Self.HostName == $host'
+tailscale status --json | jq -e --arg host "AGENTBOXENV$GITHUB_RUN_ID" '.Self.HostName == $host'
 
 # should enable classic SSH
 sudo systemsetup -getremotelogin | grep -F "Remote Login: On"

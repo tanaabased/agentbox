@@ -14,7 +14,8 @@ command -v boot.sh >/dev/null
 
 ```bash
 # should show agentbox usage
-boot.sh --help | grep -F "Usage: boot.sh"
+boot.sh --help | grep -F "Usage:"
+boot.sh --help | grep -F "boot.sh [options]"
 
 # should document public options
 boot.sh --help | grep -F -- "--agentbox-version"
@@ -61,7 +62,8 @@ if AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" boot.sh --help | grep -F "t
 # should fail on unknown options with usage context
 output="$(boot.sh --not-real 2>&1)" && exit 1
 printf "%s\n" "$output" | grep -F "unrecognized option"
-printf "%s\n" "$output" | grep -F "Usage: boot.sh"
+printf "%s\n" "$output" | grep -F "Usage:"
+printf "%s\n" "$output" | grep -F "boot.sh [options]"
 ```
 
 ## Destroy tests
