@@ -20,6 +20,7 @@ jobs:
         example:
           - cli-contract
           - envvars
+          - no-tailscale
           - options
           # Add version after the first published agentbox tag exists.
     steps:

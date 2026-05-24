@@ -3,4 +3,5 @@ Disallow: /
 Sitemap: https://agentbox.boot.tanaab.sh/sitemap.xml
 Host: https://agentbox.boot.tanaab.sh
 Allow: /boot.sh
+Allow: /llms.txt
 Allow: /sitemap.xml

@@ -70,6 +70,28 @@ sudo systemsetup -getremotelogin | grep -F "Remote Login: On"
 test -f "$HOME/.ssh/authorized_keys"
 grep -qxF "$(cat "$TMPDIR/id_agentbox_version.pub")" "$HOME/.ssh/authorized_keys"
 
+# should harden SSH to key-only login for the runner user
+sudo /usr/sbin/sshd -T | grep -F "passwordauthentication no"
+sudo /usr/sbin/sshd -T | grep -F "kbdinteractiveauthentication no"
+sudo /usr/sbin/sshd -T | grep -F "permitrootlogin no"
+sudo /usr/sbin/sshd -T | grep -F "pubkeyauthentication yes"
+sudo /usr/sbin/sshd -T | grep -F "allowusers $(id -un)"
+
+# should allow key-based SSH login with the generated private key
+ssh \
+  -F /dev/null \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o IdentitiesOnly=yes \
+  -o PreferredAuthentications=publickey \
+  -o PasswordAuthentication=no \
+  -o KbdInteractiveAuthentication=no \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o LogLevel=ERROR \
+  -i "$TMPDIR/id_agentbox_version" \
+  "$(id -un)@localhost" true
+
 # should run tailscaled as a service and join Tailscale
 sudo brew services info tailscale >/dev/null
 pgrep -x tailscaled >/dev/null

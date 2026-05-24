@@ -17,6 +17,13 @@ test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 ../../scripts/cleanup-agentbox-runner.sh
 mkdir -p "$TMPDIR"
 
+# should fail without a Tailscale auth key before the first join
+if AGENTBOX_TAILSCALE_AUTHKEY="" boot.sh \
+  --force \
+  --hostname "TANAABAGENTBOX-TEST$GITHUB_RUN_ID"; then
+  exit 1
+fi
+
 # should generate public key fixtures for option authorized-key installation
 rm -f "$TMPDIR/id_agentbox_options_file" "$TMPDIR/id_agentbox_options_file.pub"
 rm -f "$TMPDIR/id_agentbox_options_raw" "$TMPDIR/id_agentbox_options_raw.pub"
@@ -33,6 +40,14 @@ boot.sh \
   --authorized-key "$(cat "$TMPDIR/id_agentbox_options_raw.pub")"
 test -f "$HOME/tanaab/agentbox/Brewfile"
 command -v tailscale >/dev/null
+
+# should rerun successfully without a Tailscale auth key when already joined
+AGENTBOX_TAILSCALE_AUTHKEY="" boot.sh \
+  --force \
+  --debug \
+  --hostname "TANAABAGENTBOX-TEST$GITHUB_RUN_ID" \
+  --authorized-key "file:$TMPDIR/id_agentbox_options_file.pub" \
+  --authorized-key "$(cat "$TMPDIR/id_agentbox_options_raw.pub")"
 ```
 
 ## Testing
@@ -71,7 +86,42 @@ grep -qxF "$(cat "$TMPDIR/id_agentbox_options_raw.pub")" "$HOME/.ssh/authorized_
 test "$(stat -f "%Lp" "$HOME/.ssh")" = "700"
 test "$(stat -f "%Lp" "$HOME/.ssh/authorized_keys")" = "600"
 
-# should run tailscaled as a service and join Tailscale
+# should harden SSH to key-only login for the runner user
+sudo /usr/sbin/sshd -T | grep -F "passwordauthentication no"
+sudo /usr/sbin/sshd -T | grep -F "kbdinteractiveauthentication no"
+sudo /usr/sbin/sshd -T | grep -F "permitrootlogin no"
+sudo /usr/sbin/sshd -T | grep -F "pubkeyauthentication yes"
+sudo /usr/sbin/sshd -T | grep -F "allowusers $(id -un)"
+
+# should allow key-based SSH login with both generated private keys
+ssh \
+  -F /dev/null \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o IdentitiesOnly=yes \
+  -o PreferredAuthentications=publickey \
+  -o PasswordAuthentication=no \
+  -o KbdInteractiveAuthentication=no \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o LogLevel=ERROR \
+  -i "$TMPDIR/id_agentbox_options_file" \
+  "$(id -un)@localhost" true
+ssh \
+  -F /dev/null \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o IdentitiesOnly=yes \
+  -o PreferredAuthentications=publickey \
+  -o PasswordAuthentication=no \
+  -o KbdInteractiveAuthentication=no \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o LogLevel=ERROR \
+  -i "$TMPDIR/id_agentbox_options_raw" \
+  "$(id -un)@localhost" true
+
+# should run tailscaled as a service and remain joined to Tailscale
 sudo brew services info tailscale >/dev/null
 pgrep -x tailscaled >/dev/null
 tailscale status >/dev/null

@@ -6,12 +6,13 @@ explicitly asked.
 
 ## Purpose
 
-- This repo prepares a physically accessible macOS 26+ Mac as a headless Tanaab agentbox base
-  profile.
-- Keep the repo focused on base-machine setup: macOS settings, SSH, Tailscale, launchd, recovery,
-  and validation.
-- Do not add agent runtime setup, trading credentials, app-specific services, router port
-  forwarding, or public WAN exposure here.
+- This repo owns the admin/bootstrap layer for a physically accessible macOS 26.x Mac: headless
+  access, macOS settings, base packages, SSH/Tailscale connectivity, launchd health, recovery, and
+  security hardening.
+- The boundary ends when the Mac is ready to run user-space agents such as OpenCLAW under
+  non-admin, non-sudo users.
+- Do not add agent runtime setup, trading credentials, app-specific services, runtime-user
+  provisioning, router port forwarding, or public WAN exposure here.
 
 ## Source Of Truth
 
@@ -30,6 +31,9 @@ explicitly asked.
   test, release, or hosting workflows.
 - Make source changes in `boot.sh`, `site/`, or `scripts/build-dist.js`; leave `dist/` unchanged
   unless the user explicitly asks for a local generated-artifact update.
+- Keep `/llms.txt` concise in `site/llms.txt`; `scripts/build-dist.js` copies it into `dist/`.
+  Do not hand-edit `dist/llms.txt` or add full-context variants unless the hosted docs surface
+  becomes larger.
 - If a local command accidentally changes `dist/`, restore those files before committing.
 - Treat `boot.sh` as the source entrypoint and `dist/boot.sh` as the release-shaped hosted artifact
   prepared by build and release workflows.
@@ -56,8 +60,13 @@ explicitly asked.
   generated secret files.
 - Do not commit machine-specific SSH `authorized_keys` files. Pass public authorized keys at
   bootstrap with `AGENTBOX_AUTHORIZED_KEY` or repeatable `--authorized-key`.
-- Treat `AGENTBOX_TAILSCALE_AUTHKEY` as a runtime-only raw secret. Mask it in CLI output and prefer
-  environment variable usage over CLI flags in secret-sensitive examples.
+- Keep SSH password-login hardening coupled to provided authorized keys; do not disable password
+  login for runs that did not configure key-based access.
+- Treat real `AGENTBOX_TAILSCALE_AUTHKEY` values as runtime-only secrets. Mask them in CLI output
+  and prefer environment variable usage over CLI flags in secret-sensitive examples. Explicit
+  falsey values disable Tailscale setup and are not secrets.
+- Treat Tailscale tag assignment as auth-key and tailnet-policy configuration, not an agentbox CLI
+  input.
 - Preserve token masking in debug output and do not reintroduce raw argument logging.
 - Do not add the Tailscale GUI cask unless the project intentionally changes away from headless
   daemon setup.
@@ -71,6 +80,8 @@ explicitly asked.
 - Use `TMPDIR` for durable fixtures, unavoidable logs, and helper internals only.
 - Keep generated SSH public/private key fixtures in `TMPDIR`; they are real test inputs, not scratch
   assertion files.
+- When a mutating example provides authorized keys, verify localhost SSH login with the generated
+  private key fixture instead of only inspecting `authorized_keys`.
 - Put repeated destructive runner cleanup in `scripts/cleanup-agentbox-runner.sh` instead of
   duplicating cleanup blocks across README scenarios.
 
@@ -103,6 +114,8 @@ explicitly asked.
 
 - Preserve sudo preflight before Bootbox download, repo materialization, Brewfile application, or
   other machine mutation.
+- Preserve the macOS 26.x support gate before sudo preflight, and keep the unsupported-major
+  override hidden from normal help and README docs.
 - Keep `BOOTBOX_URL` fixed and preserve Bootbox `TANAAB_*` environment isolation unless Bootbox's
   interface changes.
 - Preserve the public `AGENTBOX_*` namespace and do not leak upstream Bootbox names into the
@@ -110,9 +123,12 @@ explicitly asked.
 - Keep the default public source as `https://github.com/tanaabased/agentbox.git`, the fixed target
   as `~/tanaab/agentbox`, and skip-or-replace behavior controlled by `--force`.
 - Keep `--agentbox-version` aligned with GitHub tag archive installs.
-- Preserve `AGENTBOX_HOSTNAME` as the canonical hostname input and the current TANAAB-prefixed
-  Tailscale hostname derivation.
-- Preserve formula-based `tailscaled` setup and classic SSH over Tailscale; do not reintroduce the
-  Tailscale GUI cask or Tailscale SSH mode.
+- Preserve `AGENTBOX_HOSTNAME` as the canonical hostname input and, when Tailscale is enabled, the
+  current TANAAB-prefixed Tailscale hostname derivation.
+- Preserve formula-based Tailscale install and recommended setup, while allowing explicit falsey
+  auth-key values to skip Tailscale setup. Keep classic SSH as the access model, and do not
+  reintroduce the Tailscale GUI cask or Tailscale SSH mode.
+- Preserve managed sshd hardening through `/etc/ssh/sshd_config.d/agentbox.conf`; do not patch
+  `/etc/ssh/sshd_config` directly.
 - Prefer targeted edits to `boot.sh`; avoid whole-file rewrites unless the script contract is being
   intentionally replaced.

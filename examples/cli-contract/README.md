@@ -37,16 +37,24 @@ boot.sh --help | grep -F "AGENTBOX_DEBUG"
 boot.sh --help | grep -F "NONINTERACTIVE"
 boot.sh --help | grep -F "CI"
 
+# should keep the unsupported macOS override out of help
+if boot.sh --help | grep -F "AGENTBOX_ALLOW_UNSUPPORTED_MACOS"; then exit 1; fi
+
 # should keep hidden plural authorized-key inputs out of help
 if boot.sh --help | grep -F -- "--authorized-keys"; then exit 1; fi
 if boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEYS"; then exit 1; fi
+
+# should keep removed Tailscale tag inputs out of help
+if boot.sh --help | grep -F -- "--tailscale-tag"; then exit 1; fi
+if boot.sh --help | grep -F -- "--tailscale-tags"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAG"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"; then exit 1; fi
 
 # should not expose removed legacy surfaces
 if boot.sh --help | grep -F -- "--op-token"; then exit 1; fi
 if boot.sh --help | grep -F -- "--ssh-key"; then exit 1; fi
 if boot.sh --help | grep -F -- "--me"; then exit 1; fi
 if boot.sh --help | grep -F -- "--tanaab"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"; then exit 1; fi
 if boot.sh --help | grep -F "PIROME"; then exit 1; fi
 if boot.sh --help | grep -F "OP_SERVICE_ACCOUNT_TOKEN"; then exit 1; fi
 if boot.sh --help | grep -F ".codex-plugin"; then exit 1; fi
@@ -58,6 +66,10 @@ test -n "$(boot.sh --version)"
 # should mask Tailscale auth key defaults in help
 AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" boot.sh --help | grep -F "tske...mple"
 if AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" boot.sh --help | grep -F "tskey-secret-example"; then exit 1; fi
+
+# should show falsey Tailscale auth key values as disabled
+AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "falsey disables setup"
+AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "[default: disabled]"
 
 # should fail on unknown options with usage context
 output="$(boot.sh --not-real 2>&1)" && exit 1
