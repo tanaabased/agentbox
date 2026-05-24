@@ -59,6 +59,10 @@ test -n "$(boot.sh --version)"
 AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" boot.sh --help | grep -F "tske...mple"
 if AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" boot.sh --help | grep -F "tskey-secret-example"; then exit 1; fi
 
+# should show falsey Tailscale auth key values as disabled
+AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "falsey disables setup"
+AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "[default: disabled]"
+
 # should fail on unknown options with usage context
 output="$(boot.sh --not-real 2>&1)" && exit 1
 printf "%s\n" "$output" | grep -F "unrecognized option"

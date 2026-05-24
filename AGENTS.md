@@ -56,8 +56,9 @@ explicitly asked.
   generated secret files.
 - Do not commit machine-specific SSH `authorized_keys` files. Pass public authorized keys at
   bootstrap with `AGENTBOX_AUTHORIZED_KEY` or repeatable `--authorized-key`.
-- Treat `AGENTBOX_TAILSCALE_AUTHKEY` as a runtime-only raw secret. Mask it in CLI output and prefer
-  environment variable usage over CLI flags in secret-sensitive examples.
+- Treat real `AGENTBOX_TAILSCALE_AUTHKEY` values as runtime-only secrets. Mask them in CLI output
+  and prefer environment variable usage over CLI flags in secret-sensitive examples. Explicit
+  falsey values disable Tailscale setup and are not secrets.
 - Preserve token masking in debug output and do not reintroduce raw argument logging.
 - Do not add the Tailscale GUI cask unless the project intentionally changes away from headless
   daemon setup.
@@ -110,9 +111,10 @@ explicitly asked.
 - Keep the default public source as `https://github.com/tanaabased/agentbox.git`, the fixed target
   as `~/tanaab/agentbox`, and skip-or-replace behavior controlled by `--force`.
 - Keep `--agentbox-version` aligned with GitHub tag archive installs.
-- Preserve `AGENTBOX_HOSTNAME` as the canonical hostname input and the current TANAAB-prefixed
-  Tailscale hostname derivation.
-- Preserve formula-based `tailscaled` setup and classic SSH over Tailscale; do not reintroduce the
-  Tailscale GUI cask or Tailscale SSH mode.
+- Preserve `AGENTBOX_HOSTNAME` as the canonical hostname input and, when Tailscale is enabled, the
+  current TANAAB-prefixed Tailscale hostname derivation.
+- Preserve formula-based Tailscale install and recommended setup, while allowing explicit falsey
+  auth-key values to skip Tailscale setup. Keep classic SSH as the access model, and do not
+  reintroduce the Tailscale GUI cask or Tailscale SSH mode.
 - Prefer targeted edits to `boot.sh`; avoid whole-file rewrites unless the script contract is being
   intentionally replaced.

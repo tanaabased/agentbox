@@ -1,15 +1,16 @@
 # agentbox
 
-`agentbox` configures a physically accessible macOS 26+ Mac for headless operation on Tailscale,
-with classic SSH and launchd-managed base services ready for future agent hosting.
+`agentbox` configures a physically accessible macOS 26+ Mac for headless operation, with
+recommended Tailscale access, classic SSH, and launchd-managed base services ready for future agent
+hosting.
 
 The hosted `boot.sh` wrapper installs the base tooling it needs, materializes this repo at
 `~/tanaab/agentbox`, applies the repo [`Brewfile`](./Brewfile) through
 [Bootbox](https://github.com/tanaabased/bootbox), and runs the agentbox setup flow.
 
 > Supports macOS 26 or newer on `x64` and `arm64`. Requires a sudo-capable admin user and a
-> Tailscale auth key for first-time tailnet joins. Designed for Mac hardware you physically
-> control; Mac VPS behavior is unverified.
+> Tailscale is recommended and enabled by default; pass a falsey auth-key value to skip Tailscale
+> setup. Designed for Mac hardware you physically control; Mac VPS behavior is unverified.
 
 ## Quickstart
 
@@ -95,13 +96,20 @@ agentboxboot \
   --hostname TANAABAGENTBOX1
 ```
 
+To skip Tailscale setup, pass a falsey auth-key value:
+
+```sh
+agentboxboot --tailscale-authkey off --hostname TANAABAGENTBOX1
+AGENTBOX_TAILSCALE_AUTHKEY=off agentboxboot --hostname TANAABAGENTBOX1
+```
+
 The default hostname is `TANAABAGENTBOX1`. The configured hostname is used for macOS system
 identity, and Tanaab-prefixed hostnames derive a shorter Tailscale hostname by stripping the leading
 `TANAAB` prefix. For example, `TANAABAGENTBOX1` joins Tailscale as `AGENTBOX1`.
 
 Out of scope for this pass: Wi-Fi management, runtime users, SSH password-login hardening, Screen
 Sharing or auto-login automation, Caddy, app runtimes, and Tailscale SSH. Remote shell access uses
-classic SSH over Tailscale.
+classic SSH, usually over Tailscale when enabled.
 
 ## Configuration
 
@@ -109,7 +117,7 @@ The public configuration surface is intentionally small. Prefer environment vari
 they do not land in shell history.
 
 - `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key, required when the Mac
-  is not already joined.
+  is not already joined; use `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH.
@@ -133,7 +141,7 @@ tailscale status
 tailscale ip -4
 ```
 
-- Verify classic SSH over Tailscale from another machine:
+- If Tailscale is enabled, verify classic SSH over Tailscale from another machine:
 
 ```sh
 ssh <admin-user>@<tailscale-name-or-ip>

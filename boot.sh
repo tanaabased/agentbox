@@ -44,6 +44,17 @@ value_enabled() {
   esac
 }
 
+value_disabled() {
+  case "${1:-}" in
+    0 | false | FALSE | False | no | NO | No | off | OFF | Off | null | NULL | Null)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 mask_secret_for_display() {
   local value="$1"
   local length="${#value}"
@@ -217,6 +228,19 @@ force_enabled() {
   value_enabled "${FORCE:-}"
 }
 
+tailscale_setup_disabled() {
+  value_disabled "${TAILSCALE_AUTHKEY:-}"
+}
+
+tailscale_authkey_display() {
+  if tailscale_setup_disabled; then
+    printf "disabled"
+    return 0
+  fi
+
+  mask_secret_for_display "${TAILSCALE_AUTHKEY:-}"
+}
+
 debug() {
   if debug_enabled; then
     printf "${tty_dim}debug${tty_reset} %s\n" "$(shell_join "$@")" >&2
@@ -294,7 +318,7 @@ derive_tailscale_hostname() {
 usage() {
   local debug_display="off"
   local force_display="off"
-  local tailscale_authkey_display="none"
+  local tailscale_authkey_display_value="none"
   local authorized_keys_display="none"
 
   if debug_enabled; then
@@ -305,7 +329,7 @@ usage() {
     force_display="on"
   fi
 
-  tailscale_authkey_display="$(mask_secret_for_display "${TAILSCALE_AUTHKEY:-}")"
+  tailscale_authkey_display_value="$(tailscale_authkey_display)"
   if [[ "${#AUTHORIZED_KEY_SPECS[@]}" -gt 0 ]]; then
     authorized_keys_display="${#AUTHORIZED_KEY_SPECS[@]} provided"
   fi
@@ -316,7 +340,7 @@ Usage: ${tty_dim}[NONINTERACTIVE=1] [CI=1]${tty_reset} ${tty_bold}${SCRIPT_NAME}
 ${tty_tp}Options:${tty_reset}
   --agentbox-version  installs a tagged release, accepts 1.2.3 or v1.2.3 ${tty_dim}[default: $(agentbox_version_display)]${tty_reset}
   --authorized-key    adds an SSH public key or public-key file path ${tty_dim}[default: ${authorized_keys_display}]${tty_reset}
-  --tailscale-authkey uses a Tailscale auth key to join ${tty_dim}[default: ${tailscale_authkey_display}]${tty_reset}
+  --tailscale-authkey uses a Tailscale auth key to join; falsey disables setup ${tty_dim}[default: ${tailscale_authkey_display_value}]${tty_reset}
   --hostname          sets the system hostname and Tailscale name source ${tty_dim}[default: ${AGENTBOX_HOSTNAME_VALUE}]${tty_reset}
   --version           shows version of this script
   --debug             shows debug messages ${tty_dim}[default: ${debug_display}]${tty_reset}
@@ -327,7 +351,7 @@ ${tty_tp}Options:${tty_reset}
 ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_VERSION               tagged release to install, accepts 1.2.3 or v1.2.3
   AGENTBOX_AUTHORIZED_KEY        SSH public key or public-key file path
-  AGENTBOX_TAILSCALE_AUTHKEY     Tailscale auth key for joining
+  AGENTBOX_TAILSCALE_AUTHKEY     Tailscale auth key for joining; falsey disables setup
   AGENTBOX_HOSTNAME              system hostname and Tailscale name source
   AGENTBOX_FORCE                 set truthy to force supported operations
   AGENTBOX_DEBUG                 set truthy to show debug messages
@@ -929,8 +953,22 @@ run_agentbox_ssh_setup() {
   fi
 }
 
-write_agentbox_health_script() {
-  if ! sudo tee "${AGENTBOX_OPT_DIR}/bin/health.sh" >/dev/null <<'EOHEALTH'
+write_agentbox_health_script_without_tailscale() {
+  sudo tee "${AGENTBOX_OPT_DIR}/bin/health.sh" >/dev/null <<'EOHEALTH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+{
+  printf 'timestamp=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'hostname=%s\n' "$(hostname)"
+  printf 'uptime=%s\n' "$(uptime)"
+  printf '%s\n' '---'
+} >> /var/log/tanaab/agentbox/health.log
+EOHEALTH
+}
+
+write_agentbox_health_script_with_tailscale() {
+  sudo tee "${AGENTBOX_OPT_DIR}/bin/health.sh" >/dev/null <<'EOHEALTH'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -942,7 +980,14 @@ set -euo pipefail
   printf '%s\n' '---'
 } >> /var/log/tanaab/agentbox/health.log
 EOHEALTH
-  then
+}
+
+write_agentbox_health_script() {
+  if tailscale_setup_disabled; then
+    if ! write_agentbox_health_script_without_tailscale; then
+      abort "failed to write agentbox health script."
+    fi
+  elif ! write_agentbox_health_script_with_tailscale; then
     abort "failed to write agentbox health script."
   fi
 
@@ -1017,8 +1062,10 @@ run_agentbox_post_bootstrap_summary() {
   sudo systemsetup -getremotelogin || true
   sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate || true
   sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode || true
-  tailscale status || true
-  tailscale ip -4 || true
+  if ! tailscale_setup_disabled; then
+    tailscale status || true
+    tailscale ip -4 || true
+  fi
   sudo launchctl print "system/${AGENTBOX_HEALTH_LABEL}" 2>/dev/null || true
 }
 
@@ -1145,6 +1192,11 @@ validate_inputs() {
 
   if ! hostname_valid "${AGENTBOX_HOSTNAME_VALUE}"; then
     abort "hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} must be DNS-safe."
+  fi
+
+  if tailscale_setup_disabled; then
+    TAILSCALE_HOSTNAME_VALUE=""
+    return 0
   fi
 
   TAILSCALE_HOSTNAME_VALUE="$(derive_tailscale_hostname "${AGENTBOX_HOSTNAME_VALUE}")"
@@ -1316,7 +1368,11 @@ plan_wrapper_execution() {
   if [[ "${#AUTHORIZED_KEY_LINES[@]}" -gt 0 ]]; then
     plan_action "${tty_tp}install${tty_reset} ${tty_ts}${#AUTHORIZED_KEY_LINES[@]}${tty_reset} authorized key entries for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
   fi
-  plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as a launchd service and Tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}"
+  if tailscale_setup_disabled; then
+    plan_action "${tty_tp}skip${tty_reset} Tailscale setup because the auth-key input is disabled"
+  else
+    plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as a launchd service and Tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}"
+  fi
   plan_action "${tty_tp}install or refresh${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
   plan_action "${tty_tp}print${tty_reset} a nonfatal post-bootstrap health summary"
 }
@@ -1423,6 +1479,11 @@ run_agentbox_tailscale_setup() {
     "--hostname=${TAILSCALE_HOSTNAME_VALUE}"
   )
 
+  if tailscale_setup_disabled; then
+    log "${tty_tp}skipping${tty_reset} Tailscale setup because the auth-key input is disabled"
+    return 0
+  fi
+
   check_sudo_access "before Tailscale service setup"
   require_command brew
   require_command tailscale
@@ -1491,8 +1552,14 @@ main() {
   debug raw AGENTBOX_HOSTNAME="${AGENTBOX_HOSTNAME_VALUE}"
   debug raw INVOKING_ADMIN_USER="${ADMIN_USER}"
   debug raw AGENTBOX_AUTHORIZED_KEY_COUNT="${#AUTHORIZED_KEY_LINES[@]}"
-  debug raw TAILSCALE_HOSTNAME="${TAILSCALE_HOSTNAME_VALUE}"
-  debug raw AGENTBOX_TAILSCALE_AUTHKEY="$(mask_secret_for_display "${TAILSCALE_AUTHKEY}")"
+  if tailscale_setup_disabled; then
+    debug raw TAILSCALE_SETUP="disabled"
+    debug raw TAILSCALE_HOSTNAME="disabled"
+  else
+    debug raw TAILSCALE_SETUP="enabled"
+    debug raw TAILSCALE_HOSTNAME="${TAILSCALE_HOSTNAME_VALUE}"
+  fi
+  debug raw AGENTBOX_TAILSCALE_AUTHKEY="$(tailscale_authkey_display)"
   debug raw BOOTBOX_URL="${BOOTBOX_URL}"
   debug raw CURL="${CURL}"
   debug raw ARCH="${ARCH}"
