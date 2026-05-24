@@ -1,0 +1,63 @@
+name: Example Tests
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  AGENTBOX_TAILSCALE_AUTHKEY: ${{ secrets.AGENTBOX_TAILSCALE_AUTHKEY }}
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+  STAMPED_VERSION: v9.9.9-ci.${{ github.event.pull_request.head.sha }}
+
+jobs:
+  examples:
+    name: ${{ matrix.example }}
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - cli-contract
+          - envvars
+          - options
+          # Add version after the first published agentbox tag exists.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Require Tailscale auth key
+        shell: bash
+        run: |
+          if [[ -z "${AGENTBOX_TAILSCALE_AUTHKEY}" ]]; then
+            echo "::error::secrets.AGENTBOX_TAILSCALE_AUTHKEY is required for mutating agentbox Leia examples."
+            exit 1
+          fi
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Prepare release-shaped build
+        uses: tanaabased/prepare-release-action@v1
+        with:
+          version: dev
+          sync: false
+          commands: |
+            bun run build
+            version-injector dist/boot.sh --style sh --version "${{ env.STAMPED_VERSION }}"
+      - name: Put prepared script on PATH
+        shell: bash
+        run: echo "$PWD/dist" >> "$GITHUB_PATH"
+      - name: Run Leia-backed example
+        shell: bash
+        env:
+          TMPDIR: ${{ github.workspace }}/examples/${{ matrix.example }}/.tmp
+        run: |
+          mkdir -p "$TMPDIR"
+          bun run leia "examples/${{ matrix.example }}/README.md" -c "Destroy tests" --stdin
+      - name: Cleanup agentbox runner state
+        if: always()
+        shell: bash
+        run: scripts/cleanup-agentbox-runner.sh

@@ -1,6 +1,6 @@
 {
   "name": "@tanaabased/agentbox",
-  "description": "Mac mini AgentBox base provisioning scaffolding.",
+  "description": "Tanaab based agentbox provisioning.",
   "version": "0.0.0",
   "author": "Mike Pirog @pirog",
   "license": "MIT",
@@ -16,6 +16,7 @@
   "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@lando/leia": "^1.0.0-beta.4",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.1",
     "globals": "^17.5.0",
@@ -23,10 +24,12 @@
     "shellcheck": "^4.1.0"
   },
   "scripts": {
+    "build": "bun ./scripts/build-dist.js",
     "format:check": "prettier . --check --ignore-unknown",
     "format:write": "prettier . --write --ignore-unknown",
+    "leia": "leia",
     "lint": "bun run lint:eslint && bun run format:check && bun run lint:shellcheck",
     "lint:eslint": "eslint .",
-    "lint:shellcheck": "shellcheck boot.sh"
+    "lint:shellcheck": "shellcheck boot.sh scripts/*.sh"
   }
 }

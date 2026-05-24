@@ -19,10 +19,13 @@ logs
 
 # JavaScript package manager files
 node_modules
-bun.lock
+
+# Local bootstrap config
+.env
 
 # Build dirs
 build
+examples/**/.tmp
 
 # coverage reporting
 .nyc_output
@@ -37,4 +40,3 @@ temp
 .tmp
 .netlify
 config.*.timestamp-*-*.*
-docs/.vitepress/dist
