@@ -1,5 +1,7 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+## v1.0.0-beta.5 - [June 16, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.5)
+
 - Added `--brewgroup` and `AGENTBOX_BREWGROUP` for configurable Homebrew prefix group-write setup. ([#9](https://github.com/tanaabased/agentbox/pull/9))
 - Added `brewgroup:trusted-group` syntax for opt-in trusted group nesting, such as `brewer:staff`. ([#9](https://github.com/tanaabased/agentbox/pull/9))
 - Added `health.sh --brewgroup` and brewgroup health report fields for downstream detection and verification. ([#9](https://github.com/tanaabased/agentbox/pull/9))
