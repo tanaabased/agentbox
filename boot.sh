@@ -16,6 +16,7 @@ MACOS_SUPPORTED_RANGE="26.x"
 REQUIRED_CURL_VERSION="7.41.0"
 BOOTBOX_URL="https://bootbox.tanaab.sh/bootbox.sh"
 DEFAULT_AGENTBOX_HOSTNAME="TANAABAGENTBOX1"
+DEFAULT_BREWGROUP="brewer"
 AGENTBOX_OPT_DIR="/opt/tanaab/agentbox"
 AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
 AGENTBOX_STATE_DIR="/var/db/tanaab/agentbox"
@@ -217,6 +218,7 @@ DEBUG="${AGENTBOX_DEBUG:-${DEBUG:-${RUNNER_DEBUG:-}}}"
 FORCE="${AGENTBOX_FORCE:-}"
 AGENTBOX_VERSION_VALUE="${AGENTBOX_VERSION:-}"
 AGENTBOX_HOSTNAME_VALUE="${AGENTBOX_HOSTNAME:-${DEFAULT_AGENTBOX_HOSTNAME}}"
+BREWGROUP_VALUE="${AGENTBOX_BREWGROUP:-${DEFAULT_BREWGROUP}}"
 TAILSCALE_AUTHKEY="${AGENTBOX_TAILSCALE_AUTHKEY:-}"
 ADMIN_USER=""
 AUTHORIZED_KEY_CLI_SEEN="0"
@@ -234,6 +236,7 @@ OS=""
 AGENTBOX_VERSION_TAG=""
 AGENTBOX_TARGET_PATH=""
 AGENTBOX_BREWFILE=""
+BREW_PREFIX_VALUE=""
 TAILSCALE_HOSTNAME_VALUE=""
 
 if [[ -n "${AGENTBOX_AUTHORIZED_KEY:-}" ]]; then
@@ -260,6 +263,10 @@ tailscale_setup_disabled() {
   value_disabled "${TAILSCALE_AUTHKEY:-}"
 }
 
+brewgroup_setup_disabled() {
+  value_disabled "${BREWGROUP_VALUE:-}"
+}
+
 tailscale_authkey_display() {
   if tailscale_setup_disabled; then
     printf "disabled"
@@ -267,6 +274,15 @@ tailscale_authkey_display() {
   fi
 
   mask_secret_for_display "${TAILSCALE_AUTHKEY:-}"
+}
+
+brewgroup_display() {
+  if brewgroup_setup_disabled; then
+    printf "disabled"
+    return 0
+  fi
+
+  printf "%s" "${BREWGROUP_VALUE}"
 }
 
 debug() {
@@ -330,6 +346,10 @@ hostname_valid() {
   [[ "${1:-}" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]
 }
 
+brewgroup_valid() {
+  [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,63}$ ]]
+}
+
 derive_tailscale_hostname() {
   local hostname="$1"
 
@@ -347,6 +367,7 @@ usage() {
   local debug_display="off"
   local force_display="off"
   local tailscale_authkey_display_value="none"
+  local brewgroup_display_value="none"
   local authorized_keys_display="none"
 
   if debug_enabled; then
@@ -358,17 +379,19 @@ usage() {
   fi
 
   tailscale_authkey_display_value="$(tailscale_authkey_display)"
+  brewgroup_display_value="$(brewgroup_display)"
   if array_has_values AUTHORIZED_KEY_SPECS; then
     authorized_keys_display="$(array_count AUTHORIZED_KEY_SPECS) provided"
   fi
 
   cat <<EOS
-Usage: ${tty_dim}[NONINTERACTIVE=1] [CI=1]${tty_reset} ${tty_bold}${SCRIPT_NAME}${tty_reset} ${tty_dim}[options]${tty_reset}
+Usage: ${tty_dim}[NONINTERACTIVE=1] [CI=1] [AGENTBOX_*...]${tty_reset} ${tty_bold}${SCRIPT_NAME}${tty_reset} ${tty_dim}[options]${tty_reset}
 
 ${tty_tp}Options:${tty_reset}
   --agentbox-version  installs a tagged release, accepts 1.2.3 or v1.2.3-beta.1 ${tty_dim}[default: $(agentbox_version_display)]${tty_reset}
   --authorized-key    adds an SSH public key or public-key file path ${tty_dim}[default: ${authorized_keys_display}]${tty_reset}
   --tailscale-authkey uses a Tailscale auth key to join; falsey disables setup ${tty_dim}[default: ${tailscale_authkey_display_value}]${tty_reset}
+  --brewgroup         manages Homebrew prefix group write access; falsey disables setup ${tty_dim}[default: ${brewgroup_display_value}]${tty_reset}
   --hostname          sets the system hostname and Tailscale name source ${tty_dim}[default: ${AGENTBOX_HOSTNAME_VALUE}]${tty_reset}
   --version           shows version of this script
   --debug             shows debug messages ${tty_dim}[default: ${debug_display}]${tty_reset}
@@ -377,14 +400,15 @@ ${tty_tp}Options:${tty_reset}
   -y, --yes           runs with all defaults and no prompts, sets NONINTERACTIVE=1
 
 ${tty_tp}Environment Variables:${tty_reset}
-  AGENTBOX_VERSION               tagged release to install, accepts 1.2.3 or v1.2.3-beta.1
-  AGENTBOX_AUTHORIZED_KEY        SSH public key or public-key file path
-  AGENTBOX_TAILSCALE_AUTHKEY     Tailscale auth key for joining; falsey disables setup
-  AGENTBOX_HOSTNAME              system hostname and Tailscale name source
-  AGENTBOX_FORCE                 set truthy to force supported operations
-  AGENTBOX_DEBUG                 set truthy to show debug messages
-  NONINTERACTIVE                 installs without prompting for user input
-  CI                             installs in CI mode (e.g. does not prompt for user input)
+  AGENTBOX_VERSION               same as --agentbox-version
+  AGENTBOX_AUTHORIZED_KEY        same as --authorized-key
+  AGENTBOX_TAILSCALE_AUTHKEY     same as --tailscale-authkey
+  AGENTBOX_BREWGROUP             same as --brewgroup
+  AGENTBOX_HOSTNAME              same as --hostname
+  AGENTBOX_FORCE                 same as --force
+  AGENTBOX_DEBUG                 same as --debug
+  NONINTERACTIVE                 same as --yes
+  CI                             runs in CI mode and disables prompts
 EOS
   if [[ "${1:-0}" != "noexit" ]]; then
     exit "${1:-0}"
@@ -466,6 +490,16 @@ parse_args() {
       --tailscale-authkey=*)
         require_inline_option_value "--tailscale-authkey" "${1#*=}"
         TAILSCALE_AUTHKEY="${1#*=}"
+        shift
+        ;;
+      --brewgroup)
+        require_next_option_value "--brewgroup" "$#"
+        BREWGROUP_VALUE="$2"
+        shift 2
+        ;;
+      --brewgroup=*)
+        require_inline_option_value "--brewgroup" "${1#*=}"
+        BREWGROUP_VALUE="${1#*=}"
         shift
         ;;
       --hostname)
@@ -1075,11 +1109,18 @@ run_agentbox_ssh_setup() {
 
 write_agentbox_health_state() {
   local tailscale_enabled="1"
+  local brewgroup_enabled="1"
+  local brewgroup_value="${BREWGROUP_VALUE}"
   local ssh_hardening_expected="0"
   local managed_macos_runner="0"
 
   if tailscale_setup_disabled; then
     tailscale_enabled="0"
+  fi
+
+  if brewgroup_setup_disabled; then
+    brewgroup_enabled="0"
+    brewgroup_value="off"
   fi
 
   if array_has_values AUTHORIZED_KEY_LINES; then
@@ -1095,6 +1136,9 @@ write_agentbox_health_state() {
 AGENTBOX_HEALTH_EXPECTED_HOSTNAME=$(shell_quote "${AGENTBOX_HOSTNAME_VALUE}")
 AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=$(shell_quote "${TAILSCALE_HOSTNAME_VALUE}")
 AGENTBOX_HEALTH_TAILSCALE_ENABLED=${tailscale_enabled}
+AGENTBOX_HEALTH_BREWGROUP_ENABLED=${brewgroup_enabled}
+AGENTBOX_HEALTH_BREWGROUP=$(shell_quote "${brewgroup_value}")
+AGENTBOX_HEALTH_BREW_PREFIX=$(shell_quote "${BREW_PREFIX_VALUE}")
 AGENTBOX_HEALTH_ADMIN_USER=$(shell_quote "${ADMIN_USER}")
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED=${ssh_hardening_expected}
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER=${managed_macos_runner}
@@ -1123,13 +1167,18 @@ SOCKETFILTERFW="/usr/libexec/ApplicationFirewall/socketfilterfw"
 AGENTBOX_HEALTH_EXPECTED_HOSTNAME=""
 AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=""
 AGENTBOX_HEALTH_TAILSCALE_ENABLED="0"
+AGENTBOX_HEALTH_BREWGROUP_ENABLED="0"
+AGENTBOX_HEALTH_BREWGROUP="off"
+AGENTBOX_HEALTH_BREW_PREFIX=""
 AGENTBOX_HEALTH_ADMIN_USER=""
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
+STATE_LOADED="0"
 
 if [[ -r "${STATE_FILE}" ]]; then
   # shellcheck source=/dev/null
   . "${STATE_FILE}"
+  STATE_LOADED="1"
 fi
 
 print_kv() {
@@ -1214,6 +1263,18 @@ sshd_hardened_value() {
   printf '1'
 }
 
+path_group_rwx_value() {
+  local path="$1"
+  local mode
+
+  mode="$(stat -f "%Lp" "${path}" 2>/dev/null || true)"
+  if [[ "${mode}" =~ ^[0-7]+$ ]] && (( (8#${mode} & 8#070) == 8#070 )); then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
 root_disk_available_kb() {
   df -Pk / 2>/dev/null | awk 'NR == 2 { print $4; found = 1 } END { if (!found) print "unknown" }'
 }
@@ -1234,6 +1295,20 @@ filevault_status() {
   fi
 }
 
+print_brewgroup() {
+  if [[ "${STATE_LOADED}" != "1" ]]; then
+    printf 'off\n'
+    return 1
+  fi
+
+  if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" && -n "${AGENTBOX_HEALTH_BREWGROUP}" ]]; then
+    printf '%s\n' "${AGENTBOX_HEALTH_BREWGROUP}"
+    return 0
+  fi
+
+  printf 'off\n'
+}
+
 generate_report() {
   local failures="0"
   local admin_uid=""
@@ -1252,6 +1327,10 @@ generate_report() {
   local firewall_stealth_ok=""
   local remote_login_ok=""
   local ssh_hardening_ok="skipped"
+  local brew_prefix_group=""
+  local brew_prefix_group_ok="skipped"
+  local brew_prefix_group_rwx_ok="skipped"
+  local brew_prefix_ok="skipped"
   local health_launchd_loaded_ok="0"
   local tailscaled_launchd_loaded_ok="skipped"
   local tailscaled_homebrew_launchd_absent_ok="skipped"
@@ -1346,6 +1425,37 @@ generate_report() {
     print_kv ssh_hardening_ok "${ssh_hardening_ok}"
   fi
 
+  print_kv brewgroup_enabled "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}"
+  print_kv brewgroup_expected "${AGENTBOX_HEALTH_BREWGROUP}"
+  print_kv brew_prefix "${AGENTBOX_HEALTH_BREW_PREFIX}"
+  if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" ]]; then
+    brew_prefix_group_ok="0"
+    brew_prefix_group_rwx_ok="0"
+    brew_prefix_ok="0"
+
+    if [[ -d "${AGENTBOX_HEALTH_BREW_PREFIX}" ]]; then
+      brew_prefix_group="$(stat -f "%Sg" "${AGENTBOX_HEALTH_BREW_PREFIX}" 2>/dev/null || true)"
+      brew_prefix_group_rwx_ok="$(path_group_rwx_value "${AGENTBOX_HEALTH_BREW_PREFIX}")"
+      if [[ "${brew_prefix_group}" == "${AGENTBOX_HEALTH_BREWGROUP}" ]]; then
+        brew_prefix_group_ok="1"
+      fi
+    fi
+
+    if [[ "${brew_prefix_group_ok}" == "1" && "${brew_prefix_group_rwx_ok}" == "1" ]]; then
+      brew_prefix_ok="1"
+    fi
+
+    print_kv brew_prefix_group "${brew_prefix_group}"
+    mark_required brew_prefix_group_ok "${brew_prefix_group_ok}"
+    mark_required brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
+    mark_required brew_prefix_ok "${brew_prefix_ok}"
+  else
+    print_kv brew_prefix_group "${brew_prefix_group}"
+    print_kv brew_prefix_group_ok "${brew_prefix_group_ok}"
+    print_kv brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
+    print_kv brew_prefix_ok "${brew_prefix_ok}"
+  fi
+
   print_kv tailscale_expected "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}"
   print_kv expected_tailscale_hostname "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}"
   if [[ "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}" == "1" ]]; then
@@ -1425,8 +1535,11 @@ case "${1:-}" in
   --check)
     generate_report
     ;;
+  --brewgroup)
+    print_brewgroup
+    ;;
   *)
-    printf 'Usage: health.sh [--report|--check]\n' >&2
+    printf 'Usage: health.sh [--report|--check|--brewgroup]\n' >&2
     exit 2
     ;;
 esac
@@ -1624,6 +1737,7 @@ EOABORT
 
 validate_inputs() {
   TAILSCALE_AUTHKEY="$(trim_whitespace "${TAILSCALE_AUTHKEY}")"
+  BREWGROUP_VALUE="$(trim_whitespace "${BREWGROUP_VALUE}")"
   ADMIN_USER="$(id -un 2>/dev/null || true)"
 
   if [[ -z "${ADMIN_USER}" ]]; then
@@ -1638,6 +1752,10 @@ validate_inputs() {
 
   if ! hostname_valid "${AGENTBOX_HOSTNAME_VALUE}"; then
     abort "hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} must be DNS-safe."
+  fi
+
+  if ! brewgroup_setup_disabled && ! brewgroup_valid "${BREWGROUP_VALUE}"; then
+    abort "brewgroup ${tty_ts}${BREWGROUP_VALUE}${tty_reset} must start with a letter or underscore and contain only letters, digits, underscore, dot, or dash."
   fi
 
   if tailscale_setup_disabled; then
@@ -1808,6 +1926,11 @@ plan_wrapper_execution() {
   plan_action "${tty_tp}ensure${tty_reset} macOS ComputerName, HostName, and LocalHostName are ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
   plan_action "${tty_tp}ensure${tty_reset} headless power, time, recovery, and firewall settings"
   plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile"
+  if brewgroup_setup_disabled; then
+    plan_action "${tty_tp}skip${tty_reset} Homebrew brewgroup setup because the brewgroup input is disabled"
+  else
+    plan_action "${tty_tp}ensure${tty_reset} Homebrew prefix group write access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  fi
   plan_action "${tty_tp}ensure${tty_reset} classic SSH is enabled for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
   if array_has_values AUTHORIZED_KEY_LINES; then
     plan_action "${tty_tp}install${tty_reset} ${tty_ts}$(array_count AUTHORIZED_KEY_LINES)${tty_reset} authorized key entries for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
@@ -1857,6 +1980,94 @@ ensure_bootbox_core_requirements() {
 run_bootbox_for_agentbox_brewfile() {
   bootbox_run_or_abort agentbox "bootbox failed while applying agentbox Brewfile ${tty_ts}$(agentbox_brewfile_display)${tty_reset}." \
     --brewfile "${AGENTBOX_BREWFILE}"
+}
+
+brewgroup_exists() {
+  dscl . -read "/Groups/$1" >/dev/null 2>&1
+}
+
+next_available_group_id() {
+  dscl . -list /Groups PrimaryGroupID 2>/dev/null | awk '
+    $2 ~ /^[0-9]+$/ { used[$2] = 1 }
+    END {
+      for (gid = 700; gid < 1000; gid++) {
+        if (!(gid in used)) {
+          print gid
+          exit
+        }
+      }
+    }
+  '
+}
+
+ensure_brewgroup_exists() {
+  local gid
+
+  if brewgroup_exists "${BREWGROUP_VALUE}"; then
+    log "${tty_tp}skipping${tty_reset} Homebrew group creation; ${tty_ts}${BREWGROUP_VALUE}${tty_reset} already exists"
+    return 0
+  fi
+
+  gid="$(next_available_group_id)"
+  if [[ -z "${gid}" ]]; then
+    abort "could not find an available local group id for Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}."
+  fi
+
+  log "${tty_tp}creating${tty_reset} Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}"
+  execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" PrimaryGroupID "${gid}"
+  execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" Password "*"
+  execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" RealName "agentbox Homebrew access"
+}
+
+path_group_rwx() {
+  local path="$1"
+  local mode
+
+  mode="$(stat -f "%Lp" "${path}" 2>/dev/null || true)"
+  [[ "${mode}" =~ ^[0-7]+$ ]] && (( (8#${mode} & 8#070) == 8#070 ))
+}
+
+brew_prefix_permissions_ok() {
+  local current_group
+
+  if [[ -z "${BREW_PREFIX_VALUE}" || ! -d "${BREW_PREFIX_VALUE}" ]]; then
+    return 1
+  fi
+
+  current_group="$(stat -f "%Sg" "${BREW_PREFIX_VALUE}" 2>/dev/null || true)"
+  [[ "${current_group}" == "${BREWGROUP_VALUE}" ]] && path_group_rwx "${BREW_PREFIX_VALUE}"
+}
+
+run_agentbox_brewgroup_setup() {
+  if brewgroup_setup_disabled; then
+    BREW_PREFIX_VALUE=""
+    log "${tty_tp}skipping${tty_reset} Homebrew brewgroup setup because the brewgroup input is disabled"
+    return 0
+  fi
+
+  check_sudo_access "before Homebrew brewgroup setup"
+  require_command brew
+
+  BREW_PREFIX_VALUE="$(brew --prefix 2>/dev/null || true)"
+  if [[ -z "${BREW_PREFIX_VALUE}" || ! -d "${BREW_PREFIX_VALUE}" ]]; then
+    abort "could not resolve an existing Homebrew prefix with ${tty_ts}brew --prefix${tty_reset}."
+  fi
+
+  ensure_brewgroup_exists
+
+  if brew_prefix_permissions_ok; then
+    log "${tty_tp}skipping${tty_reset} Homebrew prefix permissions; ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} is already group-writable by ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    return 0
+  fi
+
+  log "${tty_tp}setting${tty_reset} Homebrew prefix ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} group write access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  execute sudo find -x "${BREW_PREFIX_VALUE}" -exec chgrp -h "${BREWGROUP_VALUE}" {} +
+  execute sudo find -x "${BREW_PREFIX_VALUE}" ! -type l -exec chmod g+rwX {} +
+
+  if ! brew_prefix_permissions_ok; then
+    abort "Homebrew prefix ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} is still not group-writable by ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
+  fi
 }
 
 abort_missing_tailscale_authkey() {
@@ -2126,6 +2337,7 @@ main() {
   debug raw AGENTBOX_SOURCE="$(agentbox_source_display)"
   debug raw AGENTBOX_TARGET="$(agentbox_target_display)"
   debug raw AGENTBOX_HOSTNAME="${AGENTBOX_HOSTNAME_VALUE}"
+  debug raw AGENTBOX_BREWGROUP="$(brewgroup_display)"
   debug raw INVOKING_ADMIN_USER="${ADMIN_USER}"
   debug raw AGENTBOX_AUTHORIZED_KEY_COUNT="$(array_count AUTHORIZED_KEY_LINES)"
   if tailscale_setup_disabled; then
@@ -2158,6 +2370,7 @@ main() {
   run_agentbox_hostname_setup
   run_agentbox_macos_settings
   run_bootbox_for_agentbox_brewfile
+  run_agentbox_brewgroup_setup
   run_agentbox_ssh_setup
   run_agentbox_tailscale_setup
   run_agentbox_launchd_health_setup

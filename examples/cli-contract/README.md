@@ -15,12 +15,16 @@ command -v boot.sh >/dev/null
 ```bash
 # should show agentbox usage
 boot.sh --help | grep -F "Usage:"
+boot.sh --help | grep -F "[NONINTERACTIVE=1]"
+boot.sh --help | grep -F "[CI=1]"
+boot.sh --help | grep -F "[AGENTBOX_*...]"
 boot.sh --help | grep -F "boot.sh [options]"
 
 # should document public options
 boot.sh --help | grep -F -- "--agentbox-version"
 boot.sh --help | grep -F -- "--authorized-key"
 boot.sh --help | grep -F -- "--tailscale-authkey"
+boot.sh --help | grep -F -- "--brewgroup"
 boot.sh --help | grep -F -- "--hostname"
 boot.sh --help | grep -F -- "--version"
 boot.sh --help | grep -F -- "--debug"
@@ -28,14 +32,16 @@ boot.sh --help | grep -F -- "--force"
 boot.sh --help | grep -F -- "--yes"
 
 # should document public environment variables
-boot.sh --help | grep -F "AGENTBOX_VERSION"
-boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEY"
-boot.sh --help | grep -F "AGENTBOX_TAILSCALE_AUTHKEY"
-boot.sh --help | grep -F "AGENTBOX_HOSTNAME"
-boot.sh --help | grep -F "AGENTBOX_FORCE"
-boot.sh --help | grep -F "AGENTBOX_DEBUG"
-boot.sh --help | grep -F "NONINTERACTIVE"
-boot.sh --help | grep -F "CI"
+boot.sh --help | grep -F "AGENTBOX_VERSION               same as --agentbox-version"
+boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEY        same as --authorized-key"
+boot.sh --help | grep -F "AGENTBOX_TAILSCALE_AUTHKEY     same as --tailscale-authkey"
+boot.sh --help | grep -F "AGENTBOX_BREWGROUP             same as --brewgroup"
+boot.sh --help | grep -F "AGENTBOX_HOSTNAME              same as --hostname"
+boot.sh --help | grep -F "AGENTBOX_FORCE                 same as --force"
+boot.sh --help | grep -F "AGENTBOX_DEBUG                 same as --debug"
+boot.sh --help | grep -F "NONINTERACTIVE                 same as --yes"
+boot.sh --help | grep -F "CI                             runs in CI mode and disables prompts"
+if boot.sh --help | grep -F -- "--ci"; then exit 1; fi
 
 # should keep the unsupported macOS override out of help
 if boot.sh --help | grep -F "AGENTBOX_ALLOW_UNSUPPORTED_MACOS"; then exit 1; fi
@@ -49,6 +55,10 @@ if boot.sh --help | grep -F -- "--tailscale-tag"; then exit 1; fi
 if boot.sh --help | grep -F -- "--tailscale-tags"; then exit 1; fi
 if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAG"; then exit 1; fi
 if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"; then exit 1; fi
+
+# should not expose dashed brewgroup aliases
+if boot.sh --help | grep -F -- "--brew-group"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_BREW_GROUP"; then exit 1; fi
 
 # should not expose removed legacy surfaces
 if boot.sh --help | grep -F -- "--op-token"; then exit 1; fi
@@ -71,15 +81,20 @@ if AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" boot.sh --help | grep -F "t
 AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "falsey disables setup"
 AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "[default: disabled]"
 
+# should show the default and disabled brewgroup values
+boot.sh --help | grep -F "[default: brewer]"
+AGENTBOX_BREWGROUP=off boot.sh --help | grep -F "[default: disabled]"
+
 # should fail on unknown options with usage context
 set +e
 output="$(boot.sh --not-real 2>&1)"
-status="$?"
+command_status="$?"
 set -e
-printf "%s\n" "$output" | tee /dev/stderr | grep -F "unrecognized option"
-printf "%s\n" "$output" | tee /dev/stderr | grep -F "Usage:"
-printf "%s\n" "$output" | tee /dev/stderr | grep -F "boot.sh [options]"
-test "$status" -ne 0
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "unrecognized option"
+printf "%s\n" "$output" | grep -F "Usage:"
+printf "%s\n" "$output" | grep -F "boot.sh [options]"
+test "$command_status" -ne 0
 ```
 
 ## Destroy tests

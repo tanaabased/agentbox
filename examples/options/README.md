@@ -20,6 +20,7 @@ mkdir -p "$TMPDIR"
 # should fail without a Tailscale auth key before the first join
 if AGENTBOX_TAILSCALE_AUTHKEY="" boot.sh \
   --force \
+  --brewgroup off \
   --hostname "TANAABAGENTBOX-TEST$GITHUB_RUN_ID"; then
   exit 1
 fi
@@ -35,6 +36,7 @@ boot.sh \
   --force \
   --debug \
   --hostname "TANAABAGENTBOX-TEST$GITHUB_RUN_ID" \
+  --brewgroup "agentboxbrewopt$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --authorized-key "file:$TMPDIR/id_agentbox_options_file.pub" \
   --authorized-key "$(cat "$TMPDIR/id_agentbox_options_raw.pub")"
@@ -46,6 +48,7 @@ AGENTBOX_TAILSCALE_AUTHKEY="" boot.sh \
   --force \
   --debug \
   --hostname "TANAABAGENTBOX-TEST$GITHUB_RUN_ID" \
+  --brewgroup "agentboxbrewopt$GITHUB_RUN_ID" \
   --authorized-key "file:$TMPDIR/id_agentbox_options_file.pub" \
   --authorized-key "$(cat "$TMPDIR/id_agentbox_options_raw.pub")"
 ```
@@ -68,6 +71,13 @@ test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "https
 # should satisfy the agentbox Brewfile
 brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
 
+# should make the Homebrew prefix writable by the configured brewgroup
+dscl . -read "/Groups/agentboxbrewopt$GITHUB_RUN_ID" >/dev/null
+brew_prefix="$(brew --prefix)"
+test "$(stat -f "%Sg" "$brew_prefix")" = "agentboxbrewopt$GITHUB_RUN_ID"
+brew_prefix_mode="$(stat -f "%Lp" "$brew_prefix")"
+test "$((8#$brew_prefix_mode & 8#070))" = "$((8#070))"
+
 # should install both option-provided public keys for the runner user
 test -f "$HOME/.ssh/authorized_keys"
 grep -qxF "$(cat "$TMPDIR/id_agentbox_options_file.pub")" "$HOME/.ssh/authorized_keys"
@@ -78,6 +88,12 @@ test "$(stat -f "%Lp" "$HOME/.ssh/authorized_keys")" = "600"
 # should report healthy macOS, SSH, launchd, and Tailscale state
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_hostname=TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_tailscale_hostname=AGENTBOX-TEST$GITHUB_RUN_ID"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_enabled=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_expected=agentboxbrewopt$GITHUB_RUN_ID"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix=$(brew --prefix)"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_rwx_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "macos_identity_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_hardening_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_loaded_ok=1"
@@ -86,6 +102,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ta
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "health_launchd_loaded_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
+test "$(sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup)" = "agentboxbrewopt$GITHUB_RUN_ID"
 sudo /opt/tanaab/agentbox/bin/health.sh --check
 
 # should allow key-based SSH login with both generated private keys
@@ -128,5 +145,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ro
 ../../scripts/cleanup-agentbox-runner.sh \
   --authorized-key-file "$TMPDIR/id_agentbox_options_file.pub" \
   --authorized-key-file "$TMPDIR/id_agentbox_options_raw.pub" \
+  --brewgroup "agentboxbrewopt$GITHUB_RUN_ID" \
   --remove-tmpdir
 ```

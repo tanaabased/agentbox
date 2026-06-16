@@ -19,6 +19,7 @@ boot.sh \
   --debug \
   --agentbox-version v1.0.0-beta.1 \
   --tailscale-authkey off \
+  --brewgroup off \
   --hostname "TANAABAGENTBOXVER$GITHUB_RUN_ID"
 ```
 

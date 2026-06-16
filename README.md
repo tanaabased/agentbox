@@ -16,6 +16,7 @@ user-space setup.
 - Materializes this repo at `~/tanaab/agentbox` through the hosted `boot.sh` wrapper.
 - Applies the repo [`Brewfile`](./Brewfile) through
   [Bootbox](https://github.com/tanaabased/bootbox).
+- Makes the Homebrew prefix group-writable by the configured brewgroup.
 - Sets macOS system identity and headless power, time, recovery, and firewall defaults.
 - Enables classic SSH, installs optional authorized keys, and hardens sshd to key-only login when
   keys are provided.
@@ -122,6 +123,15 @@ agentbootbox \
   --hostname TANAABAGENTBOX1
 ```
 
+The Homebrew prefix is made group-writable by `brewer` by default so future non-admin users can be
+granted package-management access through group membership. Use `--brewgroup` to choose another
+group, or pass a falsey value to skip brewgroup setup:
+
+```sh
+agentbootbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup agentbrew --hostname TANAABAGENTBOX1
+agentbootbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup off --hostname TANAABAGENTBOX1
+```
+
 ## Tailscale
 
 Tailscale is the recommended remote access path, but it is not mandatory. When enabled, `boot.sh`
@@ -157,6 +167,8 @@ they do not land in shell history.
 
 - `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key for first join; use
   `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
+- `AGENTBOX_BREWGROUP` or `--brewgroup`: Homebrew prefix group for write access; defaults to
+  `brewer`; use `off`, `false`, `no`, `0`, or `null` to skip brewgroup setup.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH; providing keys also enables key-only SSH hardening.
@@ -181,6 +193,15 @@ Use `--report` for the same key-value report without failing on drift. When Tail
 the report should include `tailscaled_launchd_loaded_ok=1` and
 `tailscaled_homebrew_launchd_absent_ok=1`, confirming the agentbox system daemon is loaded and the
 legacy Homebrew launchd wrapper is not.
+
+When brewgroup setup is enabled, the report should include `brew_prefix_ok=1`. To expose the
+configured group to other systems, use:
+
+```sh
+sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup
+```
+
+This prints the configured brewgroup, or `off` when brewgroup setup was disabled.
 
 - If authorized keys were provided, verify key-based SSH over Tailscale or LAN from another machine
   before closing the local/admin recovery session:
