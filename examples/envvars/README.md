@@ -10,6 +10,9 @@ settings, Homebrew state, SSH, launchd, and Tailscale.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
+# should have a local git checkout available as the agentbox source
+test -d "$GITHUB_WORKSPACE/.git"
+
 # should have a Tailscale auth key from the workflow secret
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 
@@ -25,6 +28,8 @@ ssh-keygen -t ed25519 -N "" -C "agentbox-envvars@example.test" -f "$TMPDIR/id_ag
 AGENTBOX_DEBUG=1 \
 AGENTBOX_FORCE=1 \
 AGENTBOX_HOSTNAME="TANAABAGENTBOX-TEST$GITHUB_RUN_ID" \
+AGENTBOX_BREWGROUP="agentboxbrewenv$GITHUB_RUN_ID" \
+AGENTBOX_VERSION="$GITHUB_WORKSPACE" \
 AGENTBOX_AUTHORIZED_KEY="$(cat "$TMPDIR/id_agentbox_envvars.pub")" \
 boot.sh
 test -f "$HOME/tanaab/agentbox/Brewfile"
@@ -35,6 +40,8 @@ AGENTBOX_TAILSCALE_AUTHKEY="" \
 AGENTBOX_DEBUG=1 \
 AGENTBOX_FORCE=1 \
 AGENTBOX_HOSTNAME="TANAABAGENTBOX-TEST$GITHUB_RUN_ID" \
+AGENTBOX_BREWGROUP="agentboxbrewenv$GITHUB_RUN_ID" \
+AGENTBOX_VERSION="$GITHUB_WORKSPACE" \
 AGENTBOX_AUTHORIZED_KEY="$(cat "$TMPDIR/id_agentbox_envvars.pub")" \
 boot.sh
 ```
@@ -48,14 +55,22 @@ command -v git >/dev/null
 command -v jq >/dev/null
 command -v tailscale >/dev/null
 
-# should materialize agentbox from the public HTTPS default branch
+# should materialize agentbox from the local workflow checkout
 test -d "$HOME/tanaab/agentbox/.git"
 test -f "$HOME/tanaab/agentbox/boot.sh"
 test -f "$HOME/tanaab/agentbox/Brewfile"
-test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "https://github.com/tanaabased/agentbox.git"
+test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "$GITHUB_WORKSPACE"
 
 # should satisfy the agentbox Brewfile
 brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
+
+# should make the Homebrew prefix writable by the configured brewgroup
+dscl . -read "/Groups/agentboxbrewenv$GITHUB_RUN_ID" >/dev/null
+dseditgroup -o checkmember -m "$(id -un)" "agentboxbrewenv$GITHUB_RUN_ID"
+brew_prefix="$(brew --prefix)"
+test "$(stat -f "%Sg" "$brew_prefix")" = "agentboxbrewenv$GITHUB_RUN_ID"
+brew_prefix_mode="$(stat -f "%Lp" "$brew_prefix")"
+test "$((8#$brew_prefix_mode & 8#070))" = "$((8#070))"
 
 # should install the envvar-provided public key for the runner user
 test -f "$HOME/.ssh/authorized_keys"
@@ -66,6 +81,16 @@ test "$(stat -f "%Lp" "$HOME/.ssh/authorized_keys")" = "600"
 # should report healthy macOS, SSH, launchd, and Tailscale state
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_hostname=TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_tailscale_hostname=AGENTBOX-TEST$GITHUB_RUN_ID"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_enabled=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_expected=agentboxbrewenv$GITHUB_RUN_ID"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_admin_user_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_enabled=0"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_expected=off"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_nested_ok=skipped"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix=$(brew --prefix)"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_rwx_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "macos_identity_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_hardening_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_loaded_ok=1"
@@ -74,6 +99,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ta
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "health_launchd_loaded_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
+test "$(sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup)" = "agentboxbrewenv$GITHUB_RUN_ID"
 sudo /opt/tanaab/agentbox/bin/health.sh --check
 
 # should allow key-based SSH login with the generated private key
@@ -102,5 +128,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ro
 # should remove agentbox runner state and example fixtures
 ../../scripts/cleanup-agentbox-runner.sh \
   --authorized-key-file "$TMPDIR/id_agentbox_envvars.pub" \
+  --brewgroup "agentboxbrewenv$GITHUB_RUN_ID" \
   --remove-tmpdir
 ```

@@ -24,6 +24,12 @@ explicitly asked.
 - `scripts/build-dist.js`, `site/`, `netlify.toml`, release workflows, and the committed `dist/`
   files own the hosted-script publishing surface.
 
+## Naming And Style
+
+- In markdown and docs prose, stylize this project as `agentbox`.
+- Preserve literal identifiers exactly as written, including commands, paths, hostnames, environment
+  variables, labels, generated strings, repository names, and URLs.
+
 ## Build Artifacts
 
 - Do not edit, regenerate, stage, or commit files under `dist/` during local agent work.
