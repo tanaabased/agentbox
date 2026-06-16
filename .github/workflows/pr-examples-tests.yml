@@ -49,5 +49,6 @@ jobs:
           AGENTBOX_TAILSCALE_AUTHKEY: ${{ secrets.TANAAB_HOLONET_LOGIN }}
           TMPDIR: ${{ github.workspace }}/examples/${{ matrix.example }}/.tmp
         run: |
+          brew update
           mkdir -p "$TMPDIR"
           bun run leia "examples/${{ matrix.example }}/README.md" -c "Destroy tests" --stdin
