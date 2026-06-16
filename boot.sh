@@ -234,6 +234,8 @@ DETECTED_OS=""
 ARCH=""
 OS=""
 AGENTBOX_VERSION_TAG=""
+AGENTBOX_SOURCE_KIND=""
+AGENTBOX_SOURCE_LOCAL_PATH=""
 AGENTBOX_TARGET_PATH=""
 AGENTBOX_BREWFILE=""
 BREW_PREFIX_VALUE=""
@@ -340,6 +342,46 @@ display_home_path() {
   fi
 
   printf "%s" "${path}"
+}
+
+find_git_repo_root() {
+  local path="$1"
+  local parent
+
+  while :; do
+    if [[ -d "${path}/.git" ]]; then
+      printf "%s" "${path}"
+      return 0
+    fi
+
+    if [[ -f "${path}/HEAD" && -d "${path}/objects" && -d "${path}/refs" ]]; then
+      printf "%s" "${path}"
+      return 0
+    fi
+
+    parent="$(dirname "${path}")"
+    if [[ "${parent}" == "${path}" ]]; then
+      return 1
+    fi
+
+    path="${parent}"
+  done
+}
+
+resolve_local_repo_source_path() {
+  local source_path="$1"
+  local absolute_path
+  local repo_root
+
+  if ! absolute_path="$(cd "${source_path}" 2>/dev/null && pwd -P)"; then
+    return 1
+  fi
+
+  if ! repo_root="$(find_git_repo_root "${absolute_path}")"; then
+    return 1
+  fi
+
+  printf "%s" "${repo_root}"
 }
 
 hostname_valid() {
@@ -628,22 +670,39 @@ agentbox_brewfile_display() {
 prepare_agentbox_source() {
   AGENTBOX_TARGET_PATH="${HOME}/tanaab/agentbox"
   AGENTBOX_VERSION_TAG=""
+  AGENTBOX_SOURCE_KIND=""
+  AGENTBOX_SOURCE_LOCAL_PATH=""
 
-  if [[ -n "${AGENTBOX_VERSION_VALUE}" ]]; then
-    if ! is_semver_value "${AGENTBOX_VERSION_VALUE}"; then
-      abort "agentbox version ${tty_ts}${AGENTBOX_VERSION_VALUE}${tty_reset} must use 1.2.3, v1.2.3, or v1.2.3-beta.1 format."
+  if [[ -z "${AGENTBOX_VERSION_VALUE}" || "${AGENTBOX_VERSION_VALUE}" == "latest" ]]; then
+    AGENTBOX_SOURCE_KIND="default"
+  elif is_semver_value "${AGENTBOX_VERSION_VALUE}"; then
+    AGENTBOX_SOURCE_KIND="version"
+    AGENTBOX_VERSION_TAG="$(normalize_release_tag "${AGENTBOX_VERSION_VALUE}")"
+  else
+    AGENTBOX_SOURCE_KIND="local"
+
+    if ! AGENTBOX_SOURCE_LOCAL_PATH="$(resolve_local_repo_source_path "${AGENTBOX_VERSION_VALUE}")"; then
+      abort "local agentbox source ${tty_ts}${AGENTBOX_VERSION_VALUE}${tty_reset} must resolve to a local git repo."
     fi
 
-    AGENTBOX_VERSION_TAG="$(normalize_release_tag "${AGENTBOX_VERSION_VALUE}")"
+    if [[ "${AGENTBOX_SOURCE_LOCAL_PATH}" == "${AGENTBOX_TARGET_PATH}" ]]; then
+      abort "local agentbox source ${tty_ts}${AGENTBOX_SOURCE_LOCAL_PATH}${tty_reset} cannot be the same as target ${tty_ts}$(agentbox_target_display)${tty_reset}."
+    fi
   fi
 }
 
 agentbox_source_display() {
-  if [[ -n "${AGENTBOX_VERSION_TAG}" ]]; then
-    printf "%s" "${AGENTBOX_VERSION_TAG}"
-  else
-    printf "default branch over HTTPS"
-  fi
+  case "${AGENTBOX_SOURCE_KIND:-default}" in
+    version)
+      printf "%s" "${AGENTBOX_VERSION_TAG}"
+      ;;
+    local)
+      display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}"
+      ;;
+    *)
+      printf "default branch over HTTPS"
+      ;;
+  esac
 }
 
 repo_archive_url() {
@@ -667,22 +726,40 @@ repo_prepare_target() {
   return 0
 }
 
+agentbox_target_git_repo() {
+  git -C "${AGENTBOX_TARGET_PATH}" rev-parse --is-inside-work-tree >/dev/null 2>&1
+}
+
+warn_agentbox_fetch_skipped() {
+  local target_display
+  target_display="$(agentbox_target_display)"
+
+  if [[ "${AGENTBOX_SOURCE_KIND}" == "default" ]] && agentbox_target_git_repo; then
+    warn "${tty_tp}skipping${tty_reset} agentbox fetch because ${tty_ts}${target_display}${tty_reset} already exists and ${tty_bold}--force${tty_reset} is not set; using the existing checkout. To update it manually, run: ${tty_bold}git -C ${target_display} pull --ff-only${tty_reset}"
+  else
+    warn "${tty_tp}skipping${tty_reset} agentbox fetch because ${tty_ts}${target_display}${tty_reset} already exists and ${tty_bold}--force${tty_reset} is not set; using the existing directory. Re-run with ${tty_bold}--force${tty_reset} to replace it."
+  fi
+}
+
 fetch_agentbox_source() {
   local archive_path
   local archive_url
 
   if ! repo_prepare_target "${AGENTBOX_TARGET_PATH}"; then
-    warn "${tty_tp}skipping${tty_reset} agentbox fetch because ${tty_ts}$(agentbox_target_display)${tty_reset} already exists and ${tty_bold}--force${tty_reset} is not set."
+    warn_agentbox_fetch_skipped
     return 0
   fi
 
-  if [[ -n "${AGENTBOX_VERSION_TAG}" ]]; then
+  if [[ "${AGENTBOX_SOURCE_KIND}" == "version" ]]; then
     archive_url="$(repo_archive_url "${AGENTBOX_VERSION_TAG}")"
     archive_path="${BOOT_TMPDIR}/agentbox-${AGENTBOX_VERSION_TAG}.tar.gz"
     log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} release ${tty_ts}${AGENTBOX_VERSION_TAG}${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
     execute mkdir -p "${AGENTBOX_TARGET_PATH}"
     execute "${CURL}" -fsSL "${archive_url}" -o "${archive_path}"
     execute tar -xzf "${archive_path}" -C "${AGENTBOX_TARGET_PATH}" --strip-components=1
+  elif [[ "${AGENTBOX_SOURCE_KIND}" == "local" ]]; then
+    log "${tty_tp}cloning${tty_reset} ${tty_ts}agentbox${tty_reset} from local git repo ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}")${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
+    execute git clone "${AGENTBOX_SOURCE_LOCAL_PATH}" "${AGENTBOX_TARGET_PATH}"
   else
     log "${tty_tp}cloning${tty_reset} ${tty_ts}agentbox${tty_reset} from ${tty_ts}${AGENTBOX_REPO_HTTPS_URL}${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
     execute git clone "${AGENTBOX_REPO_HTTPS_URL}" "${AGENTBOX_TARGET_PATH}"
@@ -1909,8 +1986,10 @@ plan_agentbox_fetch() {
     fi
   fi
 
-  if [[ -n "${AGENTBOX_VERSION_TAG}" ]]; then
+  if [[ "${AGENTBOX_SOURCE_KIND}" == "version" ]]; then
     plan_action "${tty_tp}extract${tty_reset} ${tty_ts}agentbox${tty_reset} release ${tty_ts}${AGENTBOX_VERSION_TAG}${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
+  elif [[ "${AGENTBOX_SOURCE_KIND}" == "local" ]]; then
+    plan_action "${tty_tp}clone${tty_reset} ${tty_ts}agentbox${tty_reset} from local git repo ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}")${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
   else
     plan_action "${tty_tp}clone${tty_reset} ${tty_ts}agentbox${tty_reset} from public HTTPS default branch to ${tty_ts}${target_display}${tty_reset}"
   fi

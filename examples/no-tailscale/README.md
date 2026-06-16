@@ -10,6 +10,9 @@ system settings, Homebrew state, SSH, and launchd.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
+# should have a local git checkout available as the agentbox source
+test -d "$GITHUB_WORKSPACE/.git"
+
 # should prepare a clean agentbox target and runner state
 ../../scripts/cleanup-agentbox-runner.sh
 mkdir -p "$TMPDIR"
@@ -23,6 +26,7 @@ boot.sh \
   --force \
   --debug \
   --hostname "TANAABAGENTBOX-NOTS$GITHUB_RUN_ID" \
+  --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey off \
   --brewgroup off \
   --authorized-key "file:$TMPDIR/id_agentbox_no_tailscale.pub"
@@ -39,11 +43,11 @@ command -v git >/dev/null
 command -v jq >/dev/null
 command -v tailscale >/dev/null
 
-# should materialize agentbox from the public HTTPS default branch
+# should materialize agentbox from the local workflow checkout
 test -d "$HOME/tanaab/agentbox/.git"
 test -f "$HOME/tanaab/agentbox/boot.sh"
 test -f "$HOME/tanaab/agentbox/Brewfile"
-test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "https://github.com/tanaabased/agentbox.git"
+test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "$GITHUB_WORKSPACE"
 
 # should satisfy the agentbox Brewfile
 brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
