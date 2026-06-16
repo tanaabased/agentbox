@@ -132,6 +132,24 @@ agentbootbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup agentbrew --hostname 
 agentbootbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup off --hostname TANAABAGENTBOX1
 ```
 
+When brewgroup setup is enabled, agentbox adds the invoking admin user to the configured brewgroup
+as a direct member so the bootstrap account keeps write access to the Homebrew prefix.
+
+For controlled agentbox hosts, you may append a trusted nested group with
+`--brewgroup brewgroup:trusted-group`. For example, `--brewgroup brewer:staff` keeps the Homebrew
+prefix owned by `brewer`, but nests macOS `staff` into `brewer` so future local users in `staff`
+inherit Homebrew prefix write access without being added one by one:
+
+```sh
+agentbootbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup brewer:staff --hostname TANAABAGENTBOX1
+```
+
+This is opt-in because it grants every current and future member of the trusted group write access
+to the Homebrew prefix. Use it only on secured infrastructure hosts with restrictive network access,
+SSH-key access, and trusted local account creation. Do not use it on shared workstations or machines
+where unrelated local users may be added to the trusted group. agentbox creates the brewgroup when
+missing, but the trusted group must already exist.
+
 ## Tailscale
 
 Tailscale is the recommended remote access path, but it is not mandatory. When enabled, `boot.sh`
@@ -168,7 +186,8 @@ they do not land in shell history.
 - `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key for first join; use
   `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
 - `AGENTBOX_BREWGROUP` or `--brewgroup`: Homebrew prefix group for write access; defaults to
-  `brewer`; use `off`, `false`, `no`, `0`, or `null` to skip brewgroup setup.
+  `brewer`; accepts `brewgroup:trusted-group` for opt-in nested trusted group access; use `off`,
+  `false`, `no`, `0`, or `null` to skip brewgroup setup.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH; providing keys also enables key-only SSH hardening.
@@ -194,14 +213,16 @@ the report should include `tailscaled_launchd_loaded_ok=1` and
 `tailscaled_homebrew_launchd_absent_ok=1`, confirming the agentbox system daemon is loaded and the
 legacy Homebrew launchd wrapper is not.
 
-When brewgroup setup is enabled, the report should include `brew_prefix_ok=1`. To expose the
-configured group to other systems, use:
+When brewgroup setup is enabled, the report should include `brewgroup_admin_user_ok=1` and
+`brew_prefix_ok=1`. If trusted nesting is enabled, it should also include
+`trusted_brewgroup_nested_ok=1`. To expose the configured filesystem group to other systems, use:
 
 ```sh
 sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup
 ```
 
-This prints the configured brewgroup, or `off` when brewgroup setup was disabled.
+This prints the configured brewgroup without any trusted-group suffix, or `off` when brewgroup setup
+was disabled.
 
 - If authorized keys were provided, verify key-based SSH over Tailscale or LAN from another machine
   before closing the local/admin recovery session:

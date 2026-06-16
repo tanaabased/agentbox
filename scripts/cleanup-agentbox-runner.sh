@@ -3,6 +3,7 @@ set -euo pipefail
 
 AUTHORIZED_KEY_FILES=()
 BREWGROUPS=()
+USERS=()
 REMOVE_TMPDIR="0"
 
 abort() {
@@ -12,7 +13,7 @@ abort() {
 
 usage() {
   cat <<'EOUSAGE'
-Usage: cleanup-agentbox-runner.sh [--authorized-key-file <path>]... [--brewgroup <group>]... [--remove-tmpdir]
+Usage: cleanup-agentbox-runner.sh [--authorized-key-file <path>]... [--brewgroup <group>]... [--user <name>]... [--remove-tmpdir]
 EOUSAGE
 }
 
@@ -44,6 +45,20 @@ while [[ "$#" -gt 0 ]]; do
         abort "--brewgroup requires a group name."
       fi
       BREWGROUPS+=("${1#*=}")
+      shift
+      ;;
+    --user)
+      if [[ "$#" -lt 2 || -z "$2" ]]; then
+        abort "--user requires a user name."
+      fi
+      USERS+=("$2")
+      shift 2
+      ;;
+    --user=*)
+      if [[ -z "${1#*=}" ]]; then
+        abort "--user requires a user name."
+      fi
+      USERS+=("${1#*=}")
       shift
       ;;
     --remove-tmpdir)
@@ -96,9 +111,27 @@ remove_brewgroup() {
   fi
 }
 
+remove_user() {
+  local user="$1"
+
+  if [[ -z "${user}" || "${user}" == "$(id -un)" || "${user}" == "root" ]]; then
+    return 0
+  fi
+
+  if dscl . -read "/Users/${user}" >/dev/null 2>&1; then
+    sudo dscl . -delete "/Users/${user}" >/dev/null 2>&1 || true
+  fi
+}
+
 if [[ "${#AUTHORIZED_KEY_FILES[@]}" -gt 0 ]]; then
   for authorized_key_file in "${AUTHORIZED_KEY_FILES[@]}"; do
     remove_authorized_key_file "${authorized_key_file}"
+  done
+fi
+
+if [[ "${#USERS[@]}" -gt 0 ]]; then
+  for user in "${USERS[@]}"; do
+    remove_user "${user}"
   done
 fi
 

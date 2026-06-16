@@ -218,7 +218,9 @@ DEBUG="${AGENTBOX_DEBUG:-${DEBUG:-${RUNNER_DEBUG:-}}}"
 FORCE="${AGENTBOX_FORCE:-}"
 AGENTBOX_VERSION_VALUE="${AGENTBOX_VERSION:-}"
 AGENTBOX_HOSTNAME_VALUE="${AGENTBOX_HOSTNAME:-${DEFAULT_AGENTBOX_HOSTNAME}}"
-BREWGROUP_VALUE="${AGENTBOX_BREWGROUP:-${DEFAULT_BREWGROUP}}"
+BREWGROUP_INPUT="${AGENTBOX_BREWGROUP:-${DEFAULT_BREWGROUP}}"
+BREWGROUP_VALUE=""
+TRUSTED_BREWGROUP_VALUE=""
 TAILSCALE_AUTHKEY="${AGENTBOX_TAILSCALE_AUTHKEY:-}"
 ADMIN_USER=""
 AUTHORIZED_KEY_CLI_SEEN="0"
@@ -266,7 +268,11 @@ tailscale_setup_disabled() {
 }
 
 brewgroup_setup_disabled() {
-  value_disabled "${BREWGROUP_VALUE:-}"
+  value_disabled "${BREWGROUP_INPUT:-}"
+}
+
+trusted_brewgroup_enabled() {
+  [[ -n "${TRUSTED_BREWGROUP_VALUE}" ]] && ! brewgroup_setup_disabled
 }
 
 tailscale_authkey_display() {
@@ -284,7 +290,7 @@ brewgroup_display() {
     return 0
   fi
 
-  printf "%s" "${BREWGROUP_VALUE}"
+  printf "%s" "${BREWGROUP_INPUT}"
 }
 
 debug() {
@@ -392,6 +398,36 @@ brewgroup_valid() {
   [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,63}$ ]]
 }
 
+parse_brewgroup_input() {
+  BREWGROUP_VALUE=""
+  TRUSTED_BREWGROUP_VALUE=""
+
+  if brewgroup_setup_disabled; then
+    return 0
+  fi
+
+  if [[ "${BREWGROUP_INPUT}" == *:*:* ]]; then
+    abort "brewgroup ${tty_ts}${BREWGROUP_INPUT}${tty_reset} must use brewgroup or brewgroup:trusted-group syntax."
+  fi
+
+  if [[ "${BREWGROUP_INPUT}" == *:* ]]; then
+    BREWGROUP_VALUE="${BREWGROUP_INPUT%%:*}"
+    TRUSTED_BREWGROUP_VALUE="${BREWGROUP_INPUT#*:}"
+  else
+    BREWGROUP_VALUE="${BREWGROUP_INPUT}"
+  fi
+
+  if [[ "${BREWGROUP_INPUT}" == :* || "${BREWGROUP_INPUT}" == *: ]]; then
+    abort "brewgroup ${tty_ts}${BREWGROUP_INPUT}${tty_reset} must use brewgroup or brewgroup:trusted-group syntax."
+  fi
+
+  if value_disabled "${BREWGROUP_VALUE}" || {
+    [[ -n "${TRUSTED_BREWGROUP_VALUE}" ]] && value_disabled "${TRUSTED_BREWGROUP_VALUE}"
+  }; then
+    abort "falsey brewgroup values must be used alone, not in brewgroup:trusted-group syntax."
+  fi
+}
+
 derive_tailscale_hostname() {
   local hostname="$1"
 
@@ -433,7 +469,7 @@ ${tty_tp}Options:${tty_reset}
   --agentbox-version  installs a tagged release, accepts 1.2.3 or v1.2.3-beta.1 ${tty_dim}[default: $(agentbox_version_display)]${tty_reset}
   --authorized-key    adds an SSH public key or public-key file path ${tty_dim}[default: ${authorized_keys_display}]${tty_reset}
   --tailscale-authkey uses a Tailscale auth key to join; falsey disables setup ${tty_dim}[default: ${tailscale_authkey_display_value}]${tty_reset}
-  --brewgroup         manages Homebrew prefix group write access; falsey disables setup ${tty_dim}[default: ${brewgroup_display_value}]${tty_reset}
+  --brewgroup         manages Homebrew prefix group write access; accepts group[:trusted-group]; falsey disables setup ${tty_dim}[default: ${brewgroup_display_value}]${tty_reset}
   --hostname          sets the system hostname and Tailscale name source ${tty_dim}[default: ${AGENTBOX_HOSTNAME_VALUE}]${tty_reset}
   --version           shows version of this script
   --debug             shows debug messages ${tty_dim}[default: ${debug_display}]${tty_reset}
@@ -536,12 +572,12 @@ parse_args() {
         ;;
       --brewgroup)
         require_next_option_value "--brewgroup" "$#"
-        BREWGROUP_VALUE="$2"
+        BREWGROUP_INPUT="$2"
         shift 2
         ;;
       --brewgroup=*)
         require_inline_option_value "--brewgroup" "${1#*=}"
-        BREWGROUP_VALUE="${1#*=}"
+        BREWGROUP_INPUT="${1#*=}"
         shift
         ;;
       --hostname)
@@ -1188,6 +1224,8 @@ write_agentbox_health_state() {
   local tailscale_enabled="1"
   local brewgroup_enabled="1"
   local brewgroup_value="${BREWGROUP_VALUE}"
+  local trusted_brewgroup_enabled_value="0"
+  local trusted_brewgroup_value="off"
   local ssh_hardening_expected="0"
   local managed_macos_runner="0"
 
@@ -1198,6 +1236,9 @@ write_agentbox_health_state() {
   if brewgroup_setup_disabled; then
     brewgroup_enabled="0"
     brewgroup_value="off"
+  elif trusted_brewgroup_enabled; then
+    trusted_brewgroup_enabled_value="1"
+    trusted_brewgroup_value="${TRUSTED_BREWGROUP_VALUE}"
   fi
 
   if array_has_values AUTHORIZED_KEY_LINES; then
@@ -1215,6 +1256,8 @@ AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=$(shell_quote "${TAILSCALE_HOSTNAME_
 AGENTBOX_HEALTH_TAILSCALE_ENABLED=${tailscale_enabled}
 AGENTBOX_HEALTH_BREWGROUP_ENABLED=${brewgroup_enabled}
 AGENTBOX_HEALTH_BREWGROUP=$(shell_quote "${brewgroup_value}")
+AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED=${trusted_brewgroup_enabled_value}
+AGENTBOX_HEALTH_TRUSTED_BREWGROUP=$(shell_quote "${trusted_brewgroup_value}")
 AGENTBOX_HEALTH_BREW_PREFIX=$(shell_quote "${BREW_PREFIX_VALUE}")
 AGENTBOX_HEALTH_ADMIN_USER=$(shell_quote "${ADMIN_USER}")
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED=${ssh_hardening_expected}
@@ -1246,6 +1289,8 @@ AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=""
 AGENTBOX_HEALTH_TAILSCALE_ENABLED="0"
 AGENTBOX_HEALTH_BREWGROUP_ENABLED="0"
 AGENTBOX_HEALTH_BREWGROUP="off"
+AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED="0"
+AGENTBOX_HEALTH_TRUSTED_BREWGROUP="off"
 AGENTBOX_HEALTH_BREW_PREFIX=""
 AGENTBOX_HEALTH_ADMIN_USER=""
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
@@ -1352,6 +1397,70 @@ path_group_rwx_value() {
   fi
 }
 
+group_user_member_value() {
+  local group="$1"
+  local user="$2"
+
+  if [[ -z "${group}" || -z "${user}" ]]; then
+    printf '0'
+    return 0
+  fi
+
+  if dscl . -read "/Groups/${group}" GroupMembership 2>/dev/null | awk -v expected="${user}" '
+    $1 == "GroupMembership:" {
+      for (i = 2; i <= NF; i++) {
+        if ($i == expected) {
+          found = 1
+        }
+      }
+      next
+    }
+    $1 == expected {
+      found = 1
+    }
+    END {
+      exit(found ? 0 : 1)
+    }
+  '; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+nested_group_value() {
+  local parent_group="$1"
+  local child_group="$2"
+  local child_group_guid
+
+  child_group_guid="$(dscl . -read "/Groups/${child_group}" GeneratedUID 2>/dev/null | awk '$1 == "GeneratedUID:" { print $2; exit }')"
+  if [[ -z "${child_group_guid}" ]]; then
+    printf '0'
+    return 0
+  fi
+
+  if dscl . -read "/Groups/${parent_group}" NestedGroups 2>/dev/null | awk -v expected="${child_group_guid}" '
+    $1 == "NestedGroups:" {
+      for (i = 2; i <= NF; i++) {
+        if ($i == expected) {
+          found = 1
+        }
+      }
+      next
+    }
+    $1 == expected {
+      found = 1
+    }
+    END {
+      exit(found ? 0 : 1)
+    }
+  '; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
 root_disk_available_kb() {
   df -Pk / 2>/dev/null | awk 'NR == 2 { print $4; found = 1 } END { if (!found) print "unknown" }'
 }
@@ -1408,6 +1517,8 @@ generate_report() {
   local brew_prefix_group_ok="skipped"
   local brew_prefix_group_rwx_ok="skipped"
   local brew_prefix_ok="skipped"
+  local brewgroup_admin_user_ok="skipped"
+  local trusted_brewgroup_nested_ok="skipped"
   local health_launchd_loaded_ok="0"
   local tailscaled_launchd_loaded_ok="skipped"
   local tailscaled_homebrew_launchd_absent_ok="skipped"
@@ -1504,6 +1615,20 @@ generate_report() {
 
   print_kv brewgroup_enabled "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}"
   print_kv brewgroup_expected "${AGENTBOX_HEALTH_BREWGROUP}"
+  if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" ]]; then
+    brewgroup_admin_user_ok="$(group_user_member_value "${AGENTBOX_HEALTH_BREWGROUP}" "${AGENTBOX_HEALTH_ADMIN_USER}")"
+    mark_required brewgroup_admin_user_ok "${brewgroup_admin_user_ok}"
+  else
+    print_kv brewgroup_admin_user_ok "${brewgroup_admin_user_ok}"
+  fi
+  print_kv trusted_brewgroup_enabled "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED}"
+  print_kv trusted_brewgroup_expected "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP}"
+  if [[ "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED}" == "1" ]]; then
+    trusted_brewgroup_nested_ok="$(nested_group_value "${AGENTBOX_HEALTH_BREWGROUP}" "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP}")"
+    mark_required trusted_brewgroup_nested_ok "${trusted_brewgroup_nested_ok}"
+  else
+    print_kv trusted_brewgroup_nested_ok "${trusted_brewgroup_nested_ok}"
+  fi
   print_kv brew_prefix "${AGENTBOX_HEALTH_BREW_PREFIX}"
   if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" ]]; then
     brew_prefix_group_ok="0"
@@ -1814,7 +1939,7 @@ EOABORT
 
 validate_inputs() {
   TAILSCALE_AUTHKEY="$(trim_whitespace "${TAILSCALE_AUTHKEY}")"
-  BREWGROUP_VALUE="$(trim_whitespace "${BREWGROUP_VALUE}")"
+  BREWGROUP_INPUT="$(trim_whitespace "${BREWGROUP_INPUT}")"
   ADMIN_USER="$(id -un 2>/dev/null || true)"
 
   if [[ -z "${ADMIN_USER}" ]]; then
@@ -1831,8 +1956,24 @@ validate_inputs() {
     abort "hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} must be DNS-safe."
   fi
 
+  parse_brewgroup_input
+
   if ! brewgroup_setup_disabled && ! brewgroup_valid "${BREWGROUP_VALUE}"; then
     abort "brewgroup ${tty_ts}${BREWGROUP_VALUE}${tty_reset} must start with a letter or underscore and contain only letters, digits, underscore, dot, or dash."
+  fi
+
+  if trusted_brewgroup_enabled; then
+    if ! brewgroup_valid "${TRUSTED_BREWGROUP_VALUE}"; then
+      abort "trusted brewgroup ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} must start with a letter or underscore and contain only letters, digits, underscore, dot, or dash."
+    fi
+
+    if [[ "${TRUSTED_BREWGROUP_VALUE}" == "${BREWGROUP_VALUE}" ]]; then
+      abort "trusted brewgroup ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} must be different from brewgroup ${tty_ts}${BREWGROUP_VALUE}${tty_reset}."
+    fi
+
+    if ! brewgroup_exists "${TRUSTED_BREWGROUP_VALUE}"; then
+      abort "trusted brewgroup ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} must already exist before it can be nested into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}."
+    fi
   fi
 
   if tailscale_setup_disabled; then
@@ -2009,6 +2150,10 @@ plan_wrapper_execution() {
     plan_action "${tty_tp}skip${tty_reset} Homebrew brewgroup setup because the brewgroup input is disabled"
   else
     plan_action "${tty_tp}ensure${tty_reset} Homebrew prefix group write access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    plan_action "${tty_tp}add${tty_reset} invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} to Homebrew brewgroup ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    if trusted_brewgroup_enabled; then
+      plan_action "${tty_tp}nest${tty_reset} trusted Homebrew group ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    fi
   fi
   plan_action "${tty_tp}ensure${tty_reset} classic SSH is enabled for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
   if array_has_values AUTHORIZED_KEY_LINES; then
@@ -2065,6 +2210,59 @@ brewgroup_exists() {
   dscl . -read "/Groups/$1" >/dev/null 2>&1
 }
 
+group_generated_uid() {
+  dscl . -read "/Groups/$1" GeneratedUID 2>/dev/null | awk '$1 == "GeneratedUID:" { print $2; exit }'
+}
+
+brewgroup_has_trusted_group() {
+  local trusted_group_guid
+
+  if ! trusted_brewgroup_enabled; then
+    return 0
+  fi
+
+  trusted_group_guid="$(group_generated_uid "${TRUSTED_BREWGROUP_VALUE}")"
+  if [[ -z "${trusted_group_guid}" ]]; then
+    return 1
+  fi
+
+  dscl . -read "/Groups/${BREWGROUP_VALUE}" NestedGroups 2>/dev/null | awk -v expected="${trusted_group_guid}" '
+    $1 == "NestedGroups:" {
+      for (i = 2; i <= NF; i++) {
+        if ($i == expected) {
+          found = 1
+        }
+      }
+      next
+    }
+    $1 == expected {
+      found = 1
+    }
+    END {
+      exit(found ? 0 : 1)
+    }
+  '
+}
+
+brewgroup_has_admin_user() {
+  dscl . -read "/Groups/${BREWGROUP_VALUE}" GroupMembership 2>/dev/null | awk -v expected="${ADMIN_USER}" '
+    $1 == "GroupMembership:" {
+      for (i = 2; i <= NF; i++) {
+        if ($i == expected) {
+          found = 1
+        }
+      }
+      next
+    }
+    $1 == expected {
+      found = 1
+    }
+    END {
+      exit(found ? 0 : 1)
+    }
+  '
+}
+
 next_available_group_id() {
   dscl . -list /Groups PrimaryGroupID 2>/dev/null | awk '
     $2 ~ /^[0-9]+$/ { used[$2] = 1 }
@@ -2097,6 +2295,38 @@ ensure_brewgroup_exists() {
   execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" PrimaryGroupID "${gid}"
   execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" Password "*"
   execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" RealName "agentbox Homebrew access"
+}
+
+ensure_brewgroup_admin_user() {
+  if brewgroup_has_admin_user; then
+    log "${tty_tp}skipping${tty_reset} Homebrew group membership; invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} is already a direct member of ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    return 0
+  fi
+
+  log "${tty_tp}adding${tty_reset} invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} to Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  execute sudo dseditgroup -o edit -a "${ADMIN_USER}" -t user "${BREWGROUP_VALUE}"
+
+  if ! brewgroup_has_admin_user; then
+    abort "invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} is still not a direct member of Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
+  fi
+}
+
+ensure_trusted_brewgroup_nested() {
+  if ! trusted_brewgroup_enabled; then
+    return 0
+  fi
+
+  if brewgroup_has_trusted_group; then
+    log "${tty_tp}skipping${tty_reset} trusted Homebrew group nesting; ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} is already nested into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    return 0
+  fi
+
+  log "${tty_tp}nesting${tty_reset} trusted Homebrew group ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  execute sudo dseditgroup -o edit -a "${TRUSTED_BREWGROUP_VALUE}" -t group "${BREWGROUP_VALUE}"
+
+  if ! brewgroup_has_trusted_group; then
+    abort "trusted Homebrew group ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} is still not nested into ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
+  fi
 }
 
 path_group_rwx() {
@@ -2134,6 +2364,8 @@ run_agentbox_brewgroup_setup() {
   fi
 
   ensure_brewgroup_exists
+  ensure_brewgroup_admin_user
+  ensure_trusted_brewgroup_nested
 
   if brew_prefix_permissions_ok; then
     log "${tty_tp}skipping${tty_reset} Homebrew prefix permissions; ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} is already group-writable by ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"

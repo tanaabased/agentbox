@@ -66,6 +66,7 @@ brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
 
 # should make the Homebrew prefix writable by the configured brewgroup
 dscl . -read "/Groups/agentboxbrewenv$GITHUB_RUN_ID" >/dev/null
+dseditgroup -o checkmember -m "$(id -un)" "agentboxbrewenv$GITHUB_RUN_ID"
 brew_prefix="$(brew --prefix)"
 test "$(stat -f "%Sg" "$brew_prefix")" = "agentboxbrewenv$GITHUB_RUN_ID"
 brew_prefix_mode="$(stat -f "%Lp" "$brew_prefix")"
@@ -82,6 +83,10 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ex
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_tailscale_hostname=AGENTBOX-TEST$GITHUB_RUN_ID"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_enabled=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_expected=agentboxbrewenv$GITHUB_RUN_ID"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_admin_user_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_enabled=0"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_expected=off"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_nested_ok=skipped"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix=$(brew --prefix)"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_rwx_ok=1"

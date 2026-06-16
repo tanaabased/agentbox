@@ -25,6 +25,7 @@ boot.sh --help | grep -F -- "--agentbox-version"
 boot.sh --help | grep -F -- "--authorized-key"
 boot.sh --help | grep -F -- "--tailscale-authkey"
 boot.sh --help | grep -F -- "--brewgroup"
+boot.sh --help | grep -F -- "group[:trusted-group]"
 boot.sh --help | grep -F -- "--hostname"
 boot.sh --help | grep -F -- "--version"
 boot.sh --help | grep -F -- "--debug"
@@ -59,6 +60,8 @@ if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"; then exit 1; fi
 # should not expose dashed brewgroup aliases
 if boot.sh --help | grep -F -- "--brew-group"; then exit 1; fi
 if boot.sh --help | grep -F "AGENTBOX_BREW_GROUP"; then exit 1; fi
+if boot.sh --help | grep -F -- "--trusted-brewgroup"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_TRUSTED_BREWGROUP"; then exit 1; fi
 
 # should not expose removed legacy surfaces
 if boot.sh --help | grep -F -- "--op-token"; then exit 1; fi
@@ -84,6 +87,7 @@ AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "[default: disabled]"
 # should show the default and disabled brewgroup values
 boot.sh --help | grep -F "[default: brewer]"
 AGENTBOX_BREWGROUP=off boot.sh --help | grep -F "[default: disabled]"
+AGENTBOX_BREWGROUP=brewer:staff boot.sh --help | grep -F "[default: brewer:staff]"
 
 # should fail on unknown options with usage context
 set +e
