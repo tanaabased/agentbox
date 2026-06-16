@@ -1,5 +1,11 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+- Added `--brewgroup` and `AGENTBOX_BREWGROUP` for configurable Homebrew prefix group-write setup. ([#9](https://github.com/tanaabased/agentbox/pull/9))
+- Added `brewgroup:trusted-group` syntax for opt-in trusted group nesting, such as `brewer:staff`. ([#9](https://github.com/tanaabased/agentbox/pull/9))
+- Added `health.sh --brewgroup` and brewgroup health report fields for downstream detection and verification. ([#9](https://github.com/tanaabased/agentbox/pull/9))
+- Added direct invoking-admin membership in the configured brewgroup when brewgroup setup is enabled. ([#9](https://github.com/tanaabased/agentbox/pull/9))
+- Fixed mutating Leia examples to run against the PR checkout and trust the Bun tap used by the agentbox `Brewfile`. ([#9](https://github.com/tanaabased/agentbox/pull/9))
+
 ## v1.0.0-beta.4 - [May 24, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.4)
 
 - Added an agentbox-owned system LaunchDaemon for root-level `tailscaled` management. ([#6](https://github.com/tanaabased/agentbox/pull/6))
