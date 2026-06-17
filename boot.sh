@@ -157,15 +157,16 @@ append_csv_to_array() {
 
 shell_join() {
   local arg
-  local first="1"
+
+  printf "%s" "${1:-}"
+  if [[ $# -eq 0 ]]; then
+    return 0
+  fi
+
+  shift
 
   for arg in "$@"; do
-    if [[ "${first}" == "1" ]]; then
-      first="0"
-    else
-      printf " "
-    fi
-
+    printf " "
     printf "%q" "${arg}"
   done
 }
@@ -2100,7 +2101,7 @@ bootbox_run() {
   bootbox_command+=("$@")
   bootbox_display_command+=("$@")
 
-  debug "${tty_tp}delegating${tty_reset}" to "${tty_ts}bootbox${tty_reset}" from "${tty_ts}${BOOT_TMPDIR}${tty_reset}" with "$(shell_join "${bootbox_display_command[@]}")"
+  debug "${tty_tp}delegating${tty_reset} to ${tty_ts}bootbox${tty_reset} from ${tty_ts}${BOOT_TMPDIR}${tty_reset} with $(shell_join "${bootbox_display_command[@]}")"
   run_bootbox_from_tmpdir "${bootbox_command[@]}"
 }
 
@@ -2178,7 +2179,7 @@ prepare_bootbox_script() {
 }
 
 run_bootbox_check_core() {
-  debug "${tty_tp}checking${tty_reset}" "${tty_ts}bootbox core requirements${tty_reset}" from "${tty_ts}${BOOT_TMPDIR}${tty_reset}"
+  debug "${tty_tp}checking${tty_reset} ${tty_ts}bootbox core requirements${tty_reset} from ${tty_ts}${BOOT_TMPDIR}${tty_reset}"
   if bootbox_run core --check-core; then
     CORE_NEEDS_REMEDIATION="0"
     debug "bootbox core requirements are satisfied"
