@@ -38,6 +38,7 @@ boot.sh --help | grep -F -- "--hostname"
 boot.sh --help | grep -F -- "--openclaw-identity"
 boot.sh --help | grep -F -- "--openclaw-password"
 boot.sh --help | grep -F -- "--openclaw-auth-choice"
+boot.sh --help | grep -F -- "--openclaw-auth-env"
 boot.sh --help | grep -F -- "--openclaw-gateway-port"
 boot.sh --help | grep -F -- "--skip-openclaw-autologin"
 
@@ -62,6 +63,7 @@ boot.sh --help | grep -F "AGENTBOX_OPENCLAW_IDENTITY     same as --openclaw-iden
 boot.sh --help | grep -F "AGENTBOX_OPENCLAW_PASSWORD     same as --openclaw-password"
 boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN    falsey disables OpenClaw runner autologin"
 boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice"
+boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env"
 boot.sh --help | grep -F "AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port"
 
 # should document operational environment variables
@@ -109,8 +111,6 @@ if boot.sh --help | grep -F "AGENTBOX_OPENCLAW_ONBOARDING"; then exit 1; fi
 # should not expose secret passthrough controls
 if boot.sh --help | grep -F -- "--openclaw-secret-input-mode"; then exit 1; fi
 if boot.sh --help | grep -F "AGENTBOX_OPENCLAW_SECRET_INPUT_MODE"; then exit 1; fi
-if boot.sh --help | grep -F -- "--openclaw-auth-env"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTH_ENV"; then exit 1; fi
 
 # should not expose removed legacy surfaces
 if boot.sh --help | grep -F -- "--op-token"; then exit 1; fi
@@ -175,9 +175,14 @@ if AGENTBOX_OPENCLAW_IDENTITY="Env Input Claw <envinput>" boot.sh --openclaw-ide
 # should show openclaw gateway onboarding defaults
 boot.sh --help | grep -F -- "--openclaw-auth-choice" | grep -F "sets initial OpenClaw model auth choice"
 boot.sh --help | grep -F -- "--openclaw-auth-choice" | grep -F "[default: skip]"
+boot.sh --help | grep -F -- "--openclaw-auth-env" | grep -F "passes one extra parent env var to OpenClaw auth onboarding"
+boot.sh --help | grep -F -- "--openclaw-auth-env" | grep -F "[default: none]"
 boot.sh --help | grep -F -- "--openclaw-gateway-port" | grep -F "sets OpenClaw gateway port"
 boot.sh --help | grep -F -- "--openclaw-gateway-port" | grep -F "[default: 18789]"
 AGENTBOX_OPENCLAW_AUTH_CHOICE=openai-api-key boot.sh --help | grep -F -- "--openclaw-auth-choice" | grep -F "[default: openai-api-key]"
+AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY boot.sh --help | grep -F -- "--openclaw-auth-env" | grep -F "[default: ENV_OPENCLAW_API_KEY]"
+AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY boot.sh --openclaw-auth-env CLI_OPENCLAW_API_KEY --help | grep -F -- "--openclaw-auth-env" | grep -F "[default: CLI_OPENCLAW_API_KEY]"
+if AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY boot.sh --openclaw-auth-env CLI_OPENCLAW_API_KEY --help | grep -F "ENV_OPENCLAW_API_KEY"; then exit 1; fi
 AGENTBOX_OPENCLAW_GATEWAY_PORT=18888 boot.sh --help | grep -F -- "--openclaw-gateway-port" | grep -F "[default: 18888]"
 
 # should show openclaw gateway port input precedence
@@ -212,6 +217,75 @@ set -e
 printf "%s\n" "$output"
 printf "%s\n" "$output" | grep -F "option --openclaw-auth-choice requires a value."
 printf "%s\n" "$output" | grep -F "Usage:"
+test "$command_status" -ne 0
+
+# should fail when openclaw auth env is missing
+set +e
+output="$(boot.sh --openclaw-auth-env 2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "option --openclaw-auth-env requires a value."
+printf "%s\n" "$output" | grep -F "Usage:"
+test "$command_status" -ne 0
+
+# should fail when openclaw auth env is empty
+set +e
+output="$(boot.sh --openclaw-auth-env= 2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "option --openclaw-auth-env must not be empty."
+printf "%s\n" "$output" | grep -F "Usage:"
+test "$command_status" -ne 0
+
+# should fail when custom openclaw auth env name is invalid
+set +e
+output="$(FUTURE_OPENCLAW_API_KEY=test-value boot.sh \
+  --tailscale-authkey off \
+  --brewgroup off \
+  --openclaw-auth-choice future-api-key \
+  --openclaw-auth-env future-openclaw-api-key \
+  --openclaw-identity "Invalid Env Claw <invalidenv>" \
+  --skip-openclaw-autologin \
+  2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "OpenClaw auth env future-openclaw-api-key must be a valid environment variable name."
+test "$command_status" -ne 0
+
+# should fail when custom openclaw auth env is used with skip auth
+set +e
+output="$(FUTURE_OPENCLAW_API_KEY=test-value boot.sh \
+  --tailscale-authkey off \
+  --brewgroup off \
+  --openclaw-auth-choice skip \
+  --openclaw-auth-env FUTURE_OPENCLAW_API_KEY \
+  --openclaw-identity "Skipped Env Claw <skippedenv>" \
+  --skip-openclaw-autologin \
+  2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "OpenClaw auth env FUTURE_OPENCLAW_API_KEY requires an OpenClaw auth choice other than skip."
+test "$command_status" -ne 0
+
+# should fail when custom openclaw auth env is missing from the parent environment
+set +e
+output="$(env -u FUTURE_OPENCLAW_API_KEY boot.sh \
+  --tailscale-authkey off \
+  --brewgroup off \
+  --openclaw-auth-choice future-api-key \
+  --openclaw-auth-env FUTURE_OPENCLAW_API_KEY \
+  --openclaw-identity "Missing Env Claw <missingenv>" \
+  --skip-openclaw-autologin \
+  2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "OpenClaw auth env FUTURE_OPENCLAW_API_KEY is not set in the parent environment"
+printf "%s\n" "$output" | grep -F "https://docs.openclaw.ai/providers"
 test "$command_status" -ne 0
 
 # should fail when openai api-key auth is missing the provider env

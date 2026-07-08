@@ -272,6 +272,7 @@ OPENCLAW_GATEWAY_BIND_VALUE="loopback"
 OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE=""
 OPENCLAW_GATEWAY_PORT="${AGENTBOX_OPENCLAW_GATEWAY_PORT:-${DEFAULT_OPENCLAW_GATEWAY_PORT}}"
 OPENCLAW_AUTH_CHOICE="${AGENTBOX_OPENCLAW_AUTH_CHOICE:-${DEFAULT_OPENCLAW_AUTH_CHOICE}}"
+OPENCLAW_AUTH_ENV="${AGENTBOX_OPENCLAW_AUTH_ENV:-}"
 TAILSCALE_AUTHKEY="${AGENTBOX_TAILSCALE_AUTHKEY:-}"
 ADMIN_USER=""
 AUTHORIZED_KEY_CLI_SEEN="0"
@@ -392,6 +393,14 @@ openclaw_gateway_port_display() {
 
 openclaw_auth_choice_display() {
   printf "%s" "${OPENCLAW_AUTH_CHOICE}"
+}
+
+openclaw_auth_env_display() {
+  printf "%s" "${OPENCLAW_AUTH_ENV:-none}"
+}
+
+env_name_valid() {
+  [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
 }
 
 # Keep this aligned with OpenClaw's manifest-declared env-backed auth choices.
@@ -565,6 +574,21 @@ validate_openclaw_auth_choice_env() {
   local present_env_names
 
   if [[ "${OPENCLAW_AUTH_CHOICE}" == "skip" ]]; then
+    if [[ -n "${OPENCLAW_AUTH_ENV}" ]]; then
+      abort "OpenClaw auth env ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} requires an OpenClaw auth choice other than ${tty_ts}skip${tty_reset}."
+    fi
+    return 0
+  fi
+
+  if [[ -n "${OPENCLAW_AUTH_ENV}" ]]; then
+    if [[ -z "${!OPENCLAW_AUTH_ENV-}" ]]; then
+      abort_multi "$(cat <<EOABORT
+OpenClaw auth env ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} is not set in the parent environment.
+set ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} before running agentbox so it can be passed to OpenClaw onboarding, or remove ${tty_ts}--openclaw-auth-env${tty_reset}.
+OpenClaw provider docs: ${tty_underline}${tty_magenta}https://docs.openclaw.ai/providers${tty_reset}
+EOABORT
+)"
+    fi
     return 0
   fi
 
@@ -908,6 +932,7 @@ usage() {
   local openclaw_password_display_value="none"
   local openclaw_gateway_port_display_value="${DEFAULT_OPENCLAW_GATEWAY_PORT}"
   local openclaw_auth_choice_display_value="${DEFAULT_OPENCLAW_AUTH_CHOICE}"
+  local openclaw_auth_env_display_value="none"
   local extra_brewfiles_display_value="none"
   local authorized_keys_display="none"
 
@@ -924,6 +949,7 @@ usage() {
   openclaw_password_display_value="$(openclaw_password_display)"
   openclaw_gateway_port_display_value="$(openclaw_gateway_port_display)"
   openclaw_auth_choice_display_value="$(openclaw_auth_choice_display)"
+  openclaw_auth_env_display_value="$(openclaw_auth_env_display)"
   extra_brewfiles_display_value="$(extra_brewfiles_display)"
   if array_has_values AUTHORIZED_KEY_SPECS; then
     authorized_keys_display="$(array_count AUTHORIZED_KEY_SPECS) provided"
@@ -944,6 +970,7 @@ EOS
   usage_option "--openclaw-identity" "configures the OpenClaw runner as \"Full Name <shortname>\"" "${OPENCLAW_IDENTITY_INPUT}"
   usage_option "--openclaw-password" "sets the OpenClaw runner password for user creation or autologin" "${openclaw_password_display_value}"
   usage_option "--openclaw-auth-choice" "sets initial OpenClaw model auth choice" "${openclaw_auth_choice_display_value}"
+  usage_option "--openclaw-auth-env" "passes one extra parent env var to OpenClaw auth onboarding" "${openclaw_auth_env_display_value}"
   usage_option "--openclaw-gateway-port" "sets OpenClaw gateway port" "${openclaw_gateway_port_display_value}"
   usage_option "--skip-openclaw-autologin" "skips default OpenClaw runner autologin"
   usage_option "--version" "shows version of this script"
@@ -965,6 +992,7 @@ ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_OPENCLAW_PASSWORD     same as --openclaw-password
   AGENTBOX_OPENCLAW_AUTOLOGIN    falsey disables OpenClaw runner autologin
   AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice
+  AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env
   AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port
   AGENTBOX_FORCE                 same as --force
   NONINTERACTIVE                 same as --yes
@@ -1130,6 +1158,16 @@ parse_args() {
       --openclaw-auth-choice=*)
         require_inline_option_value "--openclaw-auth-choice" "${1#*=}"
         OPENCLAW_AUTH_CHOICE="${1#*=}"
+        shift
+        ;;
+      --openclaw-auth-env)
+        require_next_option_value "--openclaw-auth-env" "$#"
+        OPENCLAW_AUTH_ENV="$2"
+        shift 2
+        ;;
+      --openclaw-auth-env=*)
+        require_inline_option_value "--openclaw-auth-env" "${1#*=}"
+        OPENCLAW_AUTH_ENV="${1#*=}"
         shift
         ;;
       --openclaw-gateway-port)
@@ -2617,6 +2655,7 @@ validate_inputs_before_sudo() {
   OPENCLAW_IDENTITY_INPUT="$(trim_whitespace "${OPENCLAW_IDENTITY_INPUT}")"
   OPENCLAW_GATEWAY_PORT="$(trim_whitespace "${OPENCLAW_GATEWAY_PORT}")"
   OPENCLAW_AUTH_CHOICE="$(trim_whitespace "${OPENCLAW_AUTH_CHOICE}")"
+  OPENCLAW_AUTH_ENV="$(trim_whitespace "${OPENCLAW_AUTH_ENV}")"
 
   parse_openclaw_identity_input
 
@@ -2626,6 +2665,10 @@ validate_inputs_before_sudo() {
 
   if [[ "${OPENCLAW_AUTH_CHOICE}" =~ [[:space:]] ]]; then
     abort "OpenClaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} must not contain whitespace."
+  fi
+
+  if [[ -n "${OPENCLAW_AUTH_ENV}" ]] && ! env_name_valid "${OPENCLAW_AUTH_ENV}"; then
+    abort "OpenClaw auth env ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} must be a valid environment variable name."
   fi
 
   validate_openclaw_auth_choice_env
@@ -3577,7 +3620,7 @@ run_as_openclaw_runner() {
   env_display_args=("${env_args[@]}")
 
   for env_name in ${extra_env_names}; do
-    if [[ ! "${env_name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    if ! env_name_valid "${env_name}"; then
       abort "internal OpenClaw runner environment variable name ${tty_ts}${env_name}${tty_reset} is invalid."
     fi
 
@@ -3602,9 +3645,19 @@ execute_as_openclaw_runner() {
 
 run_openclaw_gateway_onboarding() {
   local openclaw_bin="$1"
+  local custom_auth_env_value
   local onboarding_env_names
 
   onboarding_env_names="$(openclaw_auth_choice_present_env_name_list "${OPENCLAW_AUTH_CHOICE}")"
+  if [[ -n "${OPENCLAW_AUTH_ENV}" ]]; then
+    custom_auth_env_value="${!OPENCLAW_AUTH_ENV-}"
+    if [[ -n "${custom_auth_env_value}" ]]; then
+      case " ${onboarding_env_names} " in
+        *" ${OPENCLAW_AUTH_ENV} "*) ;;
+        *) onboarding_env_names="${onboarding_env_names}${onboarding_env_names:+ }${OPENCLAW_AUTH_ENV}" ;;
+      esac
+    fi
+  fi
   log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} with loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   OPENCLAW_RUNNER_EXTRA_ENV_NAMES="${onboarding_env_names}" execute_as_openclaw_runner "${openclaw_bin}" onboard \
     --non-interactive \
@@ -3840,6 +3893,7 @@ main() {
   debug raw AGENTBOX_OPENCLAW_PASSWORD="$(openclaw_password_display)"
   debug raw AGENTBOX_OPENCLAW_AUTOLOGIN="$(openclaw_autologin_display)"
   debug raw AGENTBOX_OPENCLAW_AUTH_CHOICE="${OPENCLAW_AUTH_CHOICE}"
+  debug raw AGENTBOX_OPENCLAW_AUTH_ENV="$(openclaw_auth_env_display)"
   debug raw OPENCLAW_GATEWAY_BIND="${OPENCLAW_GATEWAY_BIND_VALUE}"
   debug raw OPENCLAW_GATEWAY_TAILSCALE_MODE="${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}"
   debug raw AGENTBOX_OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT}"

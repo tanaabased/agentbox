@@ -29,6 +29,7 @@ OPENAI_API_KEY="$OPENAI_API_KEY" boot.sh \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --openclaw-password "OpenClawGatewayPass1!" \
   --openclaw-auth-choice openai-api-key \
+  --openclaw-auth-env OPENAI_API_KEY \
   --openclaw-gateway-port 18888 \
   2>&1 | tee "$TMPDIR/openclaw.log"
 ```

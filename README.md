@@ -248,6 +248,21 @@ variable in the parent process before sudo setup and passes it only to `openclaw
 output masks the value. If the variable is missing, agentbox stops with the required env names and
 OpenClaw provider docs before sudo bootstrap.
 
+If OpenClaw adds a new environment-backed auth choice before agentbox knows its provider variable,
+use `--openclaw-auth-env` with one parent environment variable name:
+
+```sh
+FUTURE_PROVIDER_API_KEY="$FUTURE_PROVIDER_API_KEY" \
+agentbootbox \
+  --tailscale-authkey "$TS_AUTHKEY" \
+  --openclaw-auth-choice future-provider-api-key \
+  --openclaw-auth-env FUTURE_PROVIDER_API_KEY \
+  --hostname TANAABAGENTBOX1
+```
+
+This is only an auth-onboarding escape hatch. It does not configure runtime proxy, certificate, or
+LaunchDaemon environment variables.
+
 agentbox does not use OpenClaw's macOS `--install-daemon` path. On macOS, that path installs a
 per-user LaunchAgent that depends on a logged-in user session; agentbox instead installs a system
 LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user. The LaunchDaemon uses a
@@ -352,6 +367,8 @@ they do not land in shell history.
   set a falsey environment value or pass the flag to disable it.
 - `AGENTBOX_OPENCLAW_AUTH_CHOICE` or `--openclaw-auth-choice`: initial OpenClaw model auth choice;
   defaults to `skip`.
+- `AGENTBOX_OPENCLAW_AUTH_ENV` or `--openclaw-auth-env`: one extra parent environment variable name
+  to pass to OpenClaw auth onboarding for env-backed auth choices not yet known to agentbox.
 - `AGENTBOX_OPENCLAW_GATEWAY_PORT` or `--openclaw-gateway-port`: OpenClaw gateway port; defaults to
   `18789`.
 - `AGENTBOX_OPENCLAW_IDENTITY` or `--openclaw-identity`: OpenClaw runner identity in
