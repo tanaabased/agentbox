@@ -4,9 +4,9 @@ set -euo pipefail
 #
 # Examples:
 #
-#   $ AGENTBOX_AUTHORIZED_KEY="$(cat ~/.ssh/id_ed25519.pub)" AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" ./boot.sh --hostname TANAABAGENTBOX1
-#   $ ./boot.sh --authorized-key file:~/.ssh/id_ed25519.pub --tailscale-authkey "$TS_AUTHKEY" --yes
-#   $ AGENTBOX_DEBUG=1 AGENTBOX_AUTHORIZED_KEY="$(cat ~/.ssh/id_ed25519.pub)" AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" ./boot.sh --yes
+#   $ AGENTBOX_AUTHORIZED_KEY="$(cat ~/.ssh/id_ed25519.pub)" AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" ./macos.sh --hostname TANAABAGENTBOX1
+#   $ ./macos.sh --authorized-key file:~/.ssh/id_ed25519.pub --tailscale-authkey "$TS_AUTHKEY" --yes
+#   $ AGENTBOX_DEBUG=1 AGENTBOX_AUTHORIZED_KEY="$(cat ~/.ssh/id_ed25519.pub)" AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" ./macos.sh --yes
 #
 # Option precedence: CLI options override environment variables, which override defaults.
 

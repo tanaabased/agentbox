@@ -10,7 +10,7 @@ Agent workspaces layer on top of that host and remain out of scope here: no EMOR
 
 ## Primary Resources
 
-- [Hosted boot script](https://agentbox.boot.tanaab.sh/boot.sh): The generated shell entrypoint for bootstrapping a Mac.
+- [Hosted macOS script](https://agentbox.boot.tanaab.sh/macos.sh): The generated shell entrypoint for bootstrapping a Mac.
 - [GitHub repository](https://github.com/tanaabased/agentbox): Source code, README, workflows, and examples.
 - [README](https://github.com/tanaabased/agentbox#readme): Human setup, usage, configuration, and verification guidance.
 - [Releases](https://github.com/tanaabased/agentbox/releases): Published release tags for version-pinned installs.

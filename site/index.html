@@ -2,18 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="refresh" content="0; url=/boot.sh" />
+    <meta http-equiv="refresh" content="0; url=/macos.sh" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>agentbox bootstrap</title>
     <script>
       const TARGETS = {
-        default: '/boot.sh',
-        windows: '/boot.sh',
+        default: '/macos.sh',
+        macos: '/macos.sh',
       };
 
       function getRedirectTarget(userAgent) {
-        if (/Windows Phone|Windows Mobile|Windows/i.test(userAgent)) {
-          return TARGETS.windows;
+        if (/Macintosh|Mac OS X|MacIntel|MacPPC/i.test(userAgent)) {
+          return TARGETS.macos;
         }
 
         return TARGETS.default;
@@ -24,6 +24,6 @@
     </script>
   </head>
   <body>
-    <p>Redirecting to <a href="/boot.sh">/boot.sh</a>.</p>
+    <p>Redirecting to <a href="/macos.sh">/macos.sh</a>.</p>
   </body>
 </html>

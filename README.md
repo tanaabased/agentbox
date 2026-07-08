@@ -63,7 +63,7 @@ Complete the [Manual Setup Checklist](#manual-setup-checklist) first, then run t
 script on the Mac you are preparing:
 
 ```sh
-curl -fsSL https://agentbox.boot.tanaab.sh/boot.sh | \
+curl -fsSL https://agentbox.boot.tanaab.sh/macos.sh | \
   AGENTBOX_OPENCLAW_PASSWORD="$OPENCLAW_PASSWORD" \
   AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" \
   AGENTBOX_HOSTNAME=TANAABAGENTBOX1 \
@@ -72,7 +72,7 @@ curl -fsSL https://agentbox.boot.tanaab.sh/boot.sh | \
 
 ## Manual Setup Checklist
 
-Before running `boot.sh`:
+Before running `macos.sh`:
 
 - Put the Mac somewhere ventilated, physically safe, and connected to power.
 - Connect Ethernet and reserve its LAN IP in the router by MAC address.
@@ -92,11 +92,11 @@ sudo softwareupdate --install --all --restart
 - Consider installing an HDMI dummy plug / headless display adapter, such as
   [this example](https://www.amazon.com/dp/B0CKKLTWMN?ref=fed_asin_title), for smoother headless
   display behavior.
-- Temporarily enable Remote Login only if you need SSH access before running `boot.sh`; the
+- Temporarily enable Remote Login only if you need SSH access before running `macos.sh`; the
   bootstrap enables classic SSH programmatically.
 - Create or choose a preauthorized Tailscale auth key with any desired device tags, or decide to
   skip Tailscale setup.
-- Optionally choose SSH public keys for `boot.sh` to install for the admin and OpenClaw runner
+- Optionally choose SSH public keys for `macos.sh` to install for the admin and OpenClaw runner
   users.
 
 ## Usage
@@ -105,37 +105,37 @@ For repeated use, install the hosted script as a local command in a directory yo
 
 ```sh
 mkdir -p "$HOME/.local/bin"
-curl -fsSL https://agentbox.boot.tanaab.sh/boot.sh -o "$HOME/.local/bin/agentbootbox"
-chmod +x "$HOME/.local/bin/agentbootbox"
+curl -fsSL https://agentbox.boot.tanaab.sh/macos.sh -o "$HOME/.local/bin/agentbox"
+chmod +x "$HOME/.local/bin/agentbox"
 
-agentbootbox --help
+agentbox --help
 ```
 
 Run it with flags when you want to keep the command explicit:
 
 ```sh
-agentbootbox --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
+agentbox --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
 ```
 
-Authorized keys are optional runtime inputs for classic SSH. When provided, `boot.sh` installs them
+Authorized keys are optional runtime inputs for classic SSH. When provided, `macos.sh` installs them
 for the invoking admin user and the OpenClaw runner, then hardens SSH to key-only access for those
 users. Supported values are public-key lines, explicit `file:` references, and existing public-key
 paths:
 
 ```sh
-agentbootbox \
+agentbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --authorized-key file:~/.ssh/id_ed25519.pub \
   --hostname TANAABAGENTBOX1
 
-agentbootbox \
+agentbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --authorized-key "ssh-ed25519 AAAA... user@example" \
   --authorized-key file:~/.ssh/backup.pub \
   --hostname TANAABAGENTBOX1
 ```
 
-`boot.sh` resolves its agentbox payload automatically. When run from a source checkout, it uses the
+`macos.sh` resolves its agentbox payload automatically. When run from a source checkout, it uses the
 checkout beside the script. When run as a released hosted script, it fetches the matching release
 archive for the script version and uses that payload for the core Brewfile, health script, launchd
 templates, and profile assets. It does not clone the default branch as a fallback, because that can
@@ -146,12 +146,12 @@ local paths or URLs. Relative local paths are resolved from the invocation direc
 the resolved agentbox payload:
 
 ```sh
-agentbootbox \
+agentbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --brewfile Brewfile.extras \
   --hostname TANAABAGENTBOX1
 
-agentbootbox \
+agentbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --brewfile https://raw.githubusercontent.com/example/profile/main/Brewfile \
   --hostname TANAABAGENTBOX1
@@ -165,7 +165,7 @@ brackets is the macOS short username. Use `--openclaw-identity` to choose anothe
 account. The short name must be lowercase and macOS-safe:
 
 ```sh
-agentbootbox \
+agentbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --openclaw-identity "Agentbox OpenClaw <agentboxclaw>" \
   --hostname TANAABAGENTBOX1
@@ -176,7 +176,7 @@ Prefer the environment variable so the password does not land in shell history:
 
 ```sh
 AGENTBOX_OPENCLAW_PASSWORD="$OPENCLAW_PASSWORD" \
-agentbootbox --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
+agentbox --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
 ```
 
 agentbox never prints, persists, or generates the runner password. When run interactively without a
@@ -191,7 +191,7 @@ headless mode because it does not require a GUI login session or autologin. On r
 removes OpenClaw's native `ai.openclaw.gateway` user LaunchAgent if it is present:
 
 ```sh
-agentbootbox \
+agentbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --openclaw-service-mode system \
   --hostname TANAABAGENTBOX1
@@ -204,7 +204,7 @@ hosts. On rerun, `user` mode removes the agentbox-owned system gateway LaunchDae
 present:
 
 ```sh
-agentbootbox \
+agentbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --openclaw-service-mode user \
   --hostname TANAABAGENTBOX1
@@ -225,7 +225,7 @@ acknowledgement. agentbox always binds the OpenClaw gateway to loopback. When Ta
 enabled, agentbox also asks OpenClaw to expose the loopback gateway through Tailscale Serve:
 
 ```sh
-agentbootbox \
+agentbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --openclaw-gateway-port 18789 \
   --hostname TANAABAGENTBOX1
@@ -243,7 +243,7 @@ auth. For example, OpenClaw can use provider-specific environment variables such
 
 ```sh
 OPENAI_API_KEY="$OPENAI_API_KEY" \
-agentbootbox \
+agentbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --openclaw-auth-choice openai-api-key \
   --hostname TANAABAGENTBOX1
@@ -259,7 +259,7 @@ use `--openclaw-auth-env` with one parent environment variable name:
 
 ```sh
 FUTURE_PROVIDER_API_KEY="$FUTURE_PROVIDER_API_KEY" \
-agentbootbox \
+agentbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --openclaw-auth-choice future-provider-api-key \
   --openclaw-auth-env FUTURE_PROVIDER_API_KEY \
@@ -293,8 +293,8 @@ other trusted local users can be granted package-management access through group
 `--brewgroup` to choose another group, or pass a falsey value to skip brewgroup setup:
 
 ```sh
-agentbootbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup agentbrew --hostname TANAABAGENTBOX1
-agentbootbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup off --hostname TANAABAGENTBOX1
+agentbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup agentbrew --hostname TANAABAGENTBOX1
+agentbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup off --hostname TANAABAGENTBOX1
 ```
 
 When brewgroup setup is enabled, agentbox adds the invoking admin user to the configured brewgroup
@@ -308,7 +308,7 @@ prefix owned by `brewer`, but nests macOS `staff` into `brewer` so future local 
 inherit Homebrew prefix write access without being added one by one:
 
 ```sh
-agentbootbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup brewer:staff --hostname TANAABAGENTBOX1
+agentbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup brewer:staff --hostname TANAABAGENTBOX1
 ```
 
 This is opt-in because it grants every current and future member of the trusted group write access
@@ -319,7 +319,7 @@ missing, but the trusted group must already exist.
 
 ## Tailscale
 
-Tailscale is the recommended remote access path, but it is not mandatory. When enabled, `boot.sh`
+Tailscale is the recommended remote access path, but it is not mandatory. When enabled, `macos.sh`
 installs an agentbox-owned system LaunchDaemon for `tailscaled`, checks whether the Mac is already
 joined, and only requires an auth key for a first join. The daemon is installed as
 `/Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist` and runs as `root`; agentbox does not
@@ -330,8 +330,8 @@ daemon state directory is `/var/db/tanaab/agentbox/tailscale`.
 To skip Tailscale setup, pass a falsey auth-key value:
 
 ```sh
-agentbootbox --tailscale-authkey off --hostname TANAABAGENTBOX1
-AGENTBOX_TAILSCALE_AUTHKEY=off agentbootbox --hostname TANAABAGENTBOX1
+agentbox --tailscale-authkey off --hostname TANAABAGENTBOX1
+AGENTBOX_TAILSCALE_AUTHKEY=off agentbox --hostname TANAABAGENTBOX1
 ```
 
 The default hostname is `TANAABAGENTBOX1`. The configured hostname is used for macOS system
@@ -396,7 +396,7 @@ they do not land in shell history.
 - `CI`: run in CI mode and disable prompts.
 - `NONINTERACTIVE` or `--yes`: skip interactive prompts.
 
-Run `boot.sh --help` for the exact current CLI and environment-variable contract.
+Run `macos.sh --help` for the exact current CLI and environment-variable contract.
 
 ## Verification
 
@@ -474,7 +474,7 @@ bun install
 bun run lint
 bun run build
 bun run
-./dist/boot.sh --help
+./dist/macos.sh --help
 ```
 
 Leia examples run in GitHub Actions on fresh macOS runners because the mutating scenarios configure

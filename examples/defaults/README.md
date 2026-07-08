@@ -43,7 +43,7 @@ test -x "$(brew --prefix)/bin/tailscale"
 
 # should use the workflow payload
 test "$AGENTBOX_PAYLOAD_DIR" = "$GITHUB_WORKSPACE"
-test -f "$AGENTBOX_PAYLOAD_DIR/boot.sh"
+test -f "$AGENTBOX_PAYLOAD_DIR/macos.sh"
 
 # should satisfy the agentbox brewfile
 brew bundle check --file "$AGENTBOX_PAYLOAD_DIR/Brewfile" --no-upgrade

@@ -10,8 +10,8 @@ const REPO_ROOT = fileURLToPath(REPO_URL);
 const PUBLIC_ORIGIN = 'https://agentbox.boot.tanaab.sh';
 const PUBLISHED_SCRIPTS = [
   {
-    sourcePath: 'boot.sh',
-    destinationPath: 'boot.sh',
+    sourcePath: 'macos.sh',
+    destinationPath: 'macos.sh',
     executable: true,
   },
 ];

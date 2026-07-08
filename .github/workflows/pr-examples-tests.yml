@@ -44,11 +44,11 @@ jobs:
           sync: false
           commands: |
             bun run build
-            version-injector dist/boot.sh --style sh --version "${{ env.STAMPED_VERSION }}"
+            version-injector dist/macos.sh --style sh --version "${{ env.STAMPED_VERSION }}"
       - name: Put prepared agentbox on PATH
         shell: bash
         run: |
-          install -m 755 dist/boot.sh dist/agentbox
+          install -m 755 dist/macos.sh dist/agentbox
           echo "$PWD/dist" >> "$GITHUB_PATH"
       - name: Run Leia-backed example
         shell: bash
