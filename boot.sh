@@ -583,7 +583,7 @@ validate_openclaw_auth_choice_env() {
 
   if [[ "${OPENCLAW_AUTH_CHOICE}" == "skip" ]]; then
     if [[ -n "${OPENCLAW_AUTH_ENV}" ]]; then
-      abort "OpenClaw auth env ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} requires an OpenClaw auth choice other than ${tty_ts}skip${tty_reset}."
+      abort "openclaw auth env ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} requires an openclaw auth choice other than ${tty_ts}skip${tty_reset}."
     fi
     return 0
   fi
@@ -591,9 +591,9 @@ validate_openclaw_auth_choice_env() {
   if [[ -n "${OPENCLAW_AUTH_ENV}" ]]; then
     if [[ -z "${!OPENCLAW_AUTH_ENV-}" ]]; then
       abort_multi "$(cat <<EOABORT
-OpenClaw auth env ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} is not set in the parent environment.
-set ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} before running agentbox so it can be passed to OpenClaw onboarding, or remove ${tty_ts}--openclaw-auth-env${tty_reset}.
-OpenClaw provider docs: ${tty_underline}${tty_magenta}https://docs.openclaw.ai/providers${tty_reset}
+openclaw auth env ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} is not set in the parent environment.
+set ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} before running agentbox so it can be passed to openclaw onboarding, or remove ${tty_ts}--openclaw-auth-env${tty_reset}.
+openclaw provider docs: ${tty_underline}${tty_magenta}https://docs.openclaw.ai/providers${tty_reset}
 EOABORT
 )"
     fi
@@ -611,9 +611,9 @@ EOABORT
   fi
 
   abort_multi "$(cat <<EOABORT
-OpenClaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} requires one of these parent environment variables: ${tty_ts}${auth_env_names}${tty_reset}.
-set the matching provider key in the environment before running agentbox so it can be passed to OpenClaw onboarding, or use ${tty_ts}--openclaw-auth-choice skip${tty_reset}.
-OpenClaw provider docs: ${tty_underline}${tty_magenta}https://docs.openclaw.ai/providers${tty_reset}
+openclaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} requires one of these parent environment variables: ${tty_ts}${auth_env_names}${tty_reset}.
+set the matching provider key in the environment before running agentbox so it can be passed to openclaw onboarding, or use ${tty_ts}--openclaw-auth-choice skip${tty_reset}.
+openclaw provider docs: ${tty_underline}${tty_magenta}https://docs.openclaw.ai/providers${tty_reset}
 EOABORT
 )"
 }
@@ -838,26 +838,26 @@ parse_openclaw_identity_input() {
 
   identity="$(trim_whitespace "${OPENCLAW_IDENTITY_INPUT}")"
   if [[ -z "${identity}" ]]; then
-    abort "OpenClaw identity must not be empty."
+    abort "openclaw identity must not be empty."
   fi
 
   if [[ ! "${identity}" =~ ${identity_regex} ]]; then
-    abort "OpenClaw identity ${tty_ts}${identity}${tty_reset} must use ${tty_bold}Full Name <shortname>${tty_reset} syntax."
+    abort "openclaw identity ${tty_ts}${identity}${tty_reset} must use ${tty_bold}full name <shortname>${tty_reset} syntax."
   fi
 
   full_name="$(trim_whitespace "${BASH_REMATCH[1]}")"
   short_name="$(trim_whitespace "${BASH_REMATCH[2]}")"
 
   if [[ -z "${full_name}" ]]; then
-    abort "OpenClaw identity full name must not be empty."
+    abort "openclaw identity full name must not be empty."
   fi
 
   if ! openclaw_short_name_valid "${short_name}"; then
-    abort "OpenClaw short username ${tty_ts}${short_name}${tty_reset} must start with a lowercase letter and contain only lowercase letters, digits, underscore, or dash."
+    abort "openclaw short username ${tty_ts}${short_name}${tty_reset} must start with a lowercase letter and contain only lowercase letters, digits, underscore, or dash."
   fi
 
   if [[ "${short_name}" == "root" ]]; then
-    abort "OpenClaw short username must not be ${tty_ts}root${tty_reset}."
+    abort "openclaw short username must not be ${tty_ts}root${tty_reset}."
   fi
 
   OPENCLAW_FULL_NAME="${full_name}"
@@ -969,18 +969,18 @@ Usage: ${tty_dim}[NONINTERACTIVE=1] [CI=1] [AGENTBOX_*...]${tty_reset} ${tty_bol
 ${tty_tp}Options:${tty_reset}
 EOS
 
-  usage_option "--agentbox-version" "installs a tagged release, local git repo, or tar archive URL/path" "$(agentbox_version_display)"
-  usage_option "--brewfile" "adds an extra Brewfile from a local path or URL" "${extra_brewfiles_display_value}"
-  usage_option "--hostname" "sets the system hostname and Tailscale name source" "${AGENTBOX_HOSTNAME_VALUE}"
-  usage_option "--authorized-key" "adds an SSH public key or public-key file path" "${authorized_keys_display}"
-  usage_option "--tailscale-authkey" "uses a Tailscale auth key to join; falsey disables setup" "${tailscale_authkey_display_value}"
-  usage_option "--brewgroup" "manages Homebrew prefix group write access; accepts group[:trusted-group]; falsey disables setup" "${brewgroup_display_value}"
-  usage_option "--openclaw-identity" "configures the OpenClaw runner as \"Full Name <shortname>\"" "${OPENCLAW_IDENTITY_INPUT}"
-  usage_option "--openclaw-password" "sets the OpenClaw runner password for user creation or autologin" "${openclaw_password_display_value}"
-  usage_option "--openclaw-auth-choice" "sets initial OpenClaw model auth choice" "${openclaw_auth_choice_display_value}"
-  usage_option "--openclaw-auth-env" "passes one extra parent env var to OpenClaw auth onboarding" "${openclaw_auth_env_display_value}"
-  usage_option "--openclaw-gateway-port" "sets OpenClaw gateway port" "${openclaw_gateway_port_display_value}"
-  usage_option "--skip-openclaw-autologin" "skips default OpenClaw runner autologin"
+  usage_option "--agentbox-version" "installs a tagged release, local git repo, or tar archive url/path" "$(agentbox_version_display)"
+  usage_option "--brewfile" "adds an extra Brewfile from a local path or url" "${extra_brewfiles_display_value}"
+  usage_option "--hostname" "sets the system hostname and tailscale name source" "${AGENTBOX_HOSTNAME_VALUE}"
+  usage_option "--authorized-key" "adds an ssh public key or public-key file path" "${authorized_keys_display}"
+  usage_option "--tailscale-authkey" "uses a tailscale auth key to join; falsey disables setup" "${tailscale_authkey_display_value}"
+  usage_option "--brewgroup" "manages homebrew prefix group write access; accepts group[:trusted-group]; falsey disables setup" "${brewgroup_display_value}"
+  usage_option "--openclaw-identity" "configures the openclaw runner as \"full name <shortname>\"" "${OPENCLAW_IDENTITY_INPUT}"
+  usage_option "--openclaw-password" "sets the openclaw runner password for user creation or autologin" "${openclaw_password_display_value}"
+  usage_option "--openclaw-auth-choice" "sets initial openclaw model auth choice" "${openclaw_auth_choice_display_value}"
+  usage_option "--openclaw-auth-env" "passes one extra parent env var to openclaw auth onboarding" "${openclaw_auth_env_display_value}"
+  usage_option "--openclaw-gateway-port" "sets openclaw gateway port" "${openclaw_gateway_port_display_value}"
+  usage_option "--skip-openclaw-autologin" "skips default openclaw runner autologin"
   usage_option "--version" "shows version of this script"
   usage_option "--debug" "shows debug messages" "${debug_display}"
   usage_option "--force" "forces supported replacement operations" "${force_display}"
@@ -998,7 +998,7 @@ ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_BREWGROUP             same as --brewgroup
   AGENTBOX_OPENCLAW_IDENTITY     same as --openclaw-identity
   AGENTBOX_OPENCLAW_PASSWORD     same as --openclaw-password
-  AGENTBOX_OPENCLAW_AUTOLOGIN    falsey disables OpenClaw runner autologin
+  AGENTBOX_OPENCLAW_AUTOLOGIN    falsey disables openclaw runner autologin
   AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice
   AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env
   AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port
@@ -1354,7 +1354,7 @@ agentbox_source_display() {
       display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}"
       ;;
     *)
-      printf "default branch over HTTPS"
+      printf "default branch over https"
       ;;
   esac
 }
@@ -1474,7 +1474,7 @@ resolve_extra_brewfiles() {
     fi
 
     if ! resolved_brewfile="$(resolve_extra_brewfile_source_path "${brewfile}")"; then
-      abort "extra Brewfile ${tty_ts}${brewfile}${tty_reset} must be a URL or resolve to a local file relative to ${tty_ts}$(display_home_path "${INVOCATION_CWD}")${tty_reset} or ${tty_ts}$(agentbox_target_display)${tty_reset}."
+      abort "extra Brewfile ${tty_ts}${brewfile}${tty_reset} must be a url or resolve to a local file relative to ${tty_ts}$(display_home_path "${INVOCATION_CWD}")${tty_reset} or ${tty_ts}$(agentbox_target_display)${tty_reset}."
     fi
 
     RESOLVED_EXTRA_BREWFILES+=("${resolved_brewfile}")
@@ -1536,11 +1536,11 @@ warn_if_xcode_clt_missing() {
 
 run_agentbox_hostname_setup() {
   if macos_identity_matches; then
-    log "${tty_tp}skipping${tty_reset} macOS system identity; already set to ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
+    log "${tty_tp}skipping${tty_reset} macos system identity; already set to ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
     return 0
   fi
 
-  log "${tty_tp}setting${tty_reset} macOS system identity to ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
+  log "${tty_tp}setting${tty_reset} macos system identity to ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
   execute sudo scutil --set ComputerName "${AGENTBOX_HOSTNAME_VALUE}"
   execute sudo scutil --set HostName "${AGENTBOX_HOSTNAME_VALUE}"
   execute sudo scutil --set LocalHostName "${AGENTBOX_HOSTNAME_VALUE}"
@@ -1619,13 +1619,13 @@ warn_if_tailscale_firewall_enabled() {
   fi
 
   if firewall_global_enabled; then
-    warn "macOS Application Firewall is enabled; this can prevent tailscale serve HTTPS from reaching the openclaw gateway over the tailnet."
-    warn "agentbox recommends disabling macOS Application Firewall for tailnet gateway access and relying on tailscale ACLs, no WAN port forwarding, ssh hardening, and loopback gateway binding."
+    warn "macos application firewall is enabled; this can prevent tailscale serve https from reaching the openclaw gateway over the tailnet."
+    warn "agentbox recommends disabling macos application firewall for tailnet gateway access and relying on tailscale acls, no wan port forwarding, ssh hardening, and loopback gateway binding."
   fi
 }
 
 run_agentbox_macos_settings() {
-  log "${tty_tp}applying${tty_reset} headless macOS power, time, and recovery settings"
+  log "${tty_tp}applying${tty_reset} headless macos power, time, and recovery settings"
 
   ensure_pmset_setting sleep 0
   ensure_pmset_setting disksleep 0
@@ -1685,15 +1685,15 @@ user_is_admin() {
 
 validate_openclaw_user_non_admin() {
   if [[ "${OPENCLAW_USER}" == "root" ]]; then
-    abort "OpenClaw runner user must not be ${tty_ts}root${tty_reset}."
+    abort "openclaw runner user must not be ${tty_ts}root${tty_reset}."
   fi
 
   if [[ -n "${ADMIN_USER}" && "${OPENCLAW_USER}" == "${ADMIN_USER}" ]]; then
-    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must be separate from the invoking sudo user."
+    abort "openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must be separate from the invoking sudo user."
   fi
 
   if user_is_admin "${OPENCLAW_USER}"; then
-    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must not be an admin or sudo-capable user."
+    abort "openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must not be an admin or sudo-capable user."
   fi
 }
 
@@ -1729,7 +1729,7 @@ abort_missing_openclaw_password() {
   local reason="$1"
 
   abort_multi "$(cat <<EOABORT
-OpenClaw runner password is required to ${reason}.
+openclaw runner password is required to ${reason}.
 set ${tty_bold}AGENTBOX_OPENCLAW_PASSWORD${tty_reset}, pass ${tty_bold}--openclaw-password${tty_reset}, or rerun interactively so agentbox can prompt without echoing the password.
 use ${tty_bold}--skip-openclaw-autologin${tty_reset} only when autologin should be disabled; creating a new runner user still requires a password.
 EOABORT
@@ -1752,19 +1752,19 @@ prompt_for_openclaw_password() {
 
   input_path="$(interactive_tty_input)"
 
-  printf "enter password for OpenClaw runner %s to %s: " "${tty_ts}${OPENCLAW_USER}${tty_reset}" "${reason}" >&2
+  printf "enter password for openclaw runner %s to %s: " "${tty_ts}${OPENCLAW_USER}${tty_reset}" "${reason}" >&2
   IFS= read -r -s password < "${input_path}"
   printf "\n" >&2
-  printf "confirm password for OpenClaw runner %s: " "${tty_ts}${OPENCLAW_USER}${tty_reset}" >&2
+  printf "confirm password for openclaw runner %s: " "${tty_ts}${OPENCLAW_USER}${tty_reset}" >&2
   IFS= read -r -s confirm < "${input_path}"
   printf "\n" >&2
 
   if [[ -z "${password}" ]]; then
-    abort "OpenClaw runner password must not be empty."
+    abort "openclaw runner password must not be empty."
   fi
 
   if [[ "${password}" != "${confirm}" ]]; then
-    abort "OpenClaw runner password confirmation did not match."
+    abort "openclaw runner password confirmation did not match."
   fi
 
   OPENCLAW_PASSWORD="${password}"
@@ -1839,18 +1839,18 @@ ensure_openclaw_user_home() {
   expected_home="/Users/${OPENCLAW_USER}"
 
   if [[ -z "${home}" ]]; then
-    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} does not have a configured home directory."
+    abort "openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} does not have a configured home directory."
   fi
 
   if [[ ! -d "${home}" ]]; then
     if [[ "${home}" != "${expected_home}" ]]; then
-      abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} has missing home directory ${tty_ts}${home}${tty_reset}; create it manually or set the account home to ${tty_ts}${expected_home}${tty_reset} and rerun."
+      abort "openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} has missing home directory ${tty_ts}${home}${tty_reset}; create it manually or set the account home to ${tty_ts}${expected_home}${tty_reset} and rerun."
     fi
 
     log "${tty_tp}creating${tty_reset} openclaw runner home directory ${tty_ts}${home}${tty_reset}"
     debug "${tty_tp}running${tty_reset}" sudo /usr/sbin/createhomedir -c -u "${OPENCLAW_USER}"
     if ! sudo /usr/sbin/createhomedir -c -u "${OPENCLAW_USER}"; then
-      abort "failed to create OpenClaw runner home directory ${tty_ts}${home}${tty_reset}."
+      abort "failed to create openclaw runner home directory ${tty_ts}${home}${tty_reset}."
     fi
     created_home="1"
   fi
@@ -1864,12 +1864,12 @@ ensure_openclaw_user_home() {
   ensure_openclaw_user_home_ownership "${home}" "${created_home}"
 
   if [[ ! -d "${home}" ]]; then
-    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must have a usable home directory."
+    abort "openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must have a usable home directory."
   fi
 }
 
 create_openclaw_user() {
-  ensure_openclaw_password_available "create the OpenClaw runner user"
+  ensure_openclaw_password_available "create the openclaw runner user"
   write_openclaw_profile_image
 
   log "${tty_tp}creating${tty_reset} openclaw runner user ${tty_ts}${OPENCLAW_FULL_NAME} <${OPENCLAW_USER}>${tty_reset}"
@@ -1878,7 +1878,7 @@ create_openclaw_user() {
     if user_exists "${OPENCLAW_USER}"; then
       warn "sysadminctl returned a nonzero status after creating openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset}; continuing with account verification."
     else
-      abort "failed to create OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+      abort "failed to create openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset}."
     fi
   fi
 }
@@ -1894,21 +1894,21 @@ ensure_openclaw_autologin() {
     return 0
   fi
 
-  ensure_openclaw_password_available "configure OpenClaw runner autologin"
+  ensure_openclaw_password_available "configure openclaw runner autologin"
 
   log "${tty_tp}configuring${tty_reset} openclaw runner autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}"
   debug "${tty_tp}running${tty_reset}" sudo sysadminctl -autologin set -userName "${OPENCLAW_USER}" -password "****"
   if ! sudo sysadminctl -autologin set -userName "${OPENCLAW_USER}" -password "${OPENCLAW_PASSWORD}"; then
-    abort "failed to configure OpenClaw runner autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}; rerun with ${tty_bold}--skip-openclaw-autologin${tty_reset} if this Mac should not use GUI autologin."
+    abort "failed to configure openclaw runner autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}; rerun with ${tty_bold}--skip-openclaw-autologin${tty_reset} if this mac should not use gui autologin."
   fi
 
   if ! openclaw_autologin_configured; then
-    abort "OpenClaw runner autologin did not become active for ${tty_ts}${OPENCLAW_USER}${tty_reset}; rerun with ${tty_bold}--skip-openclaw-autologin${tty_reset} if this Mac should not use GUI autologin."
+    abort "openclaw runner autologin did not become active for ${tty_ts}${OPENCLAW_USER}${tty_reset}; rerun with ${tty_bold}--skip-openclaw-autologin${tty_reset} if this mac should not use gui autologin."
   fi
 }
 
 run_agentbox_openclaw_user_setup() {
-  check_sudo_access "before OpenClaw runner user setup"
+  check_sudo_access "before openclaw runner user setup"
 
   if user_exists "${OPENCLAW_USER}"; then
     log "${tty_tp}reusing${tty_reset} existing openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset}"
@@ -2114,20 +2114,20 @@ ensure_remote_login_access_user() {
   local user="$1"
 
   if ! group_exists "${SSH_ACCESS_GROUP}"; then
-    log "${tty_tp}skipping${tty_reset} macOS Remote Login access group update; ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset} does not exist"
+    log "${tty_tp}skipping${tty_reset} macos remote login access group update; ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset} does not exist"
     return 0
   fi
 
   if group_has_user "${SSH_ACCESS_GROUP}" "${user}"; then
-    log "${tty_tp}skipping${tty_reset} macOS Remote Login access; ${tty_ts}${user}${tty_reset} is already a direct member of ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset}"
+    log "${tty_tp}skipping${tty_reset} macos remote login access; ${tty_ts}${user}${tty_reset} is already a direct member of ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset}"
     return 0
   fi
 
-  log "${tty_tp}adding${tty_reset} ${tty_ts}${user}${tty_reset} to macOS Remote Login access group ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset}"
+  log "${tty_tp}adding${tty_reset} ${tty_ts}${user}${tty_reset} to macos remote login access group ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset}"
   execute sudo dseditgroup -o edit -a "${user}" -t user "${SSH_ACCESS_GROUP}"
 
   if ! group_has_user "${SSH_ACCESS_GROUP}" "${user}"; then
-    abort "user ${tty_ts}${user}${tty_reset} is still not a direct member of macOS Remote Login access group ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset} after remediation."
+    abort "user ${tty_ts}${user}${tty_reset} is still not a direct member of macos remote login access group ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset} after remediation."
   fi
 }
 
@@ -2205,7 +2205,7 @@ harden_sshd_for_users() {
   fi
 
   if ! sshd_config_drop_in_supported; then
-    abort "sshd config drop-ins are not enabled in ${tty_ts}${SSHD_CONFIG_PATH}${tty_reset}; cannot safely install agentbox SSH hardening."
+    abort "sshd config drop-ins are not enabled in ${tty_ts}${SSHD_CONFIG_PATH}${tty_reset}; cannot safely install agentbox ssh hardening."
   fi
 
   if sudo test -e "${SSHD_AGENTBOX_CONFIG_PATH}"; then
@@ -2248,7 +2248,7 @@ run_agentbox_ssh_setup() {
   local ssh_allowed_users="${ADMIN_USER} ${OPENCLAW_USER}"
 
   if remote_login_enabled; then
-    log "${tty_tp}skipping${tty_reset} classic ssh enablement; Remote Login is already on"
+    log "${tty_tp}skipping${tty_reset} classic ssh enablement; remote login is already on"
   else
     log "${tty_tp}enabling${tty_reset} classic ssh for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
     execute sudo systemsetup -setremotelogin on
@@ -2430,7 +2430,7 @@ openclaw_gateway_service_env_content() {
   state_dir="$(openclaw_gateway_state_dir)"
   tmp_dir="$(openclaw_gateway_tmp_dir)"
 
-  printf "# Generated by agentbox. Do not edit; use %s/.env for durable OpenClaw runtime env.\n" "${state_dir}"
+  printf "# generated by agentbox. do not edit; use %s/.env for durable openclaw runtime env.\n" "${state_dir}"
   openclaw_gateway_service_env_entry "HOME" "${home}"
   openclaw_gateway_service_env_entry "USER" "${OPENCLAW_USER}"
   openclaw_gateway_service_env_entry "LOGNAME" "${OPENCLAW_USER}"
@@ -2541,7 +2541,7 @@ render_agentbox_launchd_template() {
   fi
 
   if ! printf "%s\n" "${rendered}" | sudo tee "${output_path}" >/dev/null; then
-    abort "failed to write agentbox LaunchDaemon ${tty_ts}${output_path}${tty_reset}."
+    abort "failed to write agentbox launchd daemon ${tty_ts}${output_path}${tty_reset}."
   fi
 
   execute sudo /usr/bin/plutil -lint "${output_path}"
@@ -2684,12 +2684,12 @@ validate_platform() {
 
   CURL="$(command -v curl || true)"
   if [[ -z "${CURL}" ]] || ! test_curl "${CURL}"; then
-    abort "you must install cURL ${REQUIRED_CURL_VERSION} or higher before using this wrapper."
+    abort "you must install curl ${REQUIRED_CURL_VERSION} or higher before using this wrapper."
   fi
 
   if [[ "${OS}" != "macos" ]]; then
     abort_multi "$(cat <<EOABORT
-this script only supports ${tty_ts}macOS${tty_reset}; ${tty_red}${OS}${tty_reset} is not supported.
+this script only supports ${tty_ts}macos${tty_reset}; ${tty_red}${OS}${tty_reset} is not supported.
 check the project README for current support details: ${tty_underline}${tty_magenta}https://github.com/tanaabased/agentbox${tty_reset}
 EOABORT
 )"
@@ -2706,7 +2706,7 @@ EOABORT
   macos_version="$(major_minor "$(/usr/bin/sw_vers -productVersion)")"
   if ! version_compare "${macos_version}" "${MACOS_OLDEST_SUPPORTED}"; then
     abort_multi "$(cat <<EOABORT
-your macOS version ${tty_red}${macos_version}${tty_reset} is ${tty_bold}too old${tty_reset}; minimum supported version is ${tty_ts}${MACOS_OLDEST_SUPPORTED}${tty_reset}.
+your macos version ${tty_red}${macos_version}${tty_reset} is ${tty_bold}too old${tty_reset}; minimum supported version is ${tty_ts}${MACOS_OLDEST_SUPPORTED}${tty_reset}.
 check the project README for current support details: ${tty_underline}${tty_magenta}https://github.com/tanaabased/agentbox${tty_reset}
 EOABORT
 )"
@@ -2714,11 +2714,11 @@ EOABORT
 
   if version_compare "${macos_version}" "${MACOS_UNSUPPORTED_AT_OR_AFTER}"; then
     if unsupported_macos_allowed; then
-      warn "macOS ${macos_version} is outside the validated support range ${MACOS_SUPPORTED_RANGE}; continuing because AGENTBOX_ALLOW_UNSUPPORTED_MACOS is truthy."
+      warn "macos ${macos_version} is outside the validated support range ${MACOS_SUPPORTED_RANGE}; continuing because AGENTBOX_ALLOW_UNSUPPORTED_MACOS is truthy."
     else
       abort_multi "$(cat <<EOABORT
-your macOS version ${tty_red}${macos_version}${tty_reset} is newer than the validated support range ${tty_ts}${MACOS_SUPPORTED_RANGE}${tty_reset}.
-agentbox stops before machine mutation on unvalidated major macOS versions.
+your macos version ${tty_red}${macos_version}${tty_reset} is newer than the validated support range ${tty_ts}${MACOS_SUPPORTED_RANGE}${tty_reset}.
+agentbox stops before machine mutation on unvalidated major macos versions.
 to intentionally test anyway, set ${tty_bold}AGENTBOX_ALLOW_UNSUPPORTED_MACOS=1${tty_reset} and rerun.
 EOABORT
 )"
@@ -2736,27 +2736,27 @@ validate_inputs_before_sudo() {
   parse_openclaw_identity_input
 
   if [[ -z "${OPENCLAW_AUTH_CHOICE}" ]]; then
-    abort "OpenClaw auth choice must not be empty."
+    abort "openclaw auth choice must not be empty."
   fi
 
   if [[ "${OPENCLAW_AUTH_CHOICE}" =~ [[:space:]] ]]; then
-    abort "OpenClaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} must not contain whitespace."
+    abort "openclaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} must not contain whitespace."
   fi
 
   if [[ -n "${OPENCLAW_AUTH_ENV}" ]] && ! env_name_valid "${OPENCLAW_AUTH_ENV}"; then
-    abort "OpenClaw auth env ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} must be a valid environment variable name."
+    abort "openclaw auth env ${tty_ts}${OPENCLAW_AUTH_ENV}${tty_reset} must be a valid environment variable name."
   fi
 
   validate_openclaw_auth_choice_env
 
   if ! openclaw_gateway_port_valid "${OPENCLAW_GATEWAY_PORT}"; then
-    abort "OpenClaw gateway port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset} must be an integer from 1 to 65535."
+    abort "openclaw gateway port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset} must be an integer from 1 to 65535."
   fi
 
   derive_openclaw_gateway_tailscale_mode
 
   if ! hostname_valid "${AGENTBOX_HOSTNAME_VALUE}"; then
-    abort "hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} must be DNS-safe."
+    abort "hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} must be dns-safe."
   fi
 }
 
@@ -2770,7 +2770,7 @@ validate_inputs() {
   fi
 
   if ! id "${ADMIN_USER}" >/dev/null 2>&1; then
-    abort "current admin user ${tty_ts}${ADMIN_USER}${tty_reset} does not exist on this Mac."
+    abort "current admin user ${tty_ts}${ADMIN_USER}${tty_reset} does not exist on this mac."
   fi
 
   resolve_authorized_key_specs
@@ -2778,7 +2778,7 @@ validate_inputs() {
 
   if [[ -n "${NONINTERACTIVE-}" || -n "${CI-}" ]]; then
     if openclaw_password_required && [[ -z "${OPENCLAW_PASSWORD}" ]]; then
-      abort_missing_openclaw_password "prepare the OpenClaw runner user"
+      abort_missing_openclaw_password "prepare the openclaw runner user"
     fi
   fi
 
@@ -2809,11 +2809,11 @@ validate_inputs() {
 
   TAILSCALE_HOSTNAME_VALUE="$(derive_tailscale_hostname "${AGENTBOX_HOSTNAME_VALUE}")"
   if [[ -z "${TAILSCALE_HOSTNAME_VALUE}" ]]; then
-    abort "hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} derives an empty Tailscale hostname after stripping the leading TANAAB prefix."
+    abort "hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} derives an empty tailscale hostname after stripping the leading TANAAB prefix."
   fi
 
   if ! hostname_valid "${TAILSCALE_HOSTNAME_VALUE}"; then
-    abort "derived Tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset} from ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} must be DNS-safe."
+    abort "derived tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset} from ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} must be dns-safe."
   fi
 }
 
@@ -2831,7 +2831,7 @@ apply_noninteractive_mode() {
         abort "cannot run interactive mode because no interactive terminal is available."
       fi
     elif [[ ! -t 0 ]]; then
-      debug "${tty_tp}using${tty_reset} ${tty_ts}/dev/tty${tty_reset} for interactive input because \`stdin\` is not a TTY."
+      debug "${tty_tp}using${tty_reset} ${tty_ts}/dev/tty${tty_reset} for interactive input because \`stdin\` is not a tty."
     fi
   else
     log "${tty_tp}running${tty_reset} in ${tty_ts}non-interactive mode${tty_reset} ${tty_dim}because \$NONINTERACTIVE is set${tty_reset}"
@@ -2971,7 +2971,7 @@ plan_agentbox_fetch() {
   elif [[ "${AGENTBOX_SOURCE_KIND}" == "local" ]]; then
     plan_action "${tty_tp}clone${tty_reset} ${tty_ts}agentbox${tty_reset} from local git repo ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}")${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
   else
-    plan_action "${tty_tp}clone${tty_reset} ${tty_ts}agentbox${tty_reset} from public HTTPS default branch to ${tty_ts}${target_display}${tty_reset}"
+    plan_action "${tty_tp}clone${tty_reset} ${tty_ts}agentbox${tty_reset} from public https default branch to ${tty_ts}${target_display}${tty_reset}"
   fi
 }
 
@@ -2982,10 +2982,10 @@ plan_wrapper_execution() {
   fi
 
   plan_agentbox_fetch
-  plan_action "${tty_tp}ensure${tty_reset} macOS ComputerName, HostName, and LocalHostName are ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
+  plan_action "${tty_tp}ensure${tty_reset} macos ComputerName, HostName, and LocalHostName are ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
   plan_action "${tty_tp}ensure${tty_reset} headless power, time, and recovery settings"
   if array_has_values EXTRA_BREWFILE_SPECS; then
-    plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile plus extra Brewfiles: ${tty_ts}$(array_join ", " EXTRA_BREWFILE_SPECS)${tty_reset}"
+    plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile plus extra brewfiles: ${tty_ts}$(array_join ", " EXTRA_BREWFILE_SPECS)${tty_reset}"
   else
     plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile"
   fi
@@ -3011,7 +3011,7 @@ plan_wrapper_execution() {
     fi
   fi
   plan_action "${tty_tp}ensure${tty_reset} classic ssh is enabled for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
-  plan_action "${tty_tp}ensure${tty_reset} macOS Remote Login access includes invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} and openclaw runner ${tty_ts}${OPENCLAW_USER}${tty_reset} when ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset} exists"
+  plan_action "${tty_tp}ensure${tty_reset} macos remote login access includes invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} and openclaw runner ${tty_ts}${OPENCLAW_USER}${tty_reset} when ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset} exists"
   if array_has_values AUTHORIZED_KEY_LINES; then
     plan_action "${tty_tp}install${tty_reset} ${tty_ts}$(array_count AUTHORIZED_KEY_LINES)${tty_reset} authorized key entries for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} and openclaw runner ${tty_ts}${OPENCLAW_USER}${tty_reset}"
     plan_action "${tty_tp}harden${tty_reset} ssh to key-only access for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} and openclaw runner ${tty_ts}${OPENCLAW_USER}${tty_reset}"
@@ -3019,7 +3019,7 @@ plan_wrapper_execution() {
   if tailscale_setup_disabled; then
     plan_action "${tty_tp}skip${tty_reset} tailscale setup because the auth-key input is disabled"
   else
-    plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, Tailscale Serve prerequisites, and scoped magicdns resolver"
+    plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, tailscale serve prerequisites, and scoped magicdns resolver"
   fi
   plan_action "${tty_tp}onboard${tty_reset} openclaw gateway config in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   plan_action "${tty_tp}install or refresh${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
@@ -3070,7 +3070,7 @@ run_bootbox_for_agentbox_brewfile() {
     done
   fi
 
-  bootbox_run_or_abort agentbox "bootbox failed while applying agentbox Brewfiles." "${bootbox_args[@]}"
+  bootbox_run_or_abort agentbox "bootbox failed while applying agentbox brewfiles." "${bootbox_args[@]}"
 }
 
 resolve_brew_prefix() {
@@ -3078,7 +3078,7 @@ resolve_brew_prefix() {
 
   BREW_PREFIX_VALUE="$(brew --prefix 2>/dev/null || true)"
   if [[ -z "${BREW_PREFIX_VALUE}" || ! -d "${BREW_PREFIX_VALUE}" ]]; then
-    abort "could not resolve an existing Homebrew prefix with ${tty_ts}brew --prefix${tty_reset}."
+    abort "could not resolve an existing homebrew prefix with ${tty_ts}brew --prefix${tty_reset}."
   fi
 }
 
@@ -3100,7 +3100,7 @@ homebrew_login_paths_ok() {
 }
 
 run_agentbox_homebrew_login_path_setup() {
-  check_sudo_access "before Homebrew login-shell PATH setup"
+  check_sudo_access "before homebrew login-shell PATH setup"
   resolve_brew_prefix
 
   if homebrew_login_paths_ok; then
@@ -3111,13 +3111,13 @@ run_agentbox_homebrew_login_path_setup() {
   log "${tty_tp}writing${tty_reset} homebrew login-shell PATH entries to ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset}"
   execute sudo mkdir -p "$(dirname "${AGENTBOX_HOMEBREW_PATHS_FILE}")"
   if ! homebrew_login_paths_content | sudo tee "${AGENTBOX_HOMEBREW_PATHS_FILE}" >/dev/null; then
-    abort "failed to write Homebrew login-shell PATH file ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset}."
+    abort "failed to write homebrew login-shell PATH file ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset}."
   fi
   execute sudo chown root:wheel "${AGENTBOX_HOMEBREW_PATHS_FILE}"
   execute sudo chmod 644 "${AGENTBOX_HOMEBREW_PATHS_FILE}"
 
   if ! homebrew_login_paths_ok; then
-    abort "Homebrew login-shell PATH file ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset} does not match ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} after remediation."
+    abort "homebrew login-shell PATH file ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset} does not match ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} after remediation."
   fi
 }
 
@@ -3187,14 +3187,14 @@ ensure_brewgroup_exists() {
 
   gid="$(next_available_group_id)"
   if [[ -z "${gid}" ]]; then
-    abort "could not find an available local group id for Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}."
+    abort "could not find an available local group id for homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}."
   fi
 
   log "${tty_tp}creating${tty_reset} homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
   execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}"
   execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" PrimaryGroupID "${gid}"
   execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" Password "*"
-  execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" RealName "agentbox Homebrew access"
+  execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" RealName "agentbox homebrew access"
 }
 
 ensure_brewgroup_admin_user() {
@@ -3207,7 +3207,7 @@ ensure_brewgroup_admin_user() {
   execute sudo dseditgroup -o edit -a "${ADMIN_USER}" -t user "${BREWGROUP_VALUE}"
 
   if ! brewgroup_has_admin_user; then
-    abort "invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} is still not a direct member of Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
+    abort "invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} is still not a direct member of homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
   fi
 }
 
@@ -3221,7 +3221,7 @@ ensure_brewgroup_openclaw_user() {
   execute sudo dseditgroup -o edit -a "${OPENCLAW_USER}" -t user "${BREWGROUP_VALUE}"
 
   if ! brewgroup_has_openclaw_user; then
-    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} is still not a direct member of Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
+    abort "openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} is still not a direct member of homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
   fi
 }
 
@@ -3239,7 +3239,7 @@ ensure_trusted_brewgroup_nested() {
   execute sudo dseditgroup -o edit -a "${TRUSTED_BREWGROUP_VALUE}" -t group "${BREWGROUP_VALUE}"
 
   if ! brewgroup_has_trusted_group; then
-    abort "trusted Homebrew group ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} is still not nested into ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
+    abort "trusted homebrew group ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} is still not nested into ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
   fi
 }
 
@@ -3268,7 +3268,7 @@ run_agentbox_brewgroup_setup() {
     return 0
   fi
 
-  check_sudo_access "before Homebrew brewgroup setup"
+  check_sudo_access "before homebrew brewgroup setup"
   resolve_brew_prefix
 
   ensure_brewgroup_exists
@@ -3286,13 +3286,13 @@ run_agentbox_brewgroup_setup() {
   execute sudo find -x "${BREW_PREFIX_VALUE}" ! -type l -exec chmod g+rwX {} +
 
   if ! brew_prefix_permissions_ok; then
-    abort "Homebrew prefix ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} is still not group-writable by ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
+    abort "homebrew prefix ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} is still not group-writable by ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
   fi
 }
 
 abort_missing_tailscale_authkey() {
   abort_multi "$(cat <<EOABORT
-you must provide a Tailscale auth key before this Mac can join Tailscale.
+you must provide a tailscale auth key before this mac can join tailscale.
 set ${tty_bold}AGENTBOX_TAILSCALE_AUTHKEY${tty_reset}, or pass ${tty_bold}--tailscale-authkey${tty_reset}. Prefer the environment variable to avoid shell-history exposure.
 EOABORT
 )"
@@ -3388,9 +3388,9 @@ verify_tailscale_serve_prerequisites() {
 
   if [[ -z "${status_json}" ]]; then
     abort_multi "$(cat <<EOABORT
-could not read tailscale status after joining the tailnet, so agentbox cannot verify Tailscale Serve prerequisites.
-OpenClaw Tailscale Serve requires MagicDNS and HTTPS Certificates to be enabled in Tailscale DNS settings: ${tty_underline}${tty_magenta}${TAILSCALE_DNS_ADMIN_URL}${tty_reset}
-enable MagicDNS and HTTPS Certificates, then rerun agentbox. docs: ${tty_underline}${tty_magenta}${TAILSCALE_MAGICDNS_DOCS_URL}${tty_reset} and ${tty_underline}${tty_magenta}${TAILSCALE_HTTPS_CERTS_DOCS_URL}${tty_reset}
+could not read tailscale status after joining the tailnet, so agentbox cannot verify tailscale serve prerequisites.
+openclaw tailscale serve requires magicdns and https certificates to be enabled in tailscale dns settings: ${tty_underline}${tty_magenta}${TAILSCALE_DNS_ADMIN_URL}${tty_reset}
+enable magicdns and https certificates, then rerun agentbox. docs: ${tty_underline}${tty_magenta}${TAILSCALE_MAGICDNS_DOCS_URL}${tty_reset} and ${tty_underline}${tty_magenta}${TAILSCALE_HTTPS_CERTS_DOCS_URL}${tty_reset}
 EOABORT
 )"
   fi
@@ -3399,15 +3399,15 @@ EOABORT
   https_certificates_enabled="$(tailscale_https_certificates_enabled_value "${status_json}")"
 
   if [[ "${magicdns_enabled}" == "1" && "${https_certificates_enabled}" == "1" ]]; then
-    log "${tty_tp}verified${tty_reset} tailscale MagicDNS and HTTPS Certificates for OpenClaw Tailscale Serve"
+    log "${tty_tp}verified${tty_reset} tailscale magicdns and https certificates for openclaw tailscale serve"
     return 0
   fi
 
   abort_multi "$(cat <<EOABORT
-OpenClaw Tailscale Serve requires MagicDNS and HTTPS Certificates to be enabled in this tailnet.
+openclaw tailscale serve requires magicdns and https certificates to be enabled in this tailnet.
 tailscale_magicdns_enabled=${magicdns_enabled}
 tailscale_https_certificates_enabled=${https_certificates_enabled}
-Open Tailscale DNS settings, enable MagicDNS and HTTPS Certificates, then rerun agentbox: ${tty_underline}${tty_magenta}${TAILSCALE_DNS_ADMIN_URL}${tty_reset}
+open tailscale dns settings, enable magicdns and https certificates, then rerun agentbox: ${tty_underline}${tty_magenta}${TAILSCALE_DNS_ADMIN_URL}${tty_reset}
 docs: ${tty_underline}${tty_magenta}${TAILSCALE_MAGICDNS_DOCS_URL}${tty_reset} and ${tty_underline}${tty_magenta}${TAILSCALE_HTTPS_CERTS_DOCS_URL}${tty_reset}
 EOABORT
 )"
@@ -3420,12 +3420,12 @@ configure_tailscale_magicdns_resolver() {
 
   suffix="$(tailscale_magicdns_suffix_value "${status_json}" || true)"
   if [[ -z "${suffix}" ]]; then
-    warn "tailscale status did not report a magicdns suffix; skipping macOS scoped resolver setup."
+    warn "tailscale status did not report a magicdns suffix; skipping macos scoped resolver setup."
     return 0
   fi
 
   if ! tailscale_magicdns_suffix_valid "${suffix}"; then
-    warn "tailscale magicdns suffix ${suffix} is not valid for a macOS resolver file; skipping scoped resolver setup."
+    warn "tailscale magicdns suffix ${suffix} is not valid for a macos resolver file; skipping scoped resolver setup."
     return 0
   fi
 
@@ -3433,28 +3433,28 @@ configure_tailscale_magicdns_resolver() {
   if sudo test -f "${resolver_path}"; then
     if sudo grep -Fxq "# Managed by agentbox." "${resolver_path}" &&
       sudo grep -Eq '^[[:space:]]*nameserver[[:space:]]+100[.]100[.]100[.]100([[:space:]]|$)' "${resolver_path}"; then
-      log "${tty_tp}skipping${tty_reset} macOS scoped resolver for ${tty_ts}${suffix}${tty_reset}; already configured"
+      log "${tty_tp}skipping${tty_reset} macos scoped resolver for ${tty_ts}${suffix}${tty_reset}; already configured"
       return 0
     fi
 
     if ! sudo grep -Fxq "# Managed by agentbox." "${resolver_path}"; then
       if sudo grep -Eq '^[[:space:]]*nameserver[[:space:]]+100[.]100[.]100[.]100([[:space:]]|$)' "${resolver_path}"; then
-        log "${tty_tp}skipping${tty_reset} macOS scoped resolver for ${tty_ts}${suffix}${tty_reset}; already points to tailscale dns"
+        log "${tty_tp}skipping${tty_reset} macos scoped resolver for ${tty_ts}${suffix}${tty_reset}; already points to tailscale dns"
       else
-        warn "macOS resolver ${resolver_path} already exists and is not managed by agentbox; leaving it unchanged."
+        warn "macos resolver ${resolver_path} already exists and is not managed by agentbox; leaving it unchanged."
       fi
       return 0
     fi
   fi
 
-  log "${tty_tp}configuring${tty_reset} macOS scoped resolver ${tty_ts}${resolver_path}${tty_reset} for tailscale magicdns"
+  log "${tty_tp}configuring${tty_reset} macos scoped resolver ${tty_ts}${resolver_path}${tty_reset} for tailscale magicdns"
   execute sudo mkdir -p /etc/resolver
   if ! sudo tee "${resolver_path}" >/dev/null <<EORESOLVER
 # Managed by agentbox.
 nameserver 100.100.100.100
 EORESOLVER
   then
-    abort "failed to write macOS scoped resolver ${tty_ts}${resolver_path}${tty_reset}."
+    abort "failed to write macos scoped resolver ${tty_ts}${resolver_path}${tty_reset}."
   fi
   execute sudo chown root:wheel "${resolver_path}"
   execute sudo chmod 644 "${resolver_path}"
@@ -3527,15 +3527,15 @@ verify_agentbox_tailscaled_launchd_setup() {
   admin_uid="$(id -u "${ADMIN_USER}" 2>/dev/null || true)"
 
   if ! agentbox_tailscaled_launchd_loaded; then
-    abort "agentbox tailscaled LaunchDaemon is not loaded in the system launchd domain."
+    abort "agentbox tailscaled launchd daemon is not loaded in the system launchd domain."
   fi
 
   if sudo launchctl print "system/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
-    abort "legacy Homebrew tailscale LaunchDaemon is still loaded in the system launchd domain."
+    abort "legacy homebrew tailscale launchd daemon is still loaded in the system launchd domain."
   fi
 
   if [[ -n "${admin_uid}" ]] && launchctl print "gui/${admin_uid}/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
-    abort "legacy Homebrew tailscale LaunchAgent is still loaded in the invoking user's launchd domain."
+    abort "legacy homebrew tailscale launchd agent is still loaded in the invoking user's launchd domain."
   fi
 }
 
@@ -3547,7 +3547,7 @@ run_agentbox_tailscaled_launchd_setup() {
   local tailscaled_bin=""
 
   tailscaled_bin="$(tailscaled_bin_path)" || {
-    abort "tailscaled binary was not found after installing the agentbox Brewfiles."
+    abort "tailscaled binary was not found after installing the agentbox brewfiles."
   }
 
   execute sudo mkdir -p "${AGENTBOX_LOG_DIR}"
@@ -3591,7 +3591,7 @@ run_agentbox_tailscale_setup() {
     return 0
   fi
 
-  check_sudo_access "before Tailscale service setup"
+  check_sudo_access "before tailscale service setup"
   require_command brew
   require_command tailscale
   require_command jq
@@ -3638,7 +3638,7 @@ run_agentbox_tailscale_setup() {
   log "${tty_tp}joining${tty_reset} ${tty_ts}tailscale${tty_reset} as ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}"
   debug "${tty_tp}running${tty_reset}" sudo tailscale "${tailscale_display_args[@]}"
   if ! sudo tailscale "${tailscale_args[@]}"; then
-    abort "agentbox Tailscale setup failed."
+    abort "agentbox tailscale setup failed."
   fi
 
   configure_tailscale_operator_user
@@ -3646,7 +3646,7 @@ run_agentbox_tailscale_setup() {
   if [[ -n "${status_json}" ]]; then
     configure_tailscale_magicdns_resolver "${status_json}"
   else
-    warn "could not read tailscale status after join; skipping macOS scoped resolver setup."
+    warn "could not read tailscale status after join; skipping macos scoped resolver setup."
   fi
   verify_tailscale_serve_prerequisites "${status_json}"
   show_tailscale_status_summary
@@ -3657,7 +3657,7 @@ openclaw_runner_home_required() {
 
   home="$(user_home_dir "${OPENCLAW_USER}")"
   if [[ -z "${home}" || ! -d "${home}" ]]; then
-    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must have a usable home directory before gateway onboarding."
+    abort "openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must have a usable home directory before gateway onboarding."
   fi
 
   printf "%s" "${home}"
@@ -3676,7 +3676,7 @@ openclaw_bin_path() {
 
   openclaw_bin="${BREW_PREFIX_VALUE}/bin/openclaw"
   if [[ ! -x "${openclaw_bin}" ]]; then
-    abort "OpenClaw CLI was not found at ${tty_ts}${openclaw_bin}${tty_reset} after installing the agentbox Brewfile."
+    abort "openclaw cli was not found at ${tty_ts}${openclaw_bin}${tty_reset} after installing the agentbox Brewfile."
   fi
 
   printf "%s" "${openclaw_bin}"
@@ -3701,7 +3701,7 @@ run_as_openclaw_runner() {
 
   for env_name in ${extra_env_names}; do
     if ! env_name_valid "${env_name}"; then
-      abort "internal OpenClaw runner environment variable name ${tty_ts}${env_name}${tty_reset} is invalid."
+      abort "internal openclaw runner environment variable name ${tty_ts}${env_name}${tty_reset} is invalid."
     fi
 
     env_value="${!env_name-}"
@@ -3715,15 +3715,15 @@ run_as_openclaw_runner() {
 
   debug "${tty_tp}running${tty_reset}" sudo -u "${OPENCLAW_USER}" env "${env_display_args[@]}" "$@"
   if [[ -n "${stdin_path}" && -n "${stdout_path}" ]]; then
-    debug "${tty_tp}using${tty_reset}" "${stdin_path}" "for OpenClaw runner stdin and" "${stdout_path}" "for stdout"
+    debug "${tty_tp}using${tty_reset}" "${stdin_path}" "for openclaw runner stdin and" "${stdout_path}" "for stdout"
     # shellcheck disable=SC2024
     sudo -u "${OPENCLAW_USER}" env "${env_args[@]}" "$@" < "${stdin_path}" > "${stdout_path}"
   elif [[ -n "${stdin_path}" ]]; then
-    debug "${tty_tp}using${tty_reset}" "${stdin_path}" "for OpenClaw runner stdin"
+    debug "${tty_tp}using${tty_reset}" "${stdin_path}" "for openclaw runner stdin"
     # shellcheck disable=SC2024
     sudo -u "${OPENCLAW_USER}" env "${env_args[@]}" "$@" < "${stdin_path}"
   elif [[ -n "${stdout_path}" ]]; then
-    debug "${tty_tp}using${tty_reset}" "${stdout_path}" "for OpenClaw runner stdout"
+    debug "${tty_tp}using${tty_reset}" "${stdout_path}" "for openclaw runner stdout"
     # shellcheck disable=SC2024
     sudo -u "${OPENCLAW_USER}" env "${env_args[@]}" "$@" > "${stdout_path}"
   else
@@ -3733,7 +3733,7 @@ run_as_openclaw_runner() {
 
 execute_as_openclaw_runner() {
   if ! run_as_openclaw_runner "$@"; then
-    abort "$(printf "failed during OpenClaw runner command: %s" "$(shell_join "$@")")"
+    abort "$(printf "failed during openclaw runner command: %s" "$(shell_join "$@")")"
   fi
 }
 
@@ -3755,6 +3755,7 @@ run_openclaw_gateway_onboarding() {
       esac
     fi
   fi
+
   openclaw_args=(
     onboard
     --mode local
@@ -3801,13 +3802,13 @@ write_openclaw_gateway_service_env_files() {
   wrapper_file="$(openclaw_gateway_service_env_wrapper_path)"
 
   if ! openclaw_gateway_service_env_content | sudo tee "${env_file}" >/dev/null; then
-    abort "failed to write OpenClaw gateway service environment file ${tty_ts}${env_file}${tty_reset}."
+    abort "failed to write openclaw gateway service environment file ${tty_ts}${env_file}${tty_reset}."
   fi
   execute sudo chown "${OPENCLAW_USER}:${primary_group}" "${env_file}"
   execute sudo chmod 600 "${env_file}"
 
   if ! openclaw_gateway_service_env_wrapper_content | sudo tee "${wrapper_file}" >/dev/null; then
-    abort "failed to write OpenClaw gateway service environment wrapper ${tty_ts}${wrapper_file}${tty_reset}."
+    abort "failed to write openclaw gateway service environment wrapper ${tty_ts}${wrapper_file}${tty_reset}."
   fi
   execute sudo chown "${OPENCLAW_USER}:${primary_group}" "${wrapper_file}"
   execute sudo chmod 700 "${wrapper_file}"
@@ -3839,7 +3840,7 @@ agentbox_openclaw_gateway_launchd_loaded() {
 
 verify_agentbox_openclaw_gateway_launchd_setup() {
   if ! agentbox_openclaw_gateway_launchd_loaded; then
-    abort "agentbox OpenClaw gateway LaunchDaemon is not loaded in the system launchd domain."
+    abort "agentbox openclaw gateway launchd daemon is not loaded in the system launchd domain."
   fi
 }
 
@@ -3960,7 +3961,7 @@ wait_for_openclaw_gateway_status() {
   output="$(run_as_openclaw_runner "${openclaw_bin}" gateway status --require-rpc --timeout 10000 2>&1 || true)"
   debug "${tty_tp}openclaw gateway status output${tty_reset}" "${output}"
   print_openclaw_gateway_failure_diagnostics "${output}"
-  abort "OpenClaw gateway status did not become ready for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}; inspect ${tty_ts}${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log${tty_reset}."
+  abort "openclaw gateway status did not become ready for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}; inspect ${tty_ts}${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log${tty_reset}."
 }
 
 wait_for_openclaw_gateway_tailscale_serve_route() {
@@ -3986,13 +3987,13 @@ wait_for_openclaw_gateway_tailscale_serve_route() {
   output="$(run_as_openclaw_runner "${openclaw_bin}" gateway status --require-rpc --timeout 10000 2>&1 || true)"
   debug "${tty_tp}openclaw gateway status output${tty_reset}" "${output}"
   print_openclaw_gateway_failure_diagnostics "${output}"
-  abort "OpenClaw gateway Tailscale Serve route did not become ready for port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}; inspect ${tty_ts}${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log${tty_reset}."
+  abort "openclaw gateway tailscale serve route did not become ready for port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}; inspect ${tty_ts}${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log${tty_reset}."
 }
 
 run_agentbox_openclaw_gateway_setup() {
   local openclaw_bin
 
-  check_sudo_access "before OpenClaw gateway setup"
+  check_sudo_access "before openclaw gateway setup"
   resolve_brew_prefix
   openclaw_bin="$(openclaw_bin_path)"
   run_openclaw_gateway_onboarding "${openclaw_bin}"

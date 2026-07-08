@@ -16,7 +16,7 @@ test -d "$GITHUB_WORKSPACE/.git"
 # should have a tailscale auth key from the workflow secret
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 
-# should have an OpenAI API key from the workflow secret
+# should have an openai api key from the workflow secret
 test -n "$OPENAI_API_KEY"
 
 # should run boot.sh successfully with custom openclaw gateway options
@@ -55,15 +55,15 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_status_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
 
-# should not print the OpenAI API key
+# should not print the openai api key
 ! grep -F -- "$OPENAI_API_KEY" "$TMPDIR/openclaw.log"
 
-# should run OpenClaw onboarding non-interactively in CI
+# should run openclaw onboarding non-interactively in CI
 grep -F -- "--non-interactive" "$TMPDIR/openclaw.log"
 grep -F -- "--accept-risk" "$TMPDIR/openclaw.log"
 grep -F -- "--json" "$TMPDIR/openclaw.log"
 
-# should render the openclaw gateway LaunchDaemon arguments
+# should render the openclaw gateway launchd daemon arguments
 sudo /usr/libexec/PlistBuddy -c "Print :WorkingDirectory" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw"
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:0" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/bin/sh"
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh"
@@ -89,7 +89,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ta
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_https_certificates_enabled=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_serve_route_ok=1"
 
-# should reach the openclaw gateway ready endpoint through tailscale magicdns over HTTPS
+# should reach the openclaw gateway ready endpoint through tailscale magicdns over https
 skip
 # gateway_dns_name="$(tailscale status --json --peers=false | tee /dev/stderr | jq -r '.Self.DNSName // ""' | sed 's/[.]$//')"
 # test -n "$gateway_dns_name"
@@ -107,7 +107,7 @@ skip
 #   --retry-max-time 90 \
 #   "https://$gateway_dns_name/readyz" | tee /dev/stderr
 
-# should reach the openclaw gateway ready endpoint through tailscale magicdns over HTTP
+# should reach the openclaw gateway ready endpoint through tailscale magicdns over http
 gateway_dns_name="$(tailscale status --json --peers=false | tee /dev/stderr | jq -r '.Self.DNSName // ""' | sed 's/[.]$//')"
 test -n "$gateway_dns_name"
 sudo tailscale serve --bg --http=80 --yes http://127.0.0.1:18888
