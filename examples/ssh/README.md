@@ -7,19 +7,19 @@ users, Homebrew state, launchd, and OpenClaw.
 ## Setup
 
 ```bash
-# should have prepared boot.sh on PATH
-command -v boot.sh >/dev/null
+# should have prepared agentbox on PATH
+command -v agentbox >/dev/null
 
 # should have a workflow payload available for agentbox
 test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
-# should run boot.sh successfully with authorized keys
+# should run agentbox successfully with authorized keys
 mkdir -p "$TMPDIR"
 rm -f "$TMPDIR/id_agentbox_ssh_file" "$TMPDIR/id_agentbox_ssh_file.pub"
 rm -f "$TMPDIR/id_agentbox_ssh_raw" "$TMPDIR/id_agentbox_ssh_raw.pub"
 ssh-keygen -t ed25519 -N "" -C "agentbox-ssh-file@example.test" -f "$TMPDIR/id_agentbox_ssh_file" >/dev/null
 ssh-keygen -t ed25519 -N "" -C "agentbox-ssh-raw@example.test" -f "$TMPDIR/id_agentbox_ssh_raw" >/dev/null
-boot.sh \
+agentbox \
   --force \
   --hostname "TANAABAGENTBOXSSH" \
   --tailscale-authkey off \

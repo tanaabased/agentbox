@@ -1,6 +1,6 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
-- Added automatic agentbox payload resolution so `boot.sh` uses source-relative payloads during
+- Added automatic agentbox payload resolution so `macos.sh` uses source-relative payloads during
   development and matching release archive payloads for hosted releases.
 - Added `--brewfile` and `AGENTBOX_BREWFILE` for optional extra Bootbox Brewfiles.
 - Added `Brewfile.extras` for optional Codex, Codex App, OpenClaw, and Warp casks.
@@ -9,8 +9,10 @@
 - Added OpenClaw runner user creation, autologin, SSH keys, and health checks.
 - Added randomized selection from bundled OpenClaw runner profile images for newly created users.
 - Added `openclaw-cli`, `ripgrep`, and Homebrew login-shell `PATH` setup to the base bootstrap.
+- Added `unsupported.sh` as the hosted fallback for unsupported or unknown platforms.
 - Externalized the installed health script and agentbox LaunchDaemon plist bodies into root-level
   `bin/` and `launchd/` directories.
+- Renamed the hosted macOS entrypoint to `macos.sh`.
 - Updated Tailscale-enabled OpenClaw gateway setup to keep the gateway bound to loopback and expose
   it through Tailscale Serve.
 - Updated Tailscale setup to set the OpenClaw runner as the Tailscale operator and verify the
@@ -18,7 +20,7 @@
 - Updated the agentbox-owned `tailscaled` LaunchDaemon to use an explicit state directory under
   `/var/db/tanaab/agentbox/tailscale`.
 - Updated repo docs to make OpenClaw gateway host setup the target `agentbox` scope.
-- Updated `boot.sh --help` option layout for readability.
+- Updated `macos.sh --help` option layout for readability.
 
 ## v1.0.0-beta.5 - [June 16, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.5)
 

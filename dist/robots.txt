@@ -1,7 +1,8 @@
 User-agent: *
 Disallow: /
-Sitemap: https://agentbox.boot.tanaab.sh/sitemap.xml
-Host: https://agentbox.boot.tanaab.sh
-Allow: /boot.sh
+Sitemap: https://agentbox.tanaab.sh/sitemap.xml
+Host: https://agentbox.tanaab.sh
+Allow: /macos.sh
+Allow: /unsupported.sh
 Allow: /llms.txt
 Allow: /sitemap.xml

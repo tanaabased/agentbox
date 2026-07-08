@@ -7,14 +7,14 @@ launchd.
 ## Setup
 
 ```bash
-# should have prepared boot.sh on PATH
-command -v boot.sh >/dev/null
+# should have prepared agentbox on PATH
+command -v agentbox >/dev/null
 
 # should have a workflow payload available for agentbox
 test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
-# should run boot.sh successfully with a new custom openclaw runner
-boot.sh \
+# should run agentbox successfully with a new custom openclaw runner
+agentbox \
   --force \
   --hostname "TANAABAGENTBOXUSERSCUSTOM" \
   --tailscale-authkey off \

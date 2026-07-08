@@ -18,12 +18,13 @@ explicitly asked.
 
 ## Source Of Truth
 
-- `boot.sh` is the shipped shell entrypoint and main bootstrap surface.
+- `macos.sh` is the shipped shell entrypoint and main bootstrap surface.
+- `unsupported.sh` is the hosted fallback script for unsupported or unknown platforms.
 - `Brewfile` is the source of truth for base Homebrew packages.
 - `Brewfile.extras` is an optional personal-tooling Brewfile for operator apps, not part of the
   core host contract.
 - `bin/health.sh` is the source health script installed to `/opt/tanaab/agentbox/bin/health.sh`.
-- `launchd/*.plist.in` files are source LaunchDaemon templates rendered by `boot.sh` with
+- `launchd/*.plist.in` files are source LaunchDaemon templates rendered by `macos.sh` with
   machine-specific paths and binary locations.
 - `README.md` is the human-facing setup, usage, and post-bootstrap surface.
 - `examples/**/README.md` files are Leia-backed executable contract specs consumed in CI.
@@ -33,7 +34,8 @@ explicitly asked.
 
 ## Naming And Style
 
-- In markdown and docs prose, stylize this project as `agentbox`.
+- In markdown and docs prose, write the project/product name as plain text: agentbox.
+- Use backticks for `agentbox` only when referring to the CLI executable or command invocation.
 - Preserve literal identifiers exactly as written, including commands, paths, hostnames, environment
   variables, labels, generated strings, repository names, and URLs.
 
@@ -42,13 +44,13 @@ explicitly asked.
 - Do not edit, regenerate, stage, or commit files under `dist/` during local agent work.
 - `dist/` is CI/release-owned output. GitHub Actions may regenerate and stamp it during build,
   test, release, or hosting workflows.
-- Make source changes in `boot.sh`, `site/`, or `scripts/build-dist.js`; leave `dist/` unchanged
-  unless the user explicitly asks for a local generated-artifact update.
+- Make source changes in `macos.sh`, `unsupported.sh`, `site/`, or `scripts/build-dist.js`; leave
+  `dist/` unchanged unless the user explicitly asks for a local generated-artifact update.
 - Keep `/llms.txt` concise in `site/llms.txt`; `scripts/build-dist.js` copies it into `dist/`.
   Do not hand-edit `dist/llms.txt` or add full-context variants unless the hosted docs surface
   becomes larger.
 - If a local command accidentally changes `dist/`, restore those files before committing.
-- Treat `boot.sh` as the source entrypoint and `dist/boot.sh` as the release-shaped hosted artifact
+- Treat `macos.sh` as the source entrypoint and `dist/macos.sh` as the release-shaped hosted artifact
   prepared by build and release workflows.
 - Preserve the source script's single top-level `SCRIPT_VERSION` assignment pattern so release
   stamping with `version-injector` keeps working.
@@ -61,9 +63,9 @@ explicitly asked.
 - When changing option names, environment variables, help text, failure wording, version output,
   debug output, planning output, or status messages, update affected README usage/configuration
   content and Leia examples in the same change.
-- Any `boot.sh` public interface change must check `README.md`, `examples/inputs`, and the
+- Any `macos.sh` public interface change must check `README.md`, `examples/inputs`, and the
   affected mutating examples.
-- Any machine behavior change in `boot.sh` must check README setup/after-bootstrap guidance plus
+- Any machine behavior change in `macos.sh` must check README setup/after-bootstrap guidance plus
   the affected mutating Leia scenarios.
 - Keep planned-action output aligned with actual execution order.
 - Treat CLI help order as a readability convention, not a Leia-enforced contract. Prefer related
@@ -124,8 +126,8 @@ explicitly asked.
 - Use fixed, readable local resource names in GitHub-hosted macOS examples when the resource exists
   only on the ephemeral runner. Keep externally registered or shared resources, especially Tailscale
   hostnames, unique per scenario and run.
-- Mutating Leia examples should run `boot.sh` once unless the example is explicitly about rerun,
-  idempotency, or payload resolution behavior.
+- Mutating Leia examples should run the prepared `agentbox` entrypoint once unless the example is
+  explicitly about rerun, idempotency, or payload resolution behavior.
 - Defaults-focused examples should avoid overriding agentbox-owned default values, while still
   providing required CI inputs such as payload paths, passwords, secrets, and unique shared-resource
   names.
@@ -135,7 +137,7 @@ explicitly asked.
   as Tailscale, Homebrew, SSH, OpenClaw, users, rerun, or payload resolution.
 - When adding coverage, prefer extending the narrowest existing example that owns the behavior. Add
   a new example when the behavior needs incompatible bootstrap inputs, crosses enough domains that
-  it would blur an existing example, or intentionally needs another successful `boot.sh` run.
+  it would blur an existing example, or intentionally needs another successful `agentbox` run.
 - Keep `examples/inputs` non-mutating. It owns help text, displayed defaults, input validation, and
   option/env precedence checks. Mutating examples should prove behavior domains such as Tailscale,
   Homebrew, SSH, OpenClaw, users, rerun, or payload resolution rather than re-testing every input
@@ -165,24 +167,26 @@ explicitly asked.
 - Run `bun install` when dependencies are missing before linting, and keep `bun.lock` as a tracked
   dependency artifact when Bun updates it.
 - Do not delete local `node_modules/` after validation; it is ignored and local-only.
-- Do not run `boot.sh`, `dist/boot.sh`, or Leia examples as routine local validation unless the
+- Do not run `macos.sh`, `dist/macos.sh`, or Leia examples as routine local validation unless the
   user explicitly asks for local execution. Non-mutating help checks are acceptable when a
   README/development task specifically calls for them.
-- If `boot.sh`, Leia, or `bun run build` is intentionally skipped because of task scope or repo
+- If `macos.sh`, Leia, or `bun run build` is intentionally skipped because of task scope or repo
   policy, say so explicitly.
 
 ## Release And Distribution
 
 - Netlify publishes committed `dist/`, but local agents should not update it directly; CI/release
   workflows own generated `dist/` changes.
-- Release workflows use the Bootbox-style shell-script distribution flow. Keep `dist/boot.sh` as
+- Release workflows use the Bootbox-style shell-script distribution flow. Keep `dist/macos.sh` as
   the stamped hosted entrypoint.
+- Keep `dist/unsupported.sh` as the generated fallback for root redirects from unsupported or
+  unknown platforms.
 - Do not add unrelated package archives or upload behavior unless the release contract explicitly
   changes.
 - Generated hosting changes should check `scripts/build-dist.js`, `site/`, `dist/`, `netlify.toml`,
   and release workflow assumptions together.
 
-## `boot.sh` Invariants
+## `macos.sh` Invariants
 
 - Preserve sudo preflight before Bootbox download, repo materialization, Brewfile application, or
   other machine mutation.
@@ -194,7 +198,7 @@ explicitly asked.
   gate.
 - Preserve the public `AGENTBOX_*` namespace and do not leak upstream Bootbox names into the
   agentbox public interface.
-- Keep agentbox payload resolution aligned with the running `boot.sh`: use an explicit hidden
+- Keep agentbox payload resolution aligned with the running `macos.sh`: use an explicit hidden
   payload directory for CI/development, source-relative payloads for source checkouts, and matching
   release tag archives for hosted release scripts. Do not fall back to cloning the default branch.
 - Preserve `AGENTBOX_HOSTNAME` as the canonical hostname input and, when Tailscale is enabled, the
@@ -211,5 +215,5 @@ explicitly asked.
 - Keep agentbox health checks strict for real machines. Managed macOS runner health skips must be
   recorded in the generated state file, set only from known runner environments, and kept narrowly
   scoped to unavailable virtualized/managed settings.
-- Prefer targeted edits to `boot.sh`; avoid whole-file rewrites unless the script contract is being
+- Prefer targeted edits to `macos.sh`; avoid whole-file rewrites unless the script contract is being
   intentionally replaced.

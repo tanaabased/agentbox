@@ -2,11 +2,12 @@
 set -euo pipefail
 # Bootstrap a macOS machine as a Tanaab agentbox profile.
 #
-# Examples:
+# Examples assume the hosted script has been installed on PATH as `agentbox`.
+# Running ./macos.sh from a source checkout also works for development.
 #
-#   $ AGENTBOX_AUTHORIZED_KEY="$(cat ~/.ssh/id_ed25519.pub)" AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" ./boot.sh --hostname TANAABAGENTBOX1
-#   $ ./boot.sh --authorized-key file:~/.ssh/id_ed25519.pub --tailscale-authkey "$TS_AUTHKEY" --yes
-#   $ AGENTBOX_DEBUG=1 AGENTBOX_AUTHORIZED_KEY="$(cat ~/.ssh/id_ed25519.pub)" AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" ./boot.sh --yes
+#   $ AGENTBOX_AUTHORIZED_KEY="$(cat ~/.ssh/id_ed25519.pub)" AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" agentbox --hostname TANAABAGENTBOX1
+#   $ agentbox --authorized-key file:~/.ssh/id_ed25519.pub --tailscale-authkey "$TS_AUTHKEY" --yes
+#   $ AGENTBOX_DEBUG=1 AGENTBOX_AUTHORIZED_KEY="$(cat ~/.ssh/id_ed25519.pub)" AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" agentbox --yes
 #
 # Option precedence: CLI options override environment variables, which override defaults.
 

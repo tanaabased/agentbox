@@ -1,14 +1,14 @@
 # Rerun Example
 
-This example verifies that a Tailscale-joined agentbox host can run `boot.sh` again without a
+This example verifies that a Tailscale-joined agentbox host can run `agentbox` again without a
 Tailscale auth key. It is intended for CI by default because it mutates system settings, Homebrew
 state, SSH, launchd, OpenClaw, and Tailscale.
 
 ## Setup
 
 ```bash
-# should have prepared boot.sh on PATH
-command -v boot.sh >/dev/null
+# should have prepared agentbox on PATH
+command -v agentbox >/dev/null
 
 # should have a workflow payload available for agentbox
 test -d "$AGENTBOX_PAYLOAD_DIR/.git"
@@ -16,8 +16,8 @@ test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 # should have a tailscale auth key from the workflow secret
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 
-# should run boot.sh successfully with a tailscale auth key
-boot.sh \
+# should run agentbox successfully with a tailscale auth key
+agentbox \
   --force \
   --hostname "TANAABAGENTBOX-RERUN$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
@@ -26,8 +26,8 @@ boot.sh \
   --openclaw-auth-choice skip \
   --openclaw-gateway-port 18789
 
-# should rerun boot.sh successfully without a tailscale auth key
-AGENTBOX_TAILSCALE_AUTHKEY="" boot.sh \
+# should rerun agentbox successfully without a tailscale auth key
+AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
   --force \
   --hostname "TANAABAGENTBOX-RERUN$GITHUB_RUN_ID" \
   --openclaw-identity "Rita Rerun Claw <rita>" \
