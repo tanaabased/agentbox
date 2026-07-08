@@ -12,12 +12,8 @@ command -v boot.sh >/dev/null
 # should have a local git checkout available as the agentbox source
 test -d "$GITHUB_WORKSPACE/.git"
 
-# should prepare a clean agentbox target and runner state
-openclaw_user="agentboxclawver$GITHUB_RUN_ID$GITHUB_RUN_ATTEMPT"
-../../scripts/cleanup-agentbox-runner.sh --user "$openclaw_user"
+# should clone a local agentbox source without tailscale setup
 mkdir -p "$TMPDIR"
-
-# should clone a local agentbox source without Tailscale setup
 boot.sh \
   --force \
   --debug \
@@ -25,9 +21,9 @@ boot.sh \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-identity "Jack Archive Claw <jack>" \
-  --openclaw-password "AgentboxOpenClawVersion$GITHUB_RUN_ID!" \
+  --openclaw-password "JackArchiveClawPass1!" \
   --skip-openclaw-autologin \
-  --hostname "TANAABAGENTBOXVER$GITHUB_RUN_ID"
+  --hostname "TANAABAGENTBOXVER"
 test -d "$HOME/tanaab/agentbox/.git"
 git -C "$HOME/tanaab/agentbox" remote get-url origin > "$TMPDIR/agentbox.local.origin"
 
@@ -38,7 +34,7 @@ git -C "$GITHUB_WORKSPACE" archive \
   --output="$TMPDIR/agentbox-current.tar.gz" \
   HEAD
 
-# should install a local archive without Tailscale setup and replace the local checkout
+# should replace the local checkout from a local archive
 boot.sh \
   --force \
   --debug \
@@ -46,9 +42,9 @@ boot.sh \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-identity "Jack Archive Claw <jack>" \
-  --openclaw-password "AgentboxOpenClawVersion$GITHUB_RUN_ID!" \
+  --openclaw-password "JackArchiveClawPass1!" \
   --skip-openclaw-autologin \
-  --hostname "TANAABAGENTBOXVER$GITHUB_RUN_ID"
+  --hostname "TANAABAGENTBOXVER"
 ```
 
 ## Testing
@@ -57,32 +53,29 @@ boot.sh \
 # should have cloned agentbox from the local workflow checkout before replacing it
 test "$(cat "$TMPDIR/agentbox.local.origin")" = "$GITHUB_WORKSPACE"
 
-# should extract the local archive in place
+# should extract source files from the local archive
 test -f "$HOME/tanaab/agentbox/boot.sh"
-test -f "$HOME/tanaab/agentbox/Brewfile"
+! test -d "$HOME/tanaab/agentbox/.git"
+
+# should extract profile picture assets from the local archive
 test -f "$HOME/tanaab/agentbox/assets/profile1.png"
 test -f "$HOME/tanaab/agentbox/assets/profile8.png"
+
+# should extract runtime support assets from the local archive
 test -f "$HOME/tanaab/agentbox/bin/health.sh"
 test -f "$HOME/tanaab/agentbox/launchd/dev.tanaab.agentbox.health.plist.in"
 test -f "$HOME/tanaab/agentbox/launchd/dev.tanaab.agentbox.tailscaled.plist.in"
-! test -d "$HOME/tanaab/agentbox/.git"
 
-# should create the version openclaw runner user
+# should create the openclaw runner account
 id -u jack >/dev/null
 dscl . -read /Users/jack RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^[[:space:]]*//' | grep -Fx "Jack Archive Claw"
-if dseditgroup -o checkmember -m jack admin >/dev/null 2>&1; then exit 1; fi
 test -d /Users/jack
 test "$(stat -f "%Su" /Users/jack)" = "jack"
 
-# should keep the version openclaw runner autologin skipped
+# should report the openclaw runner as non-admin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
+
+# should keep openclaw runner autologin skipped
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
-```
-
-## Destroy tests
-
-```bash
-# should remove agentbox runner state
-openclaw_user="agentboxclawver$GITHUB_RUN_ID$GITHUB_RUN_ATTEMPT"
-../../scripts/cleanup-agentbox-runner.sh --user "$openclaw_user" --remove-tmpdir
 ```

@@ -30,6 +30,6 @@
     "leia": "leia",
     "lint": "bun run lint:eslint && bun run format:check && bun run lint:shellcheck",
     "lint:eslint": "eslint .",
-    "lint:shellcheck": "shellcheck boot.sh scripts/*.sh bin/*.sh"
+    "lint:shellcheck": "shellcheck *.sh bin/*.sh"
   }
 }

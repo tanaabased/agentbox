@@ -72,7 +72,7 @@ explicitly asked.
   README/configuration reference lists unless they intentionally mirror help output.
 - Keep `--brewfile` as an extra-Brewfile append surface. The core agentbox `Brewfile` must remain
   first in the delegated Bootbox Brewfile list.
-- Treat the generated agentbox health script as the source of truth for machine health
+- Treat `bin/health.sh` and its installed runtime copy as the source of truth for machine health
   verification. README and Leia should prefer `health.sh --check` for macOS/SSH/Tailscale state,
   while keeping repo materialization, Brewfile satisfaction, and live SSH-login proof as direct
   checks.
@@ -107,6 +107,23 @@ explicitly asked.
   assertions.
 - For health-report assertions, print and match the targeted `--report` lines before running the
   final `--check` gate so CI logs show the health mismatch that caused the failure.
+- Prefer behavior-focused Leia `# should` labels over scenario labels. Avoid repeating the example
+  name or setup style in every block; use words like `custom`, `default`, `envvar`, `version`,
+  `configured`, `provided`, or `preexisting` only when that distinction is meaningful inside the
+  same README.
+- Keep OpenClaw runner account creation checks focused on identity and home-directory state. Assert
+  privilege, autologin, SSH, and group membership in separate health-backed or domain-specific
+  blocks. Only test runner profile pictures when preserving an existing picture is the scenario
+  contract.
+- Keep each Leia `# should` block focused on one small observable contract. Split blocks whose
+  title needs `and`/`or`, mixes unrelated domains, or grows past roughly 12-15 command lines unless
+  the block is one coherent multiline command.
+- Treat Leia block size as a readability convention, not as an enforced ordering or lint rule.
+- Do not give setup fixture commands standalone `# should` blocks unless the fixture state itself is
+  the contract. Put `mkdir -p "$TMPDIR"` beside the first fixture that writes into `TMPDIR`.
+- Use fixed, readable local resource names in GitHub-hosted macOS examples when the resource exists
+  only on the ephemeral runner. Keep externally registered or shared resources, especially Tailscale
+  hostnames, unique per scenario and run.
 - Treat each blank-line-separated Leia block as a separate script. Do not rely on shell variables,
   functions, or working-directory changes persisting across `should` blocks.
 - Use `TMPDIR` for durable fixtures, unavoidable logs, and helper internals only.
@@ -114,8 +131,12 @@ explicitly asked.
   assertion files.
 - When a mutating example provides authorized keys, verify localhost SSH login with the generated
   private key fixture instead of only inspecting `authorized_keys`.
-- Put repeated destructive runner cleanup in `scripts/cleanup-agentbox-runner.sh` instead of
-  duplicating cleanup blocks across README scenarios.
+- Do not add preemptive cleanup or destroy blocks to GitHub-hosted macOS examples just to reset
+  machine state; each matrix job starts on a fresh hosted VM. Prefer `--retry 0` for mutating Leia
+  examples so partial bootstrap failures are not retried on the same VM.
+- Do not add expected-failure probes to mutating bootstrap examples when the failure can occur after
+  machine state changes. Keep failure-contract checks in non-mutating CLI examples or make them fail
+  during input validation before bootstrap side effects.
 
 ## Validation Policy
 

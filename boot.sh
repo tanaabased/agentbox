@@ -1617,22 +1617,6 @@ run_agentbox_openclaw_user_setup() {
   OPENCLAW_PASSWORD=""
 }
 
-expand_user_path() {
-  local path="$1"
-
-  case "${path}" in
-    \~)
-      printf "%s" "${HOME}"
-      ;;
-    \~/*)
-      printf "%s/%s" "${HOME}" "${path#"~/"}"
-      ;;
-    *)
-      printf "%s" "${path}"
-      ;;
-  esac
-}
-
 private_key_material_detected() {
   [[ "${1}" == *"PRIVATE KEY"* ]]
 }
@@ -1741,12 +1725,12 @@ resolve_authorized_key_spec() {
   fi
 
   if [[ "${value}" == file:* ]]; then
-    path="$(expand_user_path "${value#file:}")"
+    path="$(expand_home_path "${value#file:}")"
     resolve_authorized_key_file "${value}" "${path}"
     return 0
   fi
 
-  path="$(expand_user_path "${value}")"
+  path="$(expand_home_path "${value}")"
   if [[ -f "${path}" ]]; then
     resolve_authorized_key_file "${value}" "${path}"
     return 0
@@ -2285,7 +2269,7 @@ validate_inputs() {
       abort "trusted brewgroup ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} must be different from brewgroup ${tty_ts}${BREWGROUP_VALUE}${tty_reset}."
     fi
 
-    if ! brewgroup_exists "${TRUSTED_BREWGROUP_VALUE}"; then
+    if ! group_exists "${TRUSTED_BREWGROUP_VALUE}"; then
       abort "trusted brewgroup ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} must already exist before it can be nested into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}."
     fi
   fi
@@ -2604,10 +2588,6 @@ run_agentbox_homebrew_login_path_setup() {
   fi
 }
 
-brewgroup_exists() {
-  dscl . -read "/Groups/$1" >/dev/null 2>&1
-}
-
 group_generated_uid() {
   dscl . -read "/Groups/$1" GeneratedUID 2>/dev/null | awk '$1 == "GeneratedUID:" { print $2; exit }'
 }
@@ -2667,7 +2647,7 @@ next_available_group_id() {
 ensure_brewgroup_exists() {
   local gid
 
-  if brewgroup_exists "${BREWGROUP_VALUE}"; then
+  if group_exists "${BREWGROUP_VALUE}"; then
     log "${tty_tp}skipping${tty_reset} Homebrew group creation; ${tty_ts}${BREWGROUP_VALUE}${tty_reset} already exists"
     return 0
   fi

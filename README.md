@@ -95,7 +95,8 @@ sudo softwareupdate --install --all --restart
   bootstrap enables classic SSH programmatically.
 - Create or choose a preauthorized Tailscale auth key with any desired device tags, or decide to
   skip Tailscale setup.
-- Optionally choose SSH public keys for `boot.sh` to install for the admin user.
+- Optionally choose SSH public keys for `boot.sh` to install for the admin and OpenClaw runner
+  users.
 
 ## Usage
 

@@ -2,7 +2,9 @@
 
 > agentbox is a hosted macOS 26.x bootstrap script for preparing a physically accessible Mac as a managed OpenClaw host.
 
-agentbox owns the host substrate from fresh Mac to working OpenClaw gateway: base packages, optional extra Brewfiles, Homebrew prefix brewgroup permissions, macOS headless settings, SSH/Tailscale connectivity, a non-sudo OpenClaw runner user, OpenClaw runner autologin, launchd health, recovery, security hardening, gateway onboarding, and future host-level OpenClaw plugin installation. Current releases provide the base host bootstrap plus the OpenClaw runner user, including OpenClaw CLI, ripgrep, login-shell Homebrew PATH setup, runner SSH authorized keys, macOS Remote Login access, and runner brewgroup membership before gateway onboarding is implemented.
+agentbox owns the host substrate from fresh Mac to working OpenClaw gateway: base packages, optional extra Brewfiles, Homebrew prefix brewgroup permissions, macOS headless settings, SSH/Tailscale connectivity, a non-sudo OpenClaw runner user, OpenClaw runner autologin, launchd health, recovery, security hardening, gateway onboarding, and future host-level OpenClaw plugin installation.
+
+Current releases provide the base host bootstrap plus the OpenClaw runner user, including OpenClaw CLI, ripgrep, login-shell Homebrew PATH setup, runner SSH authorized keys, macOS Remote Login access, and runner brewgroup membership before gateway onboarding is implemented.
 
 Agent workspaces layer on top of that host and remain out of scope here: no EMORI-specific setup, per-agent dotfiles, project credentials, trading services, app-specific workloads, router port forwarding, or public WAN exposure. Tailscale is recommended, but setup can be explicitly disabled.
 

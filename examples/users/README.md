@@ -12,26 +12,19 @@ command -v boot.sh >/dev/null
 # should have a local git checkout available as the agentbox source
 test -d "$GITHUB_WORKSPACE/.git"
 
-# should prepare a clean agentbox target and runner state
-existing_user="agentboxuser$GITHUB_RUN_ID$GITHUB_RUN_ATTEMPT"
-../../scripts/cleanup-agentbox-runner.sh \
-  --user "$existing_user" \
-  --brewgroup "agentboxbrewuser$GITHUB_RUN_ID"
+# should generate a public key fixture for authorized-key installation
 mkdir -p "$TMPDIR"
-
-# should generate a public key fixture for preexisting user authorized-key installation
 rm -f "$TMPDIR/id_agentbox_users" "$TMPDIR/id_agentbox_users.pub"
 ssh-keygen -t ed25519 -N "" -C "agentbox-users@example.test" -f "$TMPDIR/id_agentbox_users" >/dev/null
 
-# should create a preexisting non-admin openclaw runner with a custom picture
+# should seed a non-admin runner with a missing home
 sudo sysadminctl \
   -addUser ted \
   -fullName "Ted Existing Claw" \
   -shell /bin/zsh \
   -home /Users/ted \
-  -password "AgentboxExistingUser$GITHUB_RUN_ID!" \
+  -password "TedExistingClawPass1!" \
   -picture "$GITHUB_WORKSPACE/assets/agentbox-dark.png" || id -u ted >/dev/null
-if dseditgroup -o checkmember -m ted admin >/dev/null 2>&1; then exit 1; fi
 sudo dscl . -create /Users/ted Picture "$GITHUB_WORKSPACE/assets/agentbox-dark.png"
 test "$(dscl . -read /Users/ted Picture | cut -d " " -f 2-)" = "$GITHUB_WORKSPACE/assets/agentbox-dark.png"
 ! test -d /Users/ted
@@ -47,54 +40,63 @@ if boot.sh \
   exit 1
 fi
 
-# should reuse the existing openclaw runner without needing an openclaw password
+# should reuse the seeded runner without needing an openclaw password
 boot.sh \
   --force \
   --debug \
   --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey off \
-  --brewgroup "agentboxbrewuser$GITHUB_RUN_ID" \
+  --brewgroup "tedsbrewclub" \
   --openclaw-identity "Ted Existing Claw <ted>" \
   --skip-openclaw-autologin \
   --authorized-key "file:$TMPDIR/id_agentbox_users.pub" \
-  --hostname "TANAABAGENTBOXUSER$GITHUB_RUN_ID"
+  --hostname "TANAABAGENTBOXUSER"
 ```
 
 ## Testing
 
 ```bash
-# should preserve and harden the preexisting non-admin openclaw runner
+# should keep the openclaw runner account
 id -u ted >/dev/null
-if dseditgroup -o checkmember -m ted admin >/dev/null 2>&1; then exit 1; fi
 test -d /Users/ted
 test "$(stat -f "%Su" /Users/ted)" = "ted"
+
+# should report the openclaw runner as non-admin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
+
+# should preserve the openclaw runner profile picture
 test "$(dscl . -read /Users/ted Picture | cut -d " " -f 2-)" = "$GITHUB_WORKSPACE/assets/agentbox-dark.png"
 
-# should keep the preexisting openclaw runner autologin skipped
+# should keep openclaw runner autologin skipped
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
 
-# should add the preexisting openclaw runner to the configured brewgroup
-dscl . -read "/Groups/agentboxbrewuser$GITHUB_RUN_ID" >/dev/null
-dseditgroup -o checkmember -m "$(id -un)" "agentboxbrewuser$GITHUB_RUN_ID"
-dseditgroup -o checkmember -m ted "agentboxbrewuser$GITHUB_RUN_ID"
+# should add the openclaw runner to the brewgroup
+dscl . -read "/Groups/tedsbrewclub" >/dev/null
+dscl . -read "/Groups/tedsbrewclub" GroupMembership | tr " " "\n" | grep -Fx "$(id -un)"
+dscl . -read "/Groups/tedsbrewclub" GroupMembership | tr " " "\n" | grep -Fx ted
 
-# should install authorized keys for the admin and preexisting openclaw runner users
+# should install authorized keys for the admin user
 test -f "$HOME/.ssh/authorized_keys"
 grep -qxF "$(cat "$TMPDIR/id_agentbox_users.pub")" "$HOME/.ssh/authorized_keys"
+
+# should install authorized keys for the openclaw runner user
 sudo test -f /Users/ted/.ssh/authorized_keys
 sudo grep -qxF "$(cat "$TMPDIR/id_agentbox_users.pub")" /Users/ted/.ssh/authorized_keys
 test "$(sudo stat -f "%Lp" /Users/ted/.ssh)" = "700"
 test "$(sudo stat -f "%Lp" /Users/ted/.ssh/authorized_keys)" = "600"
 
-# should report the preexisting openclaw runner as healthy
+# should report openclaw runner health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user=ted"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_full_name=Ted Existing Claw"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_exists_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_home_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_ok=1"
+
+# should report openclaw runner brewgroup health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_openclaw_user_ok=1"
+
+# should report ssh hardening for allowed users
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_allowed_users=$(id -un) ted"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_group=com.apple.access_ssh"
 if sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_group_exists_ok=1"; then
@@ -105,10 +107,12 @@ else
   sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_openclaw_user_ok=skipped"
 fi
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_hardening_ok=1"
+
+# should pass the overall agentbox health check
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --check
 
-# should allow ssh login to the preexisting openclaw runner
+# should allow ssh login to the openclaw runner
 ssh \
   -F /dev/null \
   -o BatchMode=yes \
@@ -122,16 +126,4 @@ ssh \
   -o LogLevel=VERBOSE \
   -i "$TMPDIR/id_agentbox_users" \
   ted@localhost true
-```
-
-## Destroy tests
-
-```bash
-# should remove agentbox user scenario state
-existing_user="agentboxuser$GITHUB_RUN_ID$GITHUB_RUN_ATTEMPT"
-../../scripts/cleanup-agentbox-runner.sh \
-  --authorized-key-file "$TMPDIR/id_agentbox_users.pub" \
-  --user "$existing_user" \
-  --brewgroup "agentboxbrewuser$GITHUB_RUN_ID" \
-  --remove-tmpdir
 ```
