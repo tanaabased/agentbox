@@ -76,6 +76,15 @@ test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "$GITH
 # should satisfy the agentbox Brewfile
 brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
 
+# should install OpenCLAW CLI, Node, and ripgrep through Homebrew
+test -x "$(brew --prefix)/bin/openclaw"
+test -x "$(brew --prefix)/bin/node"
+test -x "$(brew --prefix)/bin/rg"
+
+# should expose Homebrew commands to login shells
+grep -Fx "$(brew --prefix)/bin" /etc/paths.d/00-agentbox-homebrew
+grep -Fx "$(brew --prefix)/sbin" /etc/paths.d/00-agentbox-homebrew
+
 # should make the Homebrew prefix writable by the configured brewgroup
 dscl . -read "/Groups/agentboxbrewopt$GITHUB_RUN_ID" >/dev/null
 dscl . -read "/Groups/agentboxbrewopt$GITHUB_RUN_ID" GroupMembership | tr " " "\n" | grep -Fx "$(id -un)"
@@ -116,6 +125,10 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "br
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_rwx_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "homebrew_login_path_file_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_cli_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "node_cli_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ripgrep_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "macos_identity_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_hardening_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_loaded_ok=1"

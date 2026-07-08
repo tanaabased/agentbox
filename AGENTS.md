@@ -6,13 +6,15 @@ explicitly asked.
 
 ## Purpose
 
-- This repo owns the admin/bootstrap layer for a physically accessible macOS 26.x Mac: headless
-  access, macOS settings, base packages, SSH/Tailscale connectivity, launchd health, recovery, and
-  security hardening.
-- The boundary ends when the Mac is ready to run user-space agents such as OpenCLAW under
-  non-admin, non-sudo users.
-- Do not add agent runtime setup, trading credentials, app-specific services, runtime-user
-  provisioning, router port forwarding, or public WAN exposure here.
+- This repo owns the path from a physically accessible macOS 26.x Mac to a managed OpenCLAW host:
+  headless access, macOS settings, base packages, SSH/Tailscale connectivity, non-sudo OpenCLAW
+  runner-user setup, launchd health, recovery, security hardening, and OpenCLAW gateway onboarding.
+- The boundary ends when the Mac has a working OpenCLAW gateway and is ready for agent workspaces to
+  be layered on top.
+- Future global OpenCLAW plugin installation belongs here when it is host-level substrate rather than
+  workspace-specific agent behavior.
+- Do not add EMORI/Emery-specific setup, per-agent dotfiles, trading credentials, app-specific
+  services, agent-specific plugin installs, router port forwarding, or public WAN exposure here.
 
 ## Source Of Truth
 

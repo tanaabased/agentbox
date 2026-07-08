@@ -1,21 +1,26 @@
 # agentbox
 
-`agentbox` prepares a physically accessible macOS 26.x Mac for secure headless operation. It
-installs a small base profile with Homebrew packages, classic SSH, optional Tailscale access, and
-launchd-managed health checks so the machine is ready for whatever agent runtime you add later.
+`agentbox` prepares a physically accessible macOS 26.x Mac to become a managed OpenCLAW host. The
+target scope is zero-to-running-gateway: base host setup, a non-sudo OpenCLAW runner user, SSH access,
+OpenCLAW gateway onboarding, health verification, and host-level OpenCLAW plugin installation.
 
-`agentbox` prepares the admin side of the Mac. Install agent runtimes and
-application workloads later as **non-admin, non-sudo users**.
+Current releases still perform the base host bootstrap: Homebrew packages, classic SSH, optional
+Tailscale access, and launchd-managed health checks. The OpenCLAW runner user, gateway onboarding,
+and global plugin installation are planned follow-up implementation work.
 
-The bootstrap intentionally stops before runtime installation because OpenClaw, Claude Code, Codex,
-Ollama, browser automation, chat bots, API keys, and project services each need their own
-user-space setup.
+Agent workspaces layer on top of the OpenCLAW host. EMORI/Emery-specific setup, per-agent dotfiles,
+project credentials, trading services, and application workloads remain outside the agentbox host
+contract.
 
-**What it does**
+**What current releases do**
 
 - Materializes this repo at `~/tanaab/agentbox` through the hosted `boot.sh` wrapper.
 - Applies the repo [`Brewfile`](./Brewfile) through
   [Bootbox](https://github.com/tanaabased/bootbox).
+- Installs the OpenCLAW CLI and `ripgrep` as base host tools; OpenCLAW CLI brings the
+  Homebrew-managed Node runtime it needs.
+- Exposes the Homebrew prefix `bin` and `sbin` directories to all login shells through
+  `/etc/paths.d/00-agentbox-homebrew`.
 - Makes the Homebrew prefix group-writable by the configured brewgroup.
 - Sets macOS system identity and headless power, time, recovery, and firewall defaults.
 - Enables classic SSH, installs optional authorized keys, and hardens sshd to key-only login when
@@ -23,12 +28,18 @@ user-space setup.
 - Installs Tailscale from Homebrew and optionally joins the tailnet.
 - Installs a launchd health check under `/opt/tanaab/agentbox`.
 
-**What it does not do**
+**What current releases do not yet do**
 
-- Install an agent runtime, app stack, Caddy, or project-specific services.
-- Create runtime users or manage user passwords.
-- Configure Wi-Fi, Screen Sharing, auto-login, Tailscale SSH, or router port forwarding.
-- Open public WAN access to SSH or future services.
+- Create the non-sudo OpenCLAW runner user.
+- Install or start the OpenCLAW gateway.
+- Install host-level OpenCLAW plugins.
+- Configure auto-login, unless a future OpenCLAW gateway/runtime model requires it.
+
+**What remains out of scope**
+
+- Configure EMORI/Emery or any other agent workspace as a special case.
+- Install per-agent dotfiles, project credentials, trading services, or app-specific workloads.
+- Configure Wi-Fi, Screen Sharing, Tailscale SSH, router port forwarding, or public WAN exposure.
 
 **Caveats**
 
@@ -123,9 +134,9 @@ agentbootbox \
   --hostname TANAABAGENTBOX1
 ```
 
-The Homebrew prefix is made group-writable by `brewer` by default so future non-admin users can be
-granted package-management access through group membership. Use `--brewgroup` to choose another
-group, or pass a falsey value to skip brewgroup setup:
+The Homebrew prefix is made group-writable by `brewer` by default so the OpenCLAW runner user or
+other trusted local users can be granted package-management access through group membership. Use
+`--brewgroup` to choose another group, or pass a falsey value to skip brewgroup setup:
 
 ```sh
 agentbootbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup agentbrew --hostname TANAABAGENTBOX1
@@ -212,6 +223,10 @@ Use `--report` for the same key-value report without failing on drift. When Tail
 the report should include `tailscaled_launchd_loaded_ok=1` and
 `tailscaled_homebrew_launchd_absent_ok=1`, confirming the agentbox system daemon is loaded and the
 legacy Homebrew launchd wrapper is not.
+
+The report should also include `homebrew_login_path_file_ok=1`, `openclaw_cli_ok=1`, `node_cli_ok=1`,
+and `ripgrep_ok=1`. agentbox does not pin `node@24`; the Homebrew `openclaw-cli` formula owns its
+Node dependency unless OpenCLAW onboarding later proves a stricter runtime pin is required.
 
 When brewgroup setup is enabled, the report should include `brewgroup_admin_user_ok=1` and
 `brew_prefix_ok=1`. If trusted nesting is enabled, it should also include

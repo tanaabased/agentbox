@@ -1,5 +1,8 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+- Added `openclaw-cli`, `ripgrep`, and Homebrew login-shell PATH setup to the base bootstrap.
+- Updated repo docs to make OpenCLAW gateway host setup the target `agentbox` scope.
+
 ## v1.0.0-beta.5 - [June 16, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.5)
 
 - Added `--brewgroup` and `AGENTBOX_BREWGROUP` for configurable Homebrew prefix group-write setup. ([#9](https://github.com/tanaabased/agentbox/pull/9))

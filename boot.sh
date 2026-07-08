@@ -24,6 +24,7 @@ AGENTBOX_HEALTH_STATE_PATH="${AGENTBOX_STATE_DIR}/health.env"
 AGENTBOX_HEALTH_LABEL="dev.tanaab.agentbox.health"
 AGENTBOX_TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 AGENTBOX_TAILSCALED_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_TAILSCALED_LABEL}.plist"
+AGENTBOX_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
 HOMEBREW_TAILSCALE_SYSTEM_PLIST_PATH="/Library/LaunchDaemons/${HOMEBREW_TAILSCALE_LABEL}.plist"
 AGENTBOX_REPO_HTTPS_URL="https://github.com/tanaabased/agentbox.git"
@@ -1260,6 +1261,7 @@ AGENTBOX_HEALTH_BREWGROUP=$(shell_quote "${brewgroup_value}")
 AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED=${trusted_brewgroup_enabled_value}
 AGENTBOX_HEALTH_TRUSTED_BREWGROUP=$(shell_quote "${trusted_brewgroup_value}")
 AGENTBOX_HEALTH_BREW_PREFIX=$(shell_quote "${BREW_PREFIX_VALUE}")
+AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE=$(shell_quote "${AGENTBOX_HOMEBREW_PATHS_FILE}")
 AGENTBOX_HEALTH_ADMIN_USER=$(shell_quote "${ADMIN_USER}")
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED=${ssh_hardening_expected}
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER=${managed_macos_runner}
@@ -1293,6 +1295,7 @@ AGENTBOX_HEALTH_BREWGROUP="off"
 AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED="0"
 AGENTBOX_HEALTH_TRUSTED_BREWGROUP="off"
 AGENTBOX_HEALTH_BREW_PREFIX=""
+AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
 AGENTBOX_HEALTH_ADMIN_USER=""
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
@@ -1482,6 +1485,25 @@ filevault_status() {
   fi
 }
 
+path_file_contains_value() {
+  local file="$1"
+  local value="$2"
+
+  if [[ -f "${file}" ]] && grep -Fxq -- "${value}" "${file}" 2>/dev/null; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+executable_ok_value() {
+  if [[ -x "$1" ]]; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
 print_brewgroup() {
   if [[ "${STATE_LOADED}" != "1" ]]; then
     printf 'off\n'
@@ -1519,6 +1541,17 @@ generate_report() {
   local brew_prefix_group_rwx_ok="skipped"
   local brew_prefix_ok="skipped"
   local brewgroup_admin_user_ok="skipped"
+  local homebrew_bin_path=""
+  local homebrew_sbin_path=""
+  local homebrew_login_path_bin_ok="0"
+  local homebrew_login_path_file_ok="0"
+  local homebrew_login_path_sbin_ok="0"
+  local node_cli_path=""
+  local node_cli_ok="0"
+  local openclaw_cli_path=""
+  local openclaw_cli_ok="0"
+  local ripgrep_path=""
+  local ripgrep_ok="0"
   local trusted_brewgroup_nested_ok="skipped"
   local health_launchd_loaded_ok="0"
   local tailscaled_launchd_loaded_ok="skipped"
@@ -1658,6 +1691,36 @@ generate_report() {
     print_kv brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
     print_kv brew_prefix_ok "${brew_prefix_ok}"
   fi
+
+  print_kv homebrew_login_path_file "${AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE}"
+  if [[ -n "${AGENTBOX_HEALTH_BREW_PREFIX}" ]]; then
+    homebrew_bin_path="${AGENTBOX_HEALTH_BREW_PREFIX}/bin"
+    homebrew_sbin_path="${AGENTBOX_HEALTH_BREW_PREFIX}/sbin"
+    homebrew_login_path_bin_ok="$(path_file_contains_value "${AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE}" "${homebrew_bin_path}")"
+    homebrew_login_path_sbin_ok="$(path_file_contains_value "${AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE}" "${homebrew_sbin_path}")"
+
+    if [[ "${homebrew_login_path_bin_ok}" == "1" && "${homebrew_login_path_sbin_ok}" == "1" ]]; then
+      homebrew_login_path_file_ok="1"
+    fi
+
+    openclaw_cli_path="${homebrew_bin_path}/openclaw"
+    node_cli_path="${homebrew_bin_path}/node"
+    ripgrep_path="${homebrew_bin_path}/rg"
+    openclaw_cli_ok="$(executable_ok_value "${openclaw_cli_path}")"
+    node_cli_ok="$(executable_ok_value "${node_cli_path}")"
+    ripgrep_ok="$(executable_ok_value "${ripgrep_path}")"
+  fi
+  print_kv homebrew_login_path_bin "${homebrew_bin_path}"
+  print_kv homebrew_login_path_sbin "${homebrew_sbin_path}"
+  mark_required homebrew_login_path_bin_ok "${homebrew_login_path_bin_ok}"
+  mark_required homebrew_login_path_sbin_ok "${homebrew_login_path_sbin_ok}"
+  mark_required homebrew_login_path_file_ok "${homebrew_login_path_file_ok}"
+  print_kv openclaw_cli_path "${openclaw_cli_path}"
+  mark_required openclaw_cli_ok "${openclaw_cli_ok}"
+  print_kv node_cli_path "${node_cli_path}"
+  mark_required node_cli_ok "${node_cli_ok}"
+  print_kv ripgrep_path "${ripgrep_path}"
+  mark_required ripgrep_ok "${ripgrep_ok}"
 
   print_kv tailscale_expected "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}"
   print_kv expected_tailscale_hostname "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}"
@@ -2062,6 +2125,8 @@ bootbox_run() {
     TANAAB_SSH_KEYS
     TANAAB_FORCE
     TANAAB_DEBUG
+    BOOTBOX_QUIET
+    TANAAB_QUIET
     TANAAB_ARCH
     TANAAB_OS
     TANAAB_TARGET
@@ -2092,6 +2157,9 @@ bootbox_run() {
     bootbox_command+=("TANAAB_FORCE=${FORCE}")
     bootbox_display_command+=("AGENTBOX_FORCE=${FORCE}")
   fi
+
+  bootbox_command+=("BOOTBOX_QUIET=1")
+  bootbox_display_command+=("BOOTBOX_QUIET=1")
 
   bootbox_command+=("NONINTERACTIVE=1")
   bootbox_display_command+=("NONINTERACTIVE=1")
@@ -2147,6 +2215,7 @@ plan_wrapper_execution() {
   plan_action "${tty_tp}ensure${tty_reset} macOS ComputerName, HostName, and LocalHostName are ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
   plan_action "${tty_tp}ensure${tty_reset} headless power, time, recovery, and firewall settings"
   plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile"
+  plan_action "${tty_tp}ensure${tty_reset} Homebrew commands are available to login shells through ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset}"
   if brewgroup_setup_disabled; then
     plan_action "${tty_tp}skip${tty_reset} Homebrew brewgroup setup because the brewgroup input is disabled"
   else
@@ -2205,6 +2274,54 @@ ensure_bootbox_core_requirements() {
 run_bootbox_for_agentbox_brewfile() {
   bootbox_run_or_abort agentbox "bootbox failed while applying agentbox Brewfile ${tty_ts}$(agentbox_brewfile_display)${tty_reset}." \
     --brewfile "${AGENTBOX_BREWFILE}"
+}
+
+resolve_brew_prefix() {
+  require_command brew
+
+  BREW_PREFIX_VALUE="$(brew --prefix 2>/dev/null || true)"
+  if [[ -z "${BREW_PREFIX_VALUE}" || ! -d "${BREW_PREFIX_VALUE}" ]]; then
+    abort "could not resolve an existing Homebrew prefix with ${tty_ts}brew --prefix${tty_reset}."
+  fi
+}
+
+homebrew_login_paths_content() {
+  printf '%s/bin\n%s/sbin\n' "${BREW_PREFIX_VALUE}" "${BREW_PREFIX_VALUE}"
+}
+
+homebrew_login_paths_ok() {
+  local actual
+  local expected
+
+  if [[ -z "${BREW_PREFIX_VALUE}" || ! -f "${AGENTBOX_HOMEBREW_PATHS_FILE}" ]]; then
+    return 1
+  fi
+
+  expected="$(homebrew_login_paths_content)"
+  actual="$(cat "${AGENTBOX_HOMEBREW_PATHS_FILE}" 2>/dev/null || true)"
+  [[ "${actual}" == "${expected}" ]]
+}
+
+run_agentbox_homebrew_login_path_setup() {
+  check_sudo_access "before Homebrew login-shell PATH setup"
+  resolve_brew_prefix
+
+  if homebrew_login_paths_ok; then
+    log "${tty_tp}skipping${tty_reset} Homebrew login-shell PATH setup; ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset} already matches ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset}"
+    return 0
+  fi
+
+  log "${tty_tp}writing${tty_reset} Homebrew login-shell PATH entries to ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset}"
+  execute sudo mkdir -p "$(dirname "${AGENTBOX_HOMEBREW_PATHS_FILE}")"
+  if ! homebrew_login_paths_content | sudo tee "${AGENTBOX_HOMEBREW_PATHS_FILE}" >/dev/null; then
+    abort "failed to write Homebrew login-shell PATH file ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset}."
+  fi
+  execute sudo chown root:wheel "${AGENTBOX_HOMEBREW_PATHS_FILE}"
+  execute sudo chmod 644 "${AGENTBOX_HOMEBREW_PATHS_FILE}"
+
+  if ! homebrew_login_paths_ok; then
+    abort "Homebrew login-shell PATH file ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset} does not match ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} after remediation."
+  fi
 }
 
 brewgroup_exists() {
@@ -2351,18 +2468,12 @@ brew_prefix_permissions_ok() {
 
 run_agentbox_brewgroup_setup() {
   if brewgroup_setup_disabled; then
-    BREW_PREFIX_VALUE=""
     log "${tty_tp}skipping${tty_reset} Homebrew brewgroup setup because the brewgroup input is disabled"
     return 0
   fi
 
   check_sudo_access "before Homebrew brewgroup setup"
-  require_command brew
-
-  BREW_PREFIX_VALUE="$(brew --prefix 2>/dev/null || true)"
-  if [[ -z "${BREW_PREFIX_VALUE}" || ! -d "${BREW_PREFIX_VALUE}" ]]; then
-    abort "could not resolve an existing Homebrew prefix with ${tty_ts}brew --prefix${tty_reset}."
-  fi
+  resolve_brew_prefix
 
   ensure_brewgroup_exists
   ensure_brewgroup_admin_user
@@ -2682,6 +2793,7 @@ main() {
   run_agentbox_hostname_setup
   run_agentbox_macos_settings
   run_bootbox_for_agentbox_brewfile
+  run_agentbox_homebrew_login_path_setup
   run_agentbox_brewgroup_setup
   run_agentbox_ssh_setup
   run_agentbox_tailscale_setup

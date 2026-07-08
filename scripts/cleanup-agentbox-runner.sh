@@ -150,6 +150,7 @@ sudo rm -f /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist
 sudo rm -f /Library/LaunchDaemons/homebrew.mxcl.tailscale.plist
 sudo rm -f "${HOME}/Library/LaunchAgents/homebrew.mxcl.tailscale.plist"
 sudo rm -rf /opt/tanaab/agentbox /var/log/tanaab/agentbox /var/db/tanaab/agentbox
+sudo rm -f /etc/paths.d/00-agentbox-homebrew
 sudo rm -f /etc/ssh/sshd_config.d/agentbox.conf
 sudo launchctl kickstart -k system/com.openssh.sshd >/dev/null 2>&1 || true
 
