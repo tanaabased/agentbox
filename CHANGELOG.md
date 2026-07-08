@@ -1,6 +1,11 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+- Added `--agentbox-version` support for HTTPS tar archive URLs and local tar archives.
+- Added `--brewfile` and `AGENTBOX_BREWFILE` for optional extra Bootbox Brewfiles.
+- Added `Brewfile.extras` for optional Codex, Codex App, OpenCLAW, and Warp casks.
 - Added `openclaw-cli`, `ripgrep`, and Homebrew login-shell PATH setup to the base bootstrap.
+- Externalized the installed health script and agentbox LaunchDaemon plist bodies into root-level
+  `bin/` and `launchd/` directories.
 - Updated repo docs to make OpenCLAW gateway host setup the target `agentbox` scope.
 
 ## v1.0.0-beta.5 - [June 16, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.5)

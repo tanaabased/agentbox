@@ -20,6 +20,11 @@ explicitly asked.
 
 - `boot.sh` is the shipped shell entrypoint and main bootstrap surface.
 - `Brewfile` is the source of truth for base Homebrew packages.
+- `Brewfile.extras` is an optional personal-tooling Brewfile for operator apps, not part of the
+  core host contract.
+- `bin/health.sh` is the source health script installed to `/opt/tanaab/agentbox/bin/health.sh`.
+- `launchd/*.plist.in` files are source LaunchDaemon templates rendered by `boot.sh` with
+  machine-specific paths and binary locations.
 - `README.md` is the human-facing setup, usage, and post-bootstrap surface.
 - `examples/**/README.md` files are Leia-backed executable contract specs consumed in CI.
 - `dist/` is generated publish output for Netlify hosting and release preparation.
@@ -61,6 +66,8 @@ explicitly asked.
 - Any machine behavior change in `boot.sh` must check README setup/after-bootstrap guidance plus
   the affected `envvars`, `options`, or `version` Leia scenarios.
 - Keep planned-action output aligned with actual execution order.
+- Keep `--brewfile` as an extra-Brewfile append surface. The core agentbox `Brewfile` must remain
+  first in the delegated Bootbox Brewfile list.
 - Treat the generated agentbox health script as the source of truth for machine health
   verification. README and Leia should prefer `health.sh --check` for macOS/SSH/Tailscale state,
   while keeping repo materialization, Brewfile satisfaction, and live SSH-login proof as direct
@@ -145,7 +152,8 @@ explicitly asked.
   agentbox public interface.
 - Keep the default public source as `https://github.com/tanaabased/agentbox.git`, the fixed target
   as `~/tanaab/agentbox`, and skip-or-replace behavior controlled by `--force`.
-- Keep `--agentbox-version` aligned with GitHub tag archive installs.
+- Keep `--agentbox-version` aligned with GitHub tag archives, local git sources, and tar archive
+  URL/path installs.
 - Preserve `AGENTBOX_HOSTNAME` as the canonical hostname input and, when Tailscale is enabled, the
   current TANAAB-prefixed Tailscale hostname derivation.
 - Preserve formula-based Tailscale install and recommended setup, while allowing explicit falsey

@@ -1,7 +1,7 @@
 # Version Example
 
 This example verifies that `boot.sh --agentbox-version` can fetch local git sources and extract a
-published `agentbox` release archive.
+local `agentbox` tar archive.
 
 ## Setup
 
@@ -16,9 +16,6 @@ test -d "$GITHUB_WORKSPACE/.git"
 ../../scripts/cleanup-agentbox-runner.sh
 mkdir -p "$TMPDIR"
 
-# should also brew trust oven-sh/bun for legacy version support
-brew trust oven-sh/bun
-
 # should clone a local agentbox source without Tailscale setup
 boot.sh \
   --force \
@@ -30,11 +27,18 @@ boot.sh \
 test -d "$HOME/tanaab/agentbox/.git"
 git -C "$HOME/tanaab/agentbox" remote get-url origin > "$TMPDIR/agentbox.local.origin"
 
-# should install a published version archive without Tailscale setup and replace the local checkout
+# should prepare a current local archive source
+git -C "$GITHUB_WORKSPACE" archive \
+  --format=tar.gz \
+  --prefix=agentbox-current/ \
+  --output="$TMPDIR/agentbox-current.tar.gz" \
+  HEAD
+
+# should install a local archive without Tailscale setup and replace the local checkout
 boot.sh \
   --force \
   --debug \
-  --agentbox-version v1.0.0-beta.1 \
+  --agentbox-version "$TMPDIR/agentbox-current.tar.gz" \
   --tailscale-authkey off \
   --brewgroup off \
   --hostname "TANAABAGENTBOXVER$GITHUB_RUN_ID"
@@ -46,14 +50,13 @@ boot.sh \
 # should have cloned agentbox from the local workflow checkout before replacing it
 test "$(cat "$TMPDIR/agentbox.local.origin")" = "$GITHUB_WORKSPACE"
 
-# should extract the version archive in place
+# should extract the local archive in place
 test -f "$HOME/tanaab/agentbox/boot.sh"
 test -f "$HOME/tanaab/agentbox/Brewfile"
+test -f "$HOME/tanaab/agentbox/bin/health.sh"
+test -f "$HOME/tanaab/agentbox/launchd/dev.tanaab.agentbox.health.plist.in"
+test -f "$HOME/tanaab/agentbox/launchd/dev.tanaab.agentbox.tailscaled.plist.in"
 ! test -d "$HOME/tanaab/agentbox/.git"
-
-# should extract the requested release tag contents
-grep -F "## v1.0.0-beta.1" "$HOME/tanaab/agentbox/CHANGELOG.md"
-grep -F 'SCRIPT_VERSION="v1.0.0-beta.1"' "$HOME/tanaab/agentbox/dist/boot.sh"
 ```
 
 ## Destroy tests

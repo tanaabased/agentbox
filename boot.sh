@@ -133,6 +133,24 @@ array_count() {
   printf "%s" "${count}"
 }
 
+array_join() {
+  local delimiter="$1"
+  local array_name="$2"
+  local count
+  local index
+  local value
+
+  # Bash 3.2 with nounset treats empty array expansion as unbound.
+  eval "count=\${#${array_name}[@]}"
+  for ((index = 0; index < count; index++)); do
+    eval "value=\"\${${array_name}[${index}]}\""
+    if [[ "${index}" -gt 0 ]]; then
+      printf "%s" "${delimiter}"
+    fi
+    printf "%s" "${value}"
+  done
+}
+
 append_csv_to_array() {
   local array_name="$1"
   local old_ifs="${IFS}"
@@ -176,6 +194,16 @@ shell_quote() {
   printf "%q" "$1"
 }
 
+xml_escape() {
+  local value="$1"
+
+  value="${value//&/&amp;}"
+  value="${value//</&lt;}"
+  value="${value//>/&gt;}"
+  value="${value//\"/&quot;}"
+  printf "%s" "${value}"
+}
+
 # shellcheck disable=SC2292
 if [ -z "${BASH_VERSION:-}" ]; then
   abort "bash is required to interpret this script."
@@ -215,6 +243,7 @@ tty_ts="$(tty_escape '38;2;219;39;119')"
 SCRIPT_NAME="${0##*/}"
 # Keep a single top-level assignment so release automation can stamp the entrypoint in place.
 SCRIPT_VERSION="${SCRIPT_VERSION:-$(git describe --tags --always --abbrev=1 2>/dev/null || printf '%s' '0.0.0-unreleased')}"
+INVOCATION_CWD="${PWD}"
 
 DEBUG="${AGENTBOX_DEBUG:-${DEBUG:-${RUNNER_DEBUG:-}}}"
 FORCE="${AGENTBOX_FORCE:-}"
@@ -226,9 +255,12 @@ TRUSTED_BREWGROUP_VALUE=""
 TAILSCALE_AUTHKEY="${AGENTBOX_TAILSCALE_AUTHKEY:-}"
 ADMIN_USER=""
 AUTHORIZED_KEY_CLI_SEEN="0"
+EXTRA_BREWFILE_CLI_SEEN="0"
 declare -a PLANNED_ACTIONS=()
 declare -a AUTHORIZED_KEY_SPECS=()
 declare -a AUTHORIZED_KEY_LINES=()
+declare -a EXTRA_BREWFILE_SPECS=()
+declare -a RESOLVED_EXTRA_BREWFILES=()
 BOOT_TMPDIR=""
 BOOTBOX_SCRIPT_PATH=""
 CORE_NEEDS_REMEDIATION="0"
@@ -240,8 +272,15 @@ OS=""
 AGENTBOX_VERSION_TAG=""
 AGENTBOX_SOURCE_KIND=""
 AGENTBOX_SOURCE_LOCAL_PATH=""
+AGENTBOX_SOURCE_ARCHIVE_URL=""
+AGENTBOX_SOURCE_ARCHIVE_PATH=""
 AGENTBOX_TARGET_PATH=""
-AGENTBOX_BREWFILE=""
+AGENTBOX_CORE_BREWFILE=""
+AGENTBOX_BIN_DIR=""
+AGENTBOX_LAUNCHD_DIR=""
+AGENTBOX_HEALTH_SCRIPT_SOURCE=""
+AGENTBOX_HEALTH_PLIST_TEMPLATE=""
+AGENTBOX_TAILSCALED_PLIST_TEMPLATE=""
 BREW_PREFIX_VALUE=""
 TAILSCALE_HOSTNAME_VALUE=""
 
@@ -251,6 +290,14 @@ fi
 
 if [[ -n "${AGENTBOX_AUTHORIZED_KEYS:-}" ]]; then
   append_csv_to_array AUTHORIZED_KEY_SPECS "${AGENTBOX_AUTHORIZED_KEYS}"
+fi
+
+if [[ -n "${AGENTBOX_BREWFILE:-}" ]]; then
+  append_csv_to_array EXTRA_BREWFILE_SPECS "${AGENTBOX_BREWFILE}"
+fi
+
+if [[ -n "${AGENTBOX_BREWFILES:-}" ]]; then
+  append_csv_to_array EXTRA_BREWFILE_SPECS "${AGENTBOX_BREWFILES}"
 fi
 
 debug_enabled() {
@@ -293,6 +340,13 @@ brewgroup_display() {
   fi
 
   printf "%s" "${BREWGROUP_INPUT}"
+}
+
+extra_brewfiles_display() {
+  local display
+
+  display="$(array_join "," EXTRA_BREWFILE_SPECS)"
+  printf "%s" "${display:-none}"
 }
 
 debug() {
@@ -352,6 +406,41 @@ display_home_path() {
   printf "%s" "${path}"
 }
 
+expand_home_path() {
+  local path="$1"
+
+  if [[ "${path}" == "~" ]]; then
+    printf "%s" "${HOME}"
+    return 0
+  fi
+
+  if [[ "${path}" == \~/* ]]; then
+    printf "%s/%s" "${HOME}" "${path#\~/}"
+    return 0
+  fi
+
+  printf "%s" "${path}"
+}
+
+http_url_value() {
+  [[ "${1:-}" == http://* || "${1:-}" == https://* ]]
+}
+
+tar_archive_path_value() {
+  case "${1:-}" in
+    *.tar | *.tar.gz | *.tgz)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+brewfile_source_url_value() {
+  [[ "${1:-}" =~ ^[[:alpha:]][[:alnum:].+-]*:// ]]
+}
+
 find_git_repo_root() {
   local path="$1"
   local parent
@@ -390,6 +479,52 @@ resolve_local_repo_source_path() {
   fi
 
   printf "%s" "${repo_root}"
+}
+
+resolve_local_archive_source_path() {
+  local source_path
+  local source_dir
+  local source_name
+
+  source_path="$(expand_home_path "$1")"
+  if [[ ! -f "${source_path}" ]] || ! tar_archive_path_value "${source_path}"; then
+    return 1
+  fi
+
+  source_dir="$(cd "$(dirname "${source_path}")" 2>/dev/null && pwd -P)" || return 1
+  source_name="$(basename "${source_path}")"
+  printf "%s/%s" "${source_dir}" "${source_name}"
+}
+
+resolve_extra_brewfile_source_path() {
+  local brewfile
+  local invocation_path
+  local target_path
+
+  brewfile="$(expand_home_path "$1")"
+
+  if [[ "${brewfile}" == /* ]]; then
+    if [[ -f "${brewfile}" ]]; then
+      printf "%s" "${brewfile}"
+      return 0
+    fi
+
+    return 1
+  fi
+
+  invocation_path="${INVOCATION_CWD}/${brewfile}"
+  if [[ -f "${invocation_path}" ]]; then
+    printf "%s" "${invocation_path}"
+    return 0
+  fi
+
+  target_path="${AGENTBOX_TARGET_PATH}/${brewfile}"
+  if [[ -f "${target_path}" ]]; then
+    printf "%s" "${target_path}"
+    return 0
+  fi
+
+  return 1
 }
 
 hostname_valid() {
@@ -448,6 +583,7 @@ usage() {
   local force_display="off"
   local tailscale_authkey_display_value="none"
   local brewgroup_display_value="none"
+  local extra_brewfiles_display_value="none"
   local authorized_keys_display="none"
 
   if debug_enabled; then
@@ -460,6 +596,7 @@ usage() {
 
   tailscale_authkey_display_value="$(tailscale_authkey_display)"
   brewgroup_display_value="$(brewgroup_display)"
+  extra_brewfiles_display_value="$(extra_brewfiles_display)"
   if array_has_values AUTHORIZED_KEY_SPECS; then
     authorized_keys_display="$(array_count AUTHORIZED_KEY_SPECS) provided"
   fi
@@ -468,7 +605,8 @@ usage() {
 Usage: ${tty_dim}[NONINTERACTIVE=1] [CI=1] [AGENTBOX_*...]${tty_reset} ${tty_bold}${SCRIPT_NAME}${tty_reset} ${tty_dim}[options]${tty_reset}
 
 ${tty_tp}Options:${tty_reset}
-  --agentbox-version  installs a tagged release, accepts 1.2.3 or v1.2.3-beta.1 ${tty_dim}[default: $(agentbox_version_display)]${tty_reset}
+  --agentbox-version  installs a tagged release, local git repo, or tar archive URL/path ${tty_dim}[default: $(agentbox_version_display)]${tty_reset}
+  --brewfile          adds an extra Brewfile from a local path or URL ${tty_dim}[default: ${extra_brewfiles_display_value}]${tty_reset}
   --authorized-key    adds an SSH public key or public-key file path ${tty_dim}[default: ${authorized_keys_display}]${tty_reset}
   --tailscale-authkey uses a Tailscale auth key to join; falsey disables setup ${tty_dim}[default: ${tailscale_authkey_display_value}]${tty_reset}
   --brewgroup         manages Homebrew prefix group write access; accepts group[:trusted-group]; falsey disables setup ${tty_dim}[default: ${brewgroup_display_value}]${tty_reset}
@@ -481,6 +619,7 @@ ${tty_tp}Options:${tty_reset}
 
 ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_VERSION               same as --agentbox-version
+  AGENTBOX_BREWFILE              same as --brewfile
   AGENTBOX_AUTHORIZED_KEY        same as --authorized-key
   AGENTBOX_TAILSCALE_AUTHKEY     same as --tailscale-authkey
   AGENTBOX_BREWGROUP             same as --brewgroup
@@ -525,9 +664,38 @@ reset_authorized_key_specs_for_cli() {
   fi
 }
 
+reset_extra_brewfile_specs_for_cli() {
+  if [[ "${EXTRA_BREWFILE_CLI_SEEN}" == "0" ]]; then
+    EXTRA_BREWFILE_SPECS=()
+    EXTRA_BREWFILE_CLI_SEEN="1"
+  fi
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --brewfile)
+        require_next_option_value "--brewfile" "$#"
+        reset_extra_brewfile_specs_for_cli
+        append_array_value EXTRA_BREWFILE_SPECS "$2"
+        shift 2
+        ;;
+      --brewfile=*)
+        reset_extra_brewfile_specs_for_cli
+        append_array_value EXTRA_BREWFILE_SPECS "${1#*=}"
+        shift
+        ;;
+      --brewfiles)
+        require_next_option_value "--brewfiles" "$#"
+        reset_extra_brewfile_specs_for_cli
+        append_csv_to_array EXTRA_BREWFILE_SPECS "$2"
+        shift 2
+        ;;
+      --brewfiles=*)
+        reset_extra_brewfile_specs_for_cli
+        append_csv_to_array EXTRA_BREWFILE_SPECS "${1#*=}"
+        shift
+        ;;
       --authorized-key)
         require_next_option_value "--authorized-key" "$#"
         reset_authorized_key_specs_for_cli
@@ -702,7 +870,7 @@ agentbox_target_display() {
 }
 
 agentbox_brewfile_display() {
-  display_home_path "${AGENTBOX_BREWFILE}"
+  display_home_path "${AGENTBOX_CORE_BREWFILE}"
 }
 
 prepare_agentbox_source() {
@@ -710,12 +878,22 @@ prepare_agentbox_source() {
   AGENTBOX_VERSION_TAG=""
   AGENTBOX_SOURCE_KIND=""
   AGENTBOX_SOURCE_LOCAL_PATH=""
+  AGENTBOX_SOURCE_ARCHIVE_URL=""
+  AGENTBOX_SOURCE_ARCHIVE_PATH=""
 
   if [[ -z "${AGENTBOX_VERSION_VALUE}" || "${AGENTBOX_VERSION_VALUE}" == "latest" ]]; then
     AGENTBOX_SOURCE_KIND="default"
   elif is_semver_value "${AGENTBOX_VERSION_VALUE}"; then
     AGENTBOX_SOURCE_KIND="version"
     AGENTBOX_VERSION_TAG="$(normalize_release_tag "${AGENTBOX_VERSION_VALUE}")"
+  elif http_url_value "${AGENTBOX_VERSION_VALUE}"; then
+    AGENTBOX_SOURCE_KIND="archive_url"
+    AGENTBOX_SOURCE_ARCHIVE_URL="${AGENTBOX_VERSION_VALUE}"
+  elif tar_archive_path_value "${AGENTBOX_VERSION_VALUE}"; then
+    AGENTBOX_SOURCE_KIND="archive_file"
+    if ! AGENTBOX_SOURCE_ARCHIVE_PATH="$(resolve_local_archive_source_path "${AGENTBOX_VERSION_VALUE}")"; then
+      abort "local agentbox archive ${tty_ts}${AGENTBOX_VERSION_VALUE}${tty_reset} must resolve to an existing .tar, .tar.gz, or .tgz file."
+    fi
   else
     AGENTBOX_SOURCE_KIND="local"
 
@@ -734,6 +912,12 @@ agentbox_source_display() {
     version)
       printf "%s" "${AGENTBOX_VERSION_TAG}"
       ;;
+    archive_url)
+      printf "%s" "${AGENTBOX_SOURCE_ARCHIVE_URL}"
+      ;;
+    archive_file)
+      display_home_path "${AGENTBOX_SOURCE_ARCHIVE_PATH}"
+      ;;
     local)
       display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}"
       ;;
@@ -747,6 +931,36 @@ repo_archive_url() {
   local tag="$1"
 
   printf "%s/%s.tar.gz" "${AGENTBOX_REPO_ARCHIVE_BASE_URL}" "${tag}"
+}
+
+extract_agentbox_archive() {
+  local archive_path="$1"
+  local extract_dir="$2"
+  local payload_root=""
+  local entry
+  local entry_count="0"
+
+  execute mkdir -p "${extract_dir}" "${AGENTBOX_TARGET_PATH}"
+  execute tar -xf "${archive_path}" -C "${extract_dir}"
+
+  if [[ -f "${extract_dir}/Brewfile" ]]; then
+    payload_root="${extract_dir}"
+  else
+    for entry in "${extract_dir}"/* "${extract_dir}"/.[!.]* "${extract_dir}"/..?*; do
+      if [[ ! -e "${entry}" ]]; then
+        continue
+      fi
+
+      entry_count=$((entry_count + 1))
+      payload_root="${entry}"
+    done
+
+    if [[ "${entry_count}" != "1" || ! -d "${payload_root}" || ! -f "${payload_root}/Brewfile" ]]; then
+      abort "agentbox archive must contain a Brewfile at archive root or inside one top-level directory."
+    fi
+  fi
+
+  execute cp -R "${payload_root}/." "${AGENTBOX_TARGET_PATH}"
 }
 
 repo_prepare_target() {
@@ -792,9 +1006,16 @@ fetch_agentbox_source() {
     archive_url="$(repo_archive_url "${AGENTBOX_VERSION_TAG}")"
     archive_path="${BOOT_TMPDIR}/agentbox-${AGENTBOX_VERSION_TAG}.tar.gz"
     log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} release ${tty_ts}${AGENTBOX_VERSION_TAG}${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
-    execute mkdir -p "${AGENTBOX_TARGET_PATH}"
     execute "${CURL}" -fsSL "${archive_url}" -o "${archive_path}"
-    execute tar -xzf "${archive_path}" -C "${AGENTBOX_TARGET_PATH}" --strip-components=1
+    extract_agentbox_archive "${archive_path}" "${BOOT_TMPDIR}/agentbox-source"
+  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_url" ]]; then
+    archive_path="${BOOT_TMPDIR}/agentbox-archive.tar.gz"
+    log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}${AGENTBOX_SOURCE_ARCHIVE_URL}${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
+    execute "${CURL}" -fsSL "${AGENTBOX_SOURCE_ARCHIVE_URL}" -o "${archive_path}"
+    extract_agentbox_archive "${archive_path}" "${BOOT_TMPDIR}/agentbox-source"
+  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_file" ]]; then
+    log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_ARCHIVE_PATH}")${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
+    extract_agentbox_archive "${AGENTBOX_SOURCE_ARCHIVE_PATH}" "${BOOT_TMPDIR}/agentbox-source"
   elif [[ "${AGENTBOX_SOURCE_KIND}" == "local" ]]; then
     log "${tty_tp}cloning${tty_reset} ${tty_ts}agentbox${tty_reset} from local git repo ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}")${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
     execute git clone "${AGENTBOX_SOURCE_LOCAL_PATH}" "${AGENTBOX_TARGET_PATH}"
@@ -804,11 +1025,52 @@ fetch_agentbox_source() {
   fi
 }
 
-discover_agentbox_payload() {
-  AGENTBOX_BREWFILE="${AGENTBOX_TARGET_PATH}/Brewfile"
+resolve_extra_brewfiles() {
+  local brewfile
+  local resolved_brewfile
 
-  if [[ ! -f "${AGENTBOX_BREWFILE}" ]]; then
+  RESOLVED_EXTRA_BREWFILES=()
+
+  if ! array_has_values EXTRA_BREWFILE_SPECS; then
+    return 0
+  fi
+
+  for brewfile in "${EXTRA_BREWFILE_SPECS[@]}"; do
+    if brewfile_source_url_value "${brewfile}"; then
+      RESOLVED_EXTRA_BREWFILES+=("${brewfile}")
+      continue
+    fi
+
+    if ! resolved_brewfile="$(resolve_extra_brewfile_source_path "${brewfile}")"; then
+      abort "extra Brewfile ${tty_ts}${brewfile}${tty_reset} must be a URL or resolve to a local file relative to ${tty_ts}$(display_home_path "${INVOCATION_CWD}")${tty_reset} or ${tty_ts}$(agentbox_target_display)${tty_reset}."
+    fi
+
+    RESOLVED_EXTRA_BREWFILES+=("${resolved_brewfile}")
+  done
+}
+
+discover_agentbox_payload() {
+  AGENTBOX_CORE_BREWFILE="${AGENTBOX_TARGET_PATH}/Brewfile"
+  AGENTBOX_BIN_DIR="${AGENTBOX_TARGET_PATH}/bin"
+  AGENTBOX_LAUNCHD_DIR="${AGENTBOX_TARGET_PATH}/launchd"
+  AGENTBOX_HEALTH_SCRIPT_SOURCE="${AGENTBOX_BIN_DIR}/health.sh"
+  AGENTBOX_HEALTH_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.health.plist.in"
+  AGENTBOX_TAILSCALED_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.tailscaled.plist.in"
+
+  if [[ ! -f "${AGENTBOX_CORE_BREWFILE}" ]]; then
     abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required Brewfile ${tty_ts}$(agentbox_brewfile_display)${tty_reset}."
+  fi
+
+  if [[ ! -f "${AGENTBOX_HEALTH_SCRIPT_SOURCE}" ]]; then
+    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_HEALTH_SCRIPT_SOURCE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
+  fi
+
+  if [[ ! -f "${AGENTBOX_HEALTH_PLIST_TEMPLATE}" ]]; then
+    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_HEALTH_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
+  fi
+
+  if [[ ! -f "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}" ]]; then
+    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
   fi
 }
 
@@ -1275,582 +1537,59 @@ EOHEALTHSTATE
 }
 
 write_agentbox_health_script() {
-  if ! sudo tee "${AGENTBOX_OPT_DIR}/bin/health.sh" >/dev/null <<'EOHEALTH'
-#!/usr/bin/env bash
-set -euo pipefail
-
-STATE_FILE="/var/db/tanaab/agentbox/health.env"
-LOG_FILE="/var/log/tanaab/agentbox/health.log"
-HEALTH_LABEL="dev.tanaab.agentbox.health"
-TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
-HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
-SSHD_BIN="/usr/sbin/sshd"
-SOCKETFILTERFW="/usr/libexec/ApplicationFirewall/socketfilterfw"
-
-AGENTBOX_HEALTH_EXPECTED_HOSTNAME=""
-AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=""
-AGENTBOX_HEALTH_TAILSCALE_ENABLED="0"
-AGENTBOX_HEALTH_BREWGROUP_ENABLED="0"
-AGENTBOX_HEALTH_BREWGROUP="off"
-AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED="0"
-AGENTBOX_HEALTH_TRUSTED_BREWGROUP="off"
-AGENTBOX_HEALTH_BREW_PREFIX=""
-AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
-AGENTBOX_HEALTH_ADMIN_USER=""
-AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
-AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
-STATE_LOADED="0"
-
-if [[ -r "${STATE_FILE}" ]]; then
-  # shellcheck source=/dev/null
-  . "${STATE_FILE}"
-  STATE_LOADED="1"
-fi
-
-print_kv() {
-  local key="$1"
-  local value="${2:-}"
-
-  value="${value//$'\n'/ }"
-  printf '%s=%s\n' "${key}" "${value}"
-}
-
-pmset_setting_value() {
-  local key="$1"
-
-  pmset -g custom 2>/dev/null | awk -v key="${key}" '$1 == key { value = $2 } END { print value }'
-}
-
-systemsetup_toggle_value() {
-  local getter="$1"
-
-  systemsetup "${getter}" 2>/dev/null | awk -F': ' 'NF { value = $NF } END { print (tolower(value) == "on" ? "1" : "0") }'
-}
-
-firewall_global_value() {
-  if "${SOCKETFILTERFW}" --getglobalstate 2>/dev/null | grep -qi "enabled"; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-firewall_stealth_value() {
-  if "${SOCKETFILTERFW}" --getstealthmode 2>/dev/null | grep -qi "enabled"; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-remote_login_value() {
-  if systemsetup -getremotelogin 2>/dev/null | grep -Fq "Remote Login: On"; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-sshd_hardened_value() {
-  local user="$1"
-  local config
-
-  if [[ -z "${user}" || ! -x "${SSHD_BIN}" ]]; then
-    printf '0'
-    return 0
-  fi
-
-  config="$("${SSHD_BIN}" -T 2>/dev/null)" || {
-    printf '0'
-    return 0
-  }
-
-  printf "%s\n" "${config}" | grep -Fxq "passwordauthentication no" || {
-    printf '0'
-    return 0
-  }
-  printf "%s\n" "${config}" | grep -Fxq "kbdinteractiveauthentication no" || {
-    printf '0'
-    return 0
-  }
-  printf "%s\n" "${config}" | grep -Fxq "permitrootlogin no" || {
-    printf '0'
-    return 0
-  }
-  printf "%s\n" "${config}" | grep -Fxq "pubkeyauthentication yes" || {
-    printf '0'
-    return 0
-  }
-  printf "%s\n" "${config}" | grep -Fxq "allowusers ${user}" || {
-    printf '0'
-    return 0
-  }
-
-  printf '1'
-}
-
-path_group_rwx_value() {
-  local path="$1"
-  local mode
-
-  mode="$(stat -f "%Lp" "${path}" 2>/dev/null || true)"
-  if [[ "${mode}" =~ ^[0-7]+$ ]] && (( (8#${mode} & 8#070) == 8#070 )); then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-group_user_member_value() {
-  local group="$1"
-  local user="$2"
-
-  if [[ -z "${group}" || -z "${user}" ]]; then
-    printf '0'
-    return 0
-  fi
-
-  if dscl . -read "/Groups/${group}" GroupMembership 2>/dev/null | awk -v expected="${user}" '
-    $1 == "GroupMembership:" {
-      for (i = 2; i <= NF; i++) {
-        if ($i == expected) {
-          found = 1
-        }
-      }
-      next
-    }
-    $1 == expected {
-      found = 1
-    }
-    END {
-      exit(found ? 0 : 1)
-    }
-  '; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-nested_group_value() {
-  local parent_group="$1"
-  local child_group="$2"
-  local child_group_guid
-
-  child_group_guid="$(dscl . -read "/Groups/${child_group}" GeneratedUID 2>/dev/null | awk '$1 == "GeneratedUID:" { print $2; exit }')"
-  if [[ -z "${child_group_guid}" ]]; then
-    printf '0'
-    return 0
-  fi
-
-  if dscl . -read "/Groups/${parent_group}" NestedGroups 2>/dev/null | awk -v expected="${child_group_guid}" '
-    $1 == "NestedGroups:" {
-      for (i = 2; i <= NF; i++) {
-        if ($i == expected) {
-          found = 1
-        }
-      }
-      next
-    }
-    $1 == expected {
-      found = 1
-    }
-    END {
-      exit(found ? 0 : 1)
-    }
-  '; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-root_disk_available_kb() {
-  df -Pk / 2>/dev/null | awk 'NR == 2 { print $4; found = 1 } END { if (!found) print "unknown" }'
-}
-
-gatekeeper_status() {
-  if command -v spctl >/dev/null 2>&1; then
-    spctl --status 2>/dev/null || true
-  else
-    printf 'unavailable'
-  fi
-}
-
-filevault_status() {
-  if command -v fdesetup >/dev/null 2>&1; then
-    fdesetup status 2>/dev/null || true
-  else
-    printf 'unavailable'
-  fi
-}
-
-path_file_contains_value() {
-  local file="$1"
-  local value="$2"
-
-  if [[ -f "${file}" ]] && grep -Fxq -- "${value}" "${file}" 2>/dev/null; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-executable_ok_value() {
-  if [[ -x "$1" ]]; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-print_brewgroup() {
-  if [[ "${STATE_LOADED}" != "1" ]]; then
-    printf 'off\n'
-    return 1
-  fi
-
-  if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" && -n "${AGENTBOX_HEALTH_BREWGROUP}" ]]; then
-    printf '%s\n' "${AGENTBOX_HEALTH_BREWGROUP}"
-    return 0
-  fi
-
-  printf 'off\n'
-}
-
-generate_report() {
-  local failures="0"
-  local admin_uid=""
-  local computer_name=""
-  local host_name=""
-  local local_host_name=""
-  local sleep_value=""
-  local disksleep_value=""
-  local displaysleep_value=""
-  local autorestart_value=""
-  local autorestart_ok="skipped"
-  local power_ok="0"
-  local network_time_ok=""
-  local restart_freeze_ok=""
-  local firewall_global_ok=""
-  local firewall_stealth_ok=""
-  local remote_login_ok=""
-  local ssh_hardening_ok="skipped"
-  local brew_prefix_group=""
-  local brew_prefix_group_ok="skipped"
-  local brew_prefix_group_rwx_ok="skipped"
-  local brew_prefix_ok="skipped"
-  local brewgroup_admin_user_ok="skipped"
-  local homebrew_bin_path=""
-  local homebrew_sbin_path=""
-  local homebrew_login_path_bin_ok="0"
-  local homebrew_login_path_file_ok="0"
-  local homebrew_login_path_sbin_ok="0"
-  local node_cli_path=""
-  local node_cli_ok="0"
-  local openclaw_cli_path=""
-  local openclaw_cli_ok="0"
-  local ripgrep_path=""
-  local ripgrep_ok="0"
-  local trusted_brewgroup_nested_ok="skipped"
-  local health_launchd_loaded_ok="0"
-  local tailscaled_launchd_loaded_ok="skipped"
-  local tailscaled_homebrew_launchd_absent_ok="skipped"
-  local tailscaled_homebrew_user_launchd_absent_ok="skipped"
-  local tailscale_backend_state=""
-  local tailscale_hostname=""
-  local tailscale_ip=""
-  local tailscale_ok="skipped"
-  local tailscale_status_json=""
-
-  mark_required() {
-    local key="$1"
-    local value="$2"
-
-    print_kv "${key}" "${value}"
-    if [[ "${value}" != "1" ]]; then
-      failures=$((failures + 1))
-    fi
-  }
-
-  computer_name="$(scutil --get ComputerName 2>/dev/null || true)"
-  host_name="$(scutil --get HostName 2>/dev/null || true)"
-  local_host_name="$(scutil --get LocalHostName 2>/dev/null || true)"
-  sleep_value="$(pmset_setting_value sleep)"
-  disksleep_value="$(pmset_setting_value disksleep)"
-  displaysleep_value="$(pmset_setting_value displaysleep)"
-  autorestart_value="$(pmset_setting_value autorestart)"
-  network_time_ok="$(systemsetup_toggle_value -getusingnetworktime)"
-  restart_freeze_ok="$(systemsetup_toggle_value -getrestartfreeze)"
-  firewall_global_ok="$(firewall_global_value)"
-  firewall_stealth_ok="$(firewall_stealth_value)"
-  remote_login_ok="$(remote_login_value)"
-  admin_uid="$(id -u "${AGENTBOX_HEALTH_ADMIN_USER}" 2>/dev/null || true)"
-
-  if [[ -z "${autorestart_value}" && "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}" == "1" ]]; then
-    autorestart_ok="skipped"
-  elif [[ "${autorestart_value}" == "1" ]]; then
-    autorestart_ok="1"
-  else
-    autorestart_ok="0"
-  fi
-
-  if [[ "${sleep_value}" == "0" &&
-    "${disksleep_value}" == "0" &&
-    "${displaysleep_value}" == "0" &&
-    "${autorestart_ok}" != "0" ]]; then
-    power_ok="1"
-  fi
-
-  if launchctl print "system/${HEALTH_LABEL}" >/dev/null 2>&1; then
-    health_launchd_loaded_ok="1"
-  fi
-
-  print_kv timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  print_kv managed_macos_runner "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}"
-  print_kv expected_hostname "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}"
-  print_kv computer_name "${computer_name}"
-  print_kv host_name "${host_name}"
-  print_kv local_host_name "${local_host_name}"
-
-  if [[ -n "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" &&
-    "${computer_name}" == "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" &&
-    "${host_name}" == "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" &&
-    "${local_host_name}" == "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" ]]; then
-    mark_required macos_identity_ok 1
-  else
-    mark_required macos_identity_ok 0
-  fi
-
-  print_kv sleep "${sleep_value}"
-  print_kv disksleep "${disksleep_value}"
-  print_kv displaysleep "${displaysleep_value}"
-  print_kv autorestart "${autorestart_value}"
-  print_kv autorestart_ok "${autorestart_ok}"
-  mark_required headless_power_ok "${power_ok}"
-  mark_required network_time_ok "${network_time_ok}"
-  mark_required restart_freeze_ok "${restart_freeze_ok}"
-  mark_required firewall_global_ok "${firewall_global_ok}"
-  if [[ "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}" == "1" && "${firewall_stealth_ok}" != "1" ]]; then
-    print_kv firewall_stealth_ok "${firewall_stealth_ok}"
-  else
-    mark_required firewall_stealth_ok "${firewall_stealth_ok}"
-  fi
-  mark_required remote_login_ok "${remote_login_ok}"
-
-  print_kv ssh_hardening_expected "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}"
-  print_kv admin_user "${AGENTBOX_HEALTH_ADMIN_USER}"
-  if [[ "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}" == "1" ]]; then
-    ssh_hardening_ok="$(sshd_hardened_value "${AGENTBOX_HEALTH_ADMIN_USER}")"
-    mark_required ssh_hardening_ok "${ssh_hardening_ok}"
-  else
-    print_kv ssh_hardening_ok "${ssh_hardening_ok}"
-  fi
-
-  print_kv brewgroup_enabled "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}"
-  print_kv brewgroup_expected "${AGENTBOX_HEALTH_BREWGROUP}"
-  if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" ]]; then
-    brewgroup_admin_user_ok="$(group_user_member_value "${AGENTBOX_HEALTH_BREWGROUP}" "${AGENTBOX_HEALTH_ADMIN_USER}")"
-    mark_required brewgroup_admin_user_ok "${brewgroup_admin_user_ok}"
-  else
-    print_kv brewgroup_admin_user_ok "${brewgroup_admin_user_ok}"
-  fi
-  print_kv trusted_brewgroup_enabled "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED}"
-  print_kv trusted_brewgroup_expected "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP}"
-  if [[ "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED}" == "1" ]]; then
-    trusted_brewgroup_nested_ok="$(nested_group_value "${AGENTBOX_HEALTH_BREWGROUP}" "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP}")"
-    mark_required trusted_brewgroup_nested_ok "${trusted_brewgroup_nested_ok}"
-  else
-    print_kv trusted_brewgroup_nested_ok "${trusted_brewgroup_nested_ok}"
-  fi
-  print_kv brew_prefix "${AGENTBOX_HEALTH_BREW_PREFIX}"
-  if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" ]]; then
-    brew_prefix_group_ok="0"
-    brew_prefix_group_rwx_ok="0"
-    brew_prefix_ok="0"
-
-    if [[ -d "${AGENTBOX_HEALTH_BREW_PREFIX}" ]]; then
-      brew_prefix_group="$(stat -f "%Sg" "${AGENTBOX_HEALTH_BREW_PREFIX}" 2>/dev/null || true)"
-      brew_prefix_group_rwx_ok="$(path_group_rwx_value "${AGENTBOX_HEALTH_BREW_PREFIX}")"
-      if [[ "${brew_prefix_group}" == "${AGENTBOX_HEALTH_BREWGROUP}" ]]; then
-        brew_prefix_group_ok="1"
-      fi
-    fi
-
-    if [[ "${brew_prefix_group_ok}" == "1" && "${brew_prefix_group_rwx_ok}" == "1" ]]; then
-      brew_prefix_ok="1"
-    fi
-
-    print_kv brew_prefix_group "${brew_prefix_group}"
-    mark_required brew_prefix_group_ok "${brew_prefix_group_ok}"
-    mark_required brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
-    mark_required brew_prefix_ok "${brew_prefix_ok}"
-  else
-    print_kv brew_prefix_group "${brew_prefix_group}"
-    print_kv brew_prefix_group_ok "${brew_prefix_group_ok}"
-    print_kv brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
-    print_kv brew_prefix_ok "${brew_prefix_ok}"
-  fi
-
-  print_kv homebrew_login_path_file "${AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE}"
-  if [[ -n "${AGENTBOX_HEALTH_BREW_PREFIX}" ]]; then
-    homebrew_bin_path="${AGENTBOX_HEALTH_BREW_PREFIX}/bin"
-    homebrew_sbin_path="${AGENTBOX_HEALTH_BREW_PREFIX}/sbin"
-    homebrew_login_path_bin_ok="$(path_file_contains_value "${AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE}" "${homebrew_bin_path}")"
-    homebrew_login_path_sbin_ok="$(path_file_contains_value "${AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE}" "${homebrew_sbin_path}")"
-
-    if [[ "${homebrew_login_path_bin_ok}" == "1" && "${homebrew_login_path_sbin_ok}" == "1" ]]; then
-      homebrew_login_path_file_ok="1"
-    fi
-
-    openclaw_cli_path="${homebrew_bin_path}/openclaw"
-    node_cli_path="${homebrew_bin_path}/node"
-    ripgrep_path="${homebrew_bin_path}/rg"
-    openclaw_cli_ok="$(executable_ok_value "${openclaw_cli_path}")"
-    node_cli_ok="$(executable_ok_value "${node_cli_path}")"
-    ripgrep_ok="$(executable_ok_value "${ripgrep_path}")"
-  fi
-  print_kv homebrew_login_path_bin "${homebrew_bin_path}"
-  print_kv homebrew_login_path_sbin "${homebrew_sbin_path}"
-  mark_required homebrew_login_path_bin_ok "${homebrew_login_path_bin_ok}"
-  mark_required homebrew_login_path_sbin_ok "${homebrew_login_path_sbin_ok}"
-  mark_required homebrew_login_path_file_ok "${homebrew_login_path_file_ok}"
-  print_kv openclaw_cli_path "${openclaw_cli_path}"
-  mark_required openclaw_cli_ok "${openclaw_cli_ok}"
-  print_kv node_cli_path "${node_cli_path}"
-  mark_required node_cli_ok "${node_cli_ok}"
-  print_kv ripgrep_path "${ripgrep_path}"
-  mark_required ripgrep_ok "${ripgrep_ok}"
-
-  print_kv tailscale_expected "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}"
-  print_kv expected_tailscale_hostname "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}"
-  if [[ "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}" == "1" ]]; then
-    tailscaled_launchd_loaded_ok="0"
-    tailscaled_homebrew_launchd_absent_ok="1"
-    tailscaled_homebrew_user_launchd_absent_ok="1"
-
-    if launchctl print "system/${TAILSCALED_LABEL}" >/dev/null 2>&1; then
-      tailscaled_launchd_loaded_ok="1"
-    fi
-
-    if launchctl print "system/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
-      tailscaled_homebrew_launchd_absent_ok="0"
-    fi
-
-    if [[ -n "${admin_uid}" ]] && launchctl print "gui/${admin_uid}/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
-      tailscaled_homebrew_user_launchd_absent_ok="0"
-    fi
-
-    if command -v tailscale >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-      tailscale_status_json="$(tailscale status --json 2>/dev/null || true)"
-      if [[ -n "${tailscale_status_json}" ]]; then
-        tailscale_backend_state="$(printf "%s" "${tailscale_status_json}" | jq -r '.BackendState // ""' 2>/dev/null || true)"
-        tailscale_hostname="$(printf "%s" "${tailscale_status_json}" | jq -r '.Self.HostName // ""' 2>/dev/null || true)"
-        tailscale_ip="$(printf "%s" "${tailscale_status_json}" | jq -r '(.Self.TailscaleIPs // []) | .[0] // ""' 2>/dev/null || true)"
-      fi
-    fi
-
-    print_kv tailscale_backend_state "${tailscale_backend_state}"
-    print_kv tailscale_hostname "${tailscale_hostname}"
-    print_kv tailscale_ip "${tailscale_ip}"
-
-    if [[ "${tailscale_backend_state}" == "Running" &&
-      -n "${tailscale_ip}" &&
-      -n "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}" &&
-      "${tailscale_hostname}" == "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}" ]]; then
-      tailscale_ok="1"
-    else
-      tailscale_ok="0"
-    fi
-    mark_required tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
-    mark_required tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
-    mark_required tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
-    mark_required tailscale_ok "${tailscale_ok}"
-  else
-    print_kv tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
-    print_kv tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
-    print_kv tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
-    print_kv tailscale_ok "${tailscale_ok}"
-  fi
-
-  mark_required health_launchd_loaded_ok "${health_launchd_loaded_ok}"
-  print_kv root_disk_available_kb "$(root_disk_available_kb)"
-  print_kv uptime "$(uptime)"
-  print_kv gatekeeper_status "$(gatekeeper_status)"
-  print_kv filevault_status "$(filevault_status)"
-
-  if [[ "${failures}" -eq 0 ]]; then
-    print_kv agentbox_ok 1
-    return 0
-  fi
-
-  print_kv agentbox_ok 0
-  return 1
-}
-
-case "${1:-}" in
-  "")
-    {
-      generate_report || true
-      printf '%s\n' '---'
-    } >> "${LOG_FILE}"
-    ;;
-  --report)
-    generate_report || true
-    ;;
-  --check)
-    generate_report
-    ;;
-  --brewgroup)
-    print_brewgroup
-    ;;
-  *)
-    printf 'Usage: health.sh [--report|--check|--brewgroup]\n' >&2
-    exit 2
-    ;;
-esac
-EOHEALTH
-  then
-    abort "failed to write agentbox health script."
-  fi
-
+  execute sudo cp "${AGENTBOX_HEALTH_SCRIPT_SOURCE}" "${AGENTBOX_OPT_DIR}/bin/health.sh"
   execute sudo chown root:wheel "${AGENTBOX_OPT_DIR}/bin/health.sh"
   execute sudo chmod 755 "${AGENTBOX_OPT_DIR}/bin/health.sh"
 }
 
-write_agentbox_health_plist() {
-  if ! sudo tee "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist" >/dev/null <<EOPLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>Label</key>
-    <string>${AGENTBOX_HEALTH_LABEL}</string>
+render_agentbox_launchd_template() {
+  local template_path="$1"
+  local output_path="$2"
+  local tailscaled_bin="${3:-}"
+  local rendered
+  local health_label
+  local health_script_path
+  local health_stdout_log
+  local health_stderr_log
+  local tailscaled_label
+  local tailscaled_stdout_log
+  local tailscaled_stderr_log
 
-    <key>ProgramArguments</key>
-    <array>
-      <string>${AGENTBOX_OPT_DIR}/bin/health.sh</string>
-    </array>
-
-    <key>StartInterval</key>
-    <integer>300</integer>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>StandardOutPath</key>
-    <string>${AGENTBOX_LOG_DIR}/health.stdout.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>${AGENTBOX_LOG_DIR}/health.stderr.log</string>
-  </dict>
-</plist>
-EOPLIST
-  then
-    abort "failed to write agentbox health LaunchDaemon."
+  if ! rendered="$(cat "${template_path}")"; then
+    abort "failed to read agentbox launchd template ${tty_ts}$(display_home_path "${template_path}")${tty_reset}."
   fi
 
+  health_label="$(xml_escape "${AGENTBOX_HEALTH_LABEL}")"
+  health_script_path="$(xml_escape "${AGENTBOX_OPT_DIR}/bin/health.sh")"
+  health_stdout_log="$(xml_escape "${AGENTBOX_LOG_DIR}/health.stdout.log")"
+  health_stderr_log="$(xml_escape "${AGENTBOX_LOG_DIR}/health.stderr.log")"
+  tailscaled_label="$(xml_escape "${AGENTBOX_TAILSCALED_LABEL}")"
+  tailscaled_bin="$(xml_escape "${tailscaled_bin}")"
+  tailscaled_stdout_log="$(xml_escape "${AGENTBOX_LOG_DIR}/tailscaled.stdout.log")"
+  tailscaled_stderr_log="$(xml_escape "${AGENTBOX_LOG_DIR}/tailscaled.stderr.log")"
+
+  rendered="${rendered//__AGENTBOX_HEALTH_LABEL__/${health_label}}"
+  rendered="${rendered//__AGENTBOX_HEALTH_SCRIPT_PATH__/${health_script_path}}"
+  rendered="${rendered//__AGENTBOX_HEALTH_STDOUT_LOG__/${health_stdout_log}}"
+  rendered="${rendered//__AGENTBOX_HEALTH_STDERR_LOG__/${health_stderr_log}}"
+  rendered="${rendered//__AGENTBOX_TAILSCALED_LABEL__/${tailscaled_label}}"
+  rendered="${rendered//__AGENTBOX_TAILSCALED_BIN__/${tailscaled_bin}}"
+  rendered="${rendered//__AGENTBOX_TAILSCALED_STDOUT_LOG__/${tailscaled_stdout_log}}"
+  rendered="${rendered//__AGENTBOX_TAILSCALED_STDERR_LOG__/${tailscaled_stderr_log}}"
+
+  if [[ "${rendered}" == *"__AGENTBOX_"* ]]; then
+    abort "agentbox launchd template ${tty_ts}$(display_home_path "${template_path}")${tty_reset} contains unresolved placeholders."
+  fi
+
+  if ! printf "%s\n" "${rendered}" | sudo tee "${output_path}" >/dev/null; then
+    abort "failed to write agentbox LaunchDaemon ${tty_ts}${output_path}${tty_reset}."
+  fi
+
+  execute sudo /usr/bin/plutil -lint "${output_path}"
+}
+
+write_agentbox_health_plist() {
+  render_agentbox_launchd_template "${AGENTBOX_HEALTH_PLIST_TEMPLATE}" "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist"
   execute sudo chown root:wheel "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist"
   execute sudo chmod 644 "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist"
 }
@@ -2117,6 +1856,8 @@ bootbox_run() {
   local mode="$1"
   local env_name
   local -a unset_env_names=(
+    BOOTBOX_BREWFILE
+    BOOTBOX_BREWFILES
     TANAAB_BREWFILE
     TANAAB_BREWFILES
     TANAAB_DOTPKG
@@ -2198,6 +1939,10 @@ plan_agentbox_fetch() {
 
   if [[ "${AGENTBOX_SOURCE_KIND}" == "version" ]]; then
     plan_action "${tty_tp}extract${tty_reset} ${tty_ts}agentbox${tty_reset} release ${tty_ts}${AGENTBOX_VERSION_TAG}${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
+  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_url" ]]; then
+    plan_action "${tty_tp}extract${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}${AGENTBOX_SOURCE_ARCHIVE_URL}${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
+  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_file" ]]; then
+    plan_action "${tty_tp}extract${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_ARCHIVE_PATH}")${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
   elif [[ "${AGENTBOX_SOURCE_KIND}" == "local" ]]; then
     plan_action "${tty_tp}clone${tty_reset} ${tty_ts}agentbox${tty_reset} from local git repo ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}")${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
   else
@@ -2214,7 +1959,11 @@ plan_wrapper_execution() {
   plan_agentbox_fetch
   plan_action "${tty_tp}ensure${tty_reset} macOS ComputerName, HostName, and LocalHostName are ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
   plan_action "${tty_tp}ensure${tty_reset} headless power, time, recovery, and firewall settings"
-  plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile"
+  if array_has_values EXTRA_BREWFILE_SPECS; then
+    plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile plus extra Brewfiles: ${tty_ts}$(array_join ", " EXTRA_BREWFILE_SPECS)${tty_reset}"
+  else
+    plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile"
+  fi
   plan_action "${tty_tp}ensure${tty_reset} Homebrew commands are available to login shells through ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset}"
   if brewgroup_setup_disabled; then
     plan_action "${tty_tp}skip${tty_reset} Homebrew brewgroup setup because the brewgroup input is disabled"
@@ -2272,8 +2021,16 @@ ensure_bootbox_core_requirements() {
 }
 
 run_bootbox_for_agentbox_brewfile() {
-  bootbox_run_or_abort agentbox "bootbox failed while applying agentbox Brewfile ${tty_ts}$(agentbox_brewfile_display)${tty_reset}." \
-    --brewfile "${AGENTBOX_BREWFILE}"
+  local extra_brewfile
+  local -a bootbox_args=(--brewfile "${AGENTBOX_CORE_BREWFILE}")
+
+  if array_has_values RESOLVED_EXTRA_BREWFILES; then
+    for extra_brewfile in "${RESOLVED_EXTRA_BREWFILES[@]}"; do
+      bootbox_args+=(--brewfile "${extra_brewfile}")
+    done
+  fi
+
+  bootbox_run_or_abort agentbox "bootbox failed while applying agentbox Brewfiles." "${bootbox_args[@]}"
 }
 
 resolve_brew_prefix() {
@@ -2586,41 +2343,7 @@ remove_homebrew_tailscale_launchd_services() {
 write_agentbox_tailscaled_plist() {
   local tailscaled_bin="$1"
 
-  if ! sudo tee "${AGENTBOX_TAILSCALED_PLIST_PATH}" >/dev/null <<EOPLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>Label</key>
-    <string>${AGENTBOX_TAILSCALED_LABEL}</string>
-
-    <key>ProgramArguments</key>
-    <array>
-      <string>${tailscaled_bin}</string>
-    </array>
-
-    <key>UserName</key>
-    <string>root</string>
-
-    <key>KeepAlive</key>
-    <true/>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>StandardOutPath</key>
-    <string>${AGENTBOX_LOG_DIR}/tailscaled.stdout.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>${AGENTBOX_LOG_DIR}/tailscaled.stderr.log</string>
-  </dict>
-</plist>
-EOPLIST
-  then
-    abort "failed to write agentbox tailscaled LaunchDaemon."
-  fi
-
+  render_agentbox_launchd_template "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}" "${AGENTBOX_TAILSCALED_PLIST_PATH}" "${tailscaled_bin}"
   execute sudo chown root:wheel "${AGENTBOX_TAILSCALED_PLIST_PATH}"
   execute sudo chmod 644 "${AGENTBOX_TAILSCALED_PLIST_PATH}"
 }
@@ -2651,7 +2374,7 @@ run_agentbox_tailscaled_launchd_setup() {
   local tailscaled_bin=""
 
   tailscaled_bin="$(tailscaled_bin_path)" || {
-    abort "tailscaled binary was not found after installing the agentbox Brewfile."
+    abort "tailscaled binary was not found after installing the agentbox Brewfiles."
   }
 
   execute sudo mkdir -p "${AGENTBOX_LOG_DIR}"
@@ -2759,6 +2482,7 @@ main() {
   debug raw AGENTBOX_VERSION="$(agentbox_version_display)"
   debug raw AGENTBOX_SOURCE="$(agentbox_source_display)"
   debug raw AGENTBOX_TARGET="$(agentbox_target_display)"
+  debug raw AGENTBOX_EXTRA_BREWFILES="$(extra_brewfiles_display)"
   debug raw AGENTBOX_HOSTNAME="${AGENTBOX_HOSTNAME_VALUE}"
   debug raw AGENTBOX_BREWGROUP="$(brewgroup_display)"
   debug raw INVOKING_ADMIN_USER="${ADMIN_USER}"
@@ -2789,7 +2513,9 @@ main() {
   ensure_bootbox_core_requirements
   fetch_agentbox_source
   discover_agentbox_payload
-  debug raw AGENTBOX_BREWFILE="$(agentbox_brewfile_display)"
+  resolve_extra_brewfiles
+  debug raw AGENTBOX_CORE_BREWFILE="$(agentbox_brewfile_display)"
+  debug raw AGENTBOX_RESOLVED_EXTRA_BREWFILES="$(array_join "," RESOLVED_EXTRA_BREWFILES)"
   run_agentbox_hostname_setup
   run_agentbox_macos_settings
   run_bootbox_for_agentbox_brewfile

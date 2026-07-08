@@ -17,6 +17,8 @@ contract.
 - Materializes this repo at `~/tanaab/agentbox` through the hosted `boot.sh` wrapper.
 - Applies the repo [`Brewfile`](./Brewfile) through
   [Bootbox](https://github.com/tanaabased/bootbox).
+- Can append extra local or URL Brewfiles, such as [`Brewfile.extras`](./Brewfile.extras), after
+  the core host Brewfile.
 - Installs the OpenCLAW CLI and `ripgrep` as base host tools; OpenCLAW CLI brings the
   Homebrew-managed Node runtime it needs.
 - Exposes the Homebrew prefix `bin` and `sbin` directories to all login shells through
@@ -125,14 +127,48 @@ agentbootbox \
   --hostname TANAABAGENTBOX1
 ```
 
-Use `--agentbox-version` to install a tagged release archive instead of cloning the default branch:
+Use `--agentbox-version` to install a tagged release, local source checkout, or tar archive instead
+of cloning the default branch:
 
 ```sh
 agentbootbox \
   --tailscale-authkey "$TS_AUTHKEY" \
   --agentbox-version 1.2.3 \
   --hostname TANAABAGENTBOX1
+
+agentbootbox \
+  --tailscale-authkey "$TS_AUTHKEY" \
+  --agentbox-version https://api.github.com/repos/tanaabased/agentbox/tarball \
+  --hostname TANAABAGENTBOX1
+
+agentbootbox \
+  --tailscale-authkey "$TS_AUTHKEY" \
+  --agentbox-version ~/Downloads/agentbox-current.tar.gz \
+  --hostname TANAABAGENTBOX1
 ```
+
+The GitHub API tarball URL above resolves to the repository default branch when no `ref` is
+provided. Archive installs require current agentbox contents, including root-level `bin/` and
+`launchd/` runtime assets.
+
+Use `--brewfile` to append extra Bootbox Brewfiles after the core agentbox `Brewfile`. Values can be
+local paths or URLs. Relative local paths are resolved from the invocation directory first, then from
+the materialized agentbox checkout:
+
+```sh
+agentbootbox \
+  --tailscale-authkey "$TS_AUTHKEY" \
+  --brewfile Brewfile.extras \
+  --hostname TANAABAGENTBOX1
+
+agentbootbox \
+  --tailscale-authkey "$TS_AUTHKEY" \
+  --brewfile https://raw.githubusercontent.com/example/profile/main/Brewfile \
+  --hostname TANAABAGENTBOX1
+```
+
+`Brewfile.extras` is intentionally not part of the core host contract. It installs personal operator
+apps: Codex, Codex App, OpenCLAW, and Warp.
 
 The Homebrew prefix is made group-writable by `brewer` by default so the OpenCLAW runner user or
 other trusted local users can be granted package-management access through group membership. Use
@@ -202,8 +238,10 @@ they do not land in shell history.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
   classic SSH; providing keys also enables key-only SSH hardening.
-- `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive to install,
-  including prerelease tags such as `v1.0.0-beta.1`.
+- `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive, local git checkout,
+  HTTPS tar archive URL, or local `.tar`, `.tar.gz`, or `.tgz` archive path to install.
+- `AGENTBOX_BREWFILE` or `--brewfile`: optional comma-separated extra Brewfile sources to append
+  after the core agentbox `Brewfile`; accepts local paths and URLs.
 - `AGENTBOX_FORCE` or `--force`: replace supported existing targets.
 - `AGENTBOX_DEBUG` or `--debug`: show debug output with secrets masked.
 - `NONINTERACTIVE`, `CI`, or `--yes`: skip interactive prompts.

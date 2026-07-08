@@ -22,6 +22,9 @@ boot.sh --help | grep -F "boot.sh [options]"
 
 # should document public options
 boot.sh --help | grep -F -- "--agentbox-version"
+boot.sh --help | grep -F "tar archive URL/path"
+boot.sh --help | grep -F -- "--brewfile"
+boot.sh --help | grep -F "local path or URL"
 boot.sh --help | grep -F -- "--authorized-key"
 boot.sh --help | grep -F -- "--tailscale-authkey"
 boot.sh --help | grep -F -- "--brewgroup"
@@ -34,6 +37,7 @@ boot.sh --help | grep -F -- "--yes"
 
 # should document public environment variables
 boot.sh --help | grep -F "AGENTBOX_VERSION               same as --agentbox-version"
+boot.sh --help | grep -F "AGENTBOX_BREWFILE              same as --brewfile"
 boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEY        same as --authorized-key"
 boot.sh --help | grep -F "AGENTBOX_TAILSCALE_AUTHKEY     same as --tailscale-authkey"
 boot.sh --help | grep -F "AGENTBOX_BREWGROUP             same as --brewgroup"
@@ -50,6 +54,10 @@ if boot.sh --help | grep -F "AGENTBOX_ALLOW_UNSUPPORTED_MACOS"; then exit 1; fi
 # should keep hidden plural authorized-key inputs out of help
 if boot.sh --help | grep -F -- "--authorized-keys"; then exit 1; fi
 if boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEYS"; then exit 1; fi
+
+# should keep hidden plural brewfile inputs out of help
+if boot.sh --help | grep -F -- "--brewfiles"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_BREWFILES"; then exit 1; fi
 
 # should keep removed Tailscale tag inputs out of help
 if boot.sh --help | grep -F -- "--tailscale-tag"; then exit 1; fi
@@ -88,6 +96,23 @@ AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "[default: disabled]"
 boot.sh --help | grep -F "[default: brewer]"
 AGENTBOX_BREWGROUP=off boot.sh --help | grep -F "[default: disabled]"
 AGENTBOX_BREWGROUP=brewer:staff boot.sh --help | grep -F "[default: brewer:staff]"
+
+# should show extra Brewfile defaults
+boot.sh --help | grep -F -- "--brewfile          adds an extra Brewfile from a local path or URL [default: none]"
+AGENTBOX_BREWFILE="Brewfile.extras,https://example.test/Brewfile" boot.sh --help | grep -F "[default: Brewfile.extras,https://example.test/Brewfile]"
+AGENTBOX_BREWFILE="Brewfile.env" boot.sh --brewfile Brewfile.cli --help | grep -F "[default: Brewfile.cli]"
+if AGENTBOX_BREWFILE="Brewfile.env" boot.sh --brewfile Brewfile.cli --help | grep -F "Brewfile.env"; then exit 1; fi
+AGENTBOX_BREWFILE="Brewfile.env" boot.sh --brewfile= --help | grep -F "[default: none]"
+
+# should fail when brewfile option values are missing
+set +e
+output="$(boot.sh --brewfile 2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "option --brewfile requires a value."
+printf "%s\n" "$output" | grep -F "Usage:"
+test "$command_status" -ne 0
 
 # should fail on unknown options with usage context
 set +e

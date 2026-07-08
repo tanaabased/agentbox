@@ -21,12 +21,18 @@ mkdir -p "$TMPDIR"
 rm -f "$TMPDIR/id_agentbox_no_tailscale" "$TMPDIR/id_agentbox_no_tailscale.pub"
 ssh-keygen -t ed25519 -N "" -C "agentbox-no-tailscale@example.test" -f "$TMPDIR/id_agentbox_no_tailscale" >/dev/null
 
+# should prepare extra Brewfile fixtures
+printf 'brew "hello"\n' > "$TMPDIR/Brewfile.extra-local"
+printf 'brew "tree"\n' > "$TMPDIR/Brewfile.extra-url"
+
 # should run boot.sh successfully with Tailscale setup disabled
 boot.sh \
   --force \
   --debug \
   --hostname "TANAABAGENTBOX-NOTS$GITHUB_RUN_ID" \
   --agentbox-version "$GITHUB_WORKSPACE" \
+  --brewfile "$TMPDIR/Brewfile.extra-local" \
+  --brewfile "file://$TMPDIR/Brewfile.extra-url" \
   --tailscale-authkey off \
   --brewgroup off \
   --authorized-key "file:$TMPDIR/id_agentbox_no_tailscale.pub"
@@ -51,6 +57,12 @@ test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "$GITH
 
 # should satisfy the agentbox Brewfile
 brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
+
+# should satisfy the extra Brewfiles
+brew bundle check --file "$TMPDIR/Brewfile.extra-local" --no-upgrade
+brew bundle check --file "$TMPDIR/Brewfile.extra-url" --no-upgrade
+command -v hello >/dev/null
+command -v tree >/dev/null
 
 # should install OpenCLAW CLI, Node, and ripgrep through Homebrew
 test -x "$(brew --prefix)/bin/openclaw"
