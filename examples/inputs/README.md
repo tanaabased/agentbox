@@ -214,6 +214,23 @@ printf "%s\n" "$output" | grep -F "option --openclaw-auth-choice requires a valu
 printf "%s\n" "$output" | grep -F "Usage:"
 test "$command_status" -ne 0
 
+# should fail when openai api-key auth is missing the provider env
+set +e
+output="$(env -u OPENAI_API_KEY boot.sh \
+  --tailscale-authkey off \
+  --brewgroup off \
+  --openclaw-auth-choice openai-api-key \
+  --openclaw-identity "Missing Key Claw <missingkey>" \
+  --skip-openclaw-autologin \
+  2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "OpenClaw auth choice openai-api-key requires one of these parent environment variables"
+printf "%s\n" "$output" | grep -F "OPENAI_API_KEY"
+printf "%s\n" "$output" | grep -F "https://docs.openclaw.ai/providers"
+test "$command_status" -ne 0
+
 # should fail when openclaw gateway port is empty
 set +e
 output="$(boot.sh --openclaw-gateway-port= 2>&1)"

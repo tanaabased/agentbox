@@ -16,15 +16,21 @@ test -d "$GITHUB_WORKSPACE/.git"
 # should have a tailscale auth key from the workflow secret
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 
+# should have an OpenAI API key from the workflow secret
+test -n "$OPENAI_API_KEY"
+
 # should run boot.sh successfully with custom openclaw gateway options
-boot.sh \
+set -o pipefail
+OPENAI_API_KEY="$OPENAI_API_KEY" boot.sh \
+  --debug \
   --force \
   --hostname "TANAABAGENTBOX-OC$GITHUB_RUN_ID" \
   --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --openclaw-password "OpenClawGatewayPass1!" \
-  --openclaw-auth-choice skip \
-  --openclaw-gateway-port 18888
+  --openclaw-auth-choice openai-api-key \
+  --openclaw-gateway-port 18888 \
+  2>&1 | tee "$TMPDIR/openclaw.log"
 ```
 
 ## Testing
@@ -40,13 +46,16 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_ok=1"
 
 # should report custom openclaw gateway health
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_auth_choice=skip"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_auth_choice=openai-api-key"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_bind=loopback"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_mode=serve"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_port=18888"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_launchd_loaded_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_status_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
+
+# should not print the OpenAI API key
+! grep -F -- "$OPENAI_API_KEY" "$TMPDIR/openclaw.log"
 
 # should render the openclaw gateway LaunchDaemon arguments
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "gateway"

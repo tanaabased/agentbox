@@ -243,6 +243,11 @@ agentbootbox \
   --hostname TANAABAGENTBOX1
 ```
 
+For known environment-backed auth choices, agentbox requires the matching provider environment
+variable in the parent process before sudo setup and passes it only to `openclaw onboard`. Debug
+output masks the value. If the variable is missing, agentbox stops with the required env names and
+OpenClaw provider docs before sudo bootstrap.
+
 agentbox does not use OpenClaw's macOS `--install-daemon` path. On macOS, that path installs a
 per-user LaunchAgent that depends on a logged-in user session; agentbox instead installs a system
 LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user. The LaunchDaemon uses a

@@ -394,6 +394,198 @@ openclaw_auth_choice_display() {
   printf "%s" "${OPENCLAW_AUTH_CHOICE}"
 }
 
+# Keep this aligned with OpenClaw's manifest-declared env-backed auth choices.
+openclaw_auth_choice_env_names() {
+  case "${1:-}" in
+    alibaba-model-studio-api-key)
+      printf "%s\n" MODELSTUDIO_API_KEY DASHSCOPE_API_KEY QWEN_API_KEY
+      ;;
+    apiKey | setup-token)
+      printf "%s\n" ANTHROPIC_OAUTH_TOKEN ANTHROPIC_API_KEY
+      ;;
+    arceeai-api-key | arceeai-openrouter)
+      printf "%s\n" ARCEEAI_API_KEY OPENROUTER_API_KEY
+      ;;
+    byteplus-api-key)
+      printf "%s\n" BYTEPLUS_API_KEY
+      ;;
+    cerebras-api-key)
+      printf "%s\n" CEREBRAS_API_KEY
+      ;;
+    chutes-api-key)
+      printf "%s\n" CHUTES_API_KEY CHUTES_OAUTH_TOKEN
+      ;;
+    cloudflare-ai-gateway-api-key)
+      printf "%s\n" CLOUDFLARE_AI_GATEWAY_API_KEY
+      ;;
+    comfy-cloud-api-key)
+      printf "%s\n" COMFY_API_KEY COMFY_CLOUD_API_KEY
+      ;;
+    custom-api-key)
+      printf "%s\n" CUSTOM_API_KEY
+      ;;
+    deepinfra-api-key)
+      printf "%s\n" DEEPINFRA_API_KEY
+      ;;
+    deepseek-api-key)
+      printf "%s\n" DEEPSEEK_API_KEY
+      ;;
+    fal-api-key)
+      printf "%s\n" FAL_KEY FAL_API_KEY
+      ;;
+    fireworks-api-key)
+      printf "%s\n" FIREWORKS_API_KEY
+      ;;
+    gmi-api-key)
+      printf "%s\n" GMI_API_KEY
+      ;;
+    gemini-api-key)
+      printf "%s\n" GEMINI_API_KEY GOOGLE_API_KEY
+      ;;
+    huggingface-api-key)
+      printf "%s\n" HUGGINGFACE_HUB_TOKEN HF_TOKEN
+      ;;
+    kilocode-api-key)
+      printf "%s\n" KILOCODE_API_KEY
+      ;;
+    kimi-code-api-key)
+      printf "%s\n" KIMI_API_KEY KIMICODE_API_KEY
+      ;;
+    litellm-api-key)
+      printf "%s\n" LITELLM_API_KEY
+      ;;
+    microsoft-foundry-apikey)
+      printf "%s\n" AZURE_OPENAI_API_KEY
+      ;;
+    minimax-global-api | minimax-cn-api)
+      printf "%s\n" MINIMAX_CODE_PLAN_KEY MINIMAX_CODING_API_KEY MINIMAX_API_KEY
+      ;;
+    mistral-api-key)
+      printf "%s\n" MISTRAL_API_KEY
+      ;;
+    moonshot-api-key | moonshot-api-key-cn)
+      printf "%s\n" MOONSHOT_API_KEY KIMI_API_KEY
+      ;;
+    novita-api-key)
+      printf "%s\n" NOVITA_API_KEY
+      ;;
+    nvidia-api-key)
+      printf "%s\n" NVIDIA_API_KEY
+      ;;
+    ollama-cloud)
+      printf "%s\n" OLLAMA_API_KEY
+      ;;
+    openai-api-key)
+      printf "%s\n" OPENAI_API_KEY
+      ;;
+    opencode-zen | opencode-go)
+      printf "%s\n" OPENCODE_API_KEY OPENCODE_ZEN_API_KEY
+      ;;
+    openrouter-api-key)
+      printf "%s\n" OPENROUTER_API_KEY
+      ;;
+    qianfan-api-key)
+      printf "%s\n" QIANFAN_API_KEY
+      ;;
+    qwen-standard-api-key-cn | qwen-standard-api-key | qwen-api-key-cn | qwen-api-key | qwen-oauth)
+      printf "%s\n" QWEN_API_KEY MODELSTUDIO_API_KEY DASHSCOPE_API_KEY
+      ;;
+    runway-api-key)
+      printf "%s\n" RUNWAYML_API_SECRET RUNWAY_API_KEY
+      ;;
+    stepfun-standard-api-key-cn | stepfun-standard-api-key-intl | stepfun-plan-api-key-cn | stepfun-plan-api-key-intl)
+      printf "%s\n" STEPFUN_API_KEY
+      ;;
+    synthetic-api-key)
+      printf "%s\n" SYNTHETIC_API_KEY
+      ;;
+    tokenhub-api-key)
+      printf "%s\n" TOKENHUB_API_KEY
+      ;;
+    together-api-key)
+      printf "%s\n" TOGETHER_API_KEY
+      ;;
+    venice-api-key)
+      printf "%s\n" VENICE_API_KEY
+      ;;
+    ai-gateway-api-key)
+      printf "%s\n" AI_GATEWAY_API_KEY
+      ;;
+    volcengine-api-key)
+      printf "%s\n" VOLCANO_ENGINE_API_KEY
+      ;;
+    vydra-api-key)
+      printf "%s\n" VYDRA_API_KEY
+      ;;
+    xai-api-key)
+      printf "%s\n" XAI_API_KEY
+      ;;
+    xiaomi-api-key)
+      printf "%s\n" XIAOMI_API_KEY
+      ;;
+    xiaomi-token-plan-ams | xiaomi-token-plan-cn | xiaomi-token-plan-sgp)
+      printf "%s\n" XIAOMI_TOKEN_PLAN_API_KEY
+      ;;
+    zai-api-key)
+      printf "%s\n" ZAI_API_KEY Z_AI_API_KEY
+      ;;
+  esac
+}
+
+openclaw_auth_choice_env_name_list() {
+  local auth_choice="$1"
+  local delimiter="${2:-, }"
+  local env_name
+  local output=""
+
+  for env_name in $(openclaw_auth_choice_env_names "${auth_choice}"); do
+    output="${output}${output:+${delimiter}}${env_name}"
+  done
+
+  printf "%s" "${output}"
+}
+
+openclaw_auth_choice_present_env_name_list() {
+  local auth_choice="$1"
+  local delimiter="${2:- }"
+  local env_name
+  local output=""
+
+  for env_name in $(openclaw_auth_choice_env_names "${auth_choice}"); do
+    if [[ -n "${!env_name-}" ]]; then
+      output="${output}${output:+${delimiter}}${env_name}"
+    fi
+  done
+
+  printf "%s" "${output}"
+}
+
+validate_openclaw_auth_choice_env() {
+  local auth_env_names
+  local present_env_names
+
+  if [[ "${OPENCLAW_AUTH_CHOICE}" == "skip" ]]; then
+    return 0
+  fi
+
+  auth_env_names="$(openclaw_auth_choice_env_name_list "${OPENCLAW_AUTH_CHOICE}")"
+  if [[ -z "${auth_env_names}" ]]; then
+    return 0
+  fi
+
+  present_env_names="$(openclaw_auth_choice_present_env_name_list "${OPENCLAW_AUTH_CHOICE}")"
+  if [[ -n "${present_env_names}" ]]; then
+    return 0
+  fi
+
+  abort_multi "$(cat <<EOABORT
+OpenClaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} requires one of these parent environment variables: ${tty_ts}${auth_env_names}${tty_reset}.
+set the matching provider key in the environment before running agentbox so it can be passed to OpenClaw onboarding, or use ${tty_ts}--openclaw-auth-choice skip${tty_reset}.
+OpenClaw provider docs: ${tty_underline}${tty_magenta}https://docs.openclaw.ai/providers${tty_reset}
+EOABORT
+)"
+}
+
 extra_brewfiles_display() {
   local display
 
@@ -2436,6 +2628,8 @@ validate_inputs_before_sudo() {
     abort "OpenClaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} must not contain whitespace."
   fi
 
+  validate_openclaw_auth_choice_env
+
   if ! openclaw_gateway_port_valid "${OPENCLAW_GATEWAY_PORT}"; then
     abort "OpenClaw gateway port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset} must be an integer from 1 to 65535."
   fi
@@ -3368,19 +3562,36 @@ openclaw_bin_path() {
 }
 
 run_as_openclaw_runner() {
+  local -a env_args=()
+  local -a env_display_args=()
+  local env_name
+  local env_value
+  local extra_env_names="${OPENCLAW_RUNNER_EXTRA_ENV_NAMES:-}"
   local home
   local path_value
 
   home="$(openclaw_runner_home_required)"
   path_value="$(openclaw_runner_path)"
 
-  debug "${tty_tp}running${tty_reset}" sudo -u "${OPENCLAW_USER}" env "HOME=${home}" "USER=${OPENCLAW_USER}" "LOGNAME=${OPENCLAW_USER}" "PATH=${path_value}" "$@"
-  sudo -u "${OPENCLAW_USER}" env \
-    "HOME=${home}" \
-    "USER=${OPENCLAW_USER}" \
-    "LOGNAME=${OPENCLAW_USER}" \
-    "PATH=${path_value}" \
-    "$@"
+  env_args=("HOME=${home}" "USER=${OPENCLAW_USER}" "LOGNAME=${OPENCLAW_USER}" "PATH=${path_value}")
+  env_display_args=("${env_args[@]}")
+
+  for env_name in ${extra_env_names}; do
+    if [[ ! "${env_name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      abort "internal OpenClaw runner environment variable name ${tty_ts}${env_name}${tty_reset} is invalid."
+    fi
+
+    env_value="${!env_name-}"
+    if [[ -z "${env_value}" ]]; then
+      continue
+    fi
+
+    env_args+=("${env_name}=${env_value}")
+    env_display_args+=("${env_name}=$(mask_secret_for_display "${env_value}")")
+  done
+
+  debug "${tty_tp}running${tty_reset}" sudo -u "${OPENCLAW_USER}" env "${env_display_args[@]}" "$@"
+  sudo -u "${OPENCLAW_USER}" env "${env_args[@]}" "$@"
 }
 
 execute_as_openclaw_runner() {
@@ -3391,9 +3602,11 @@ execute_as_openclaw_runner() {
 
 run_openclaw_gateway_onboarding() {
   local openclaw_bin="$1"
+  local onboarding_env_names
 
+  onboarding_env_names="$(openclaw_auth_choice_present_env_name_list "${OPENCLAW_AUTH_CHOICE}")"
   log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} with loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
-  execute_as_openclaw_runner "${openclaw_bin}" onboard \
+  OPENCLAW_RUNNER_EXTRA_ENV_NAMES="${onboarding_env_names}" execute_as_openclaw_runner "${openclaw_bin}" onboard \
     --non-interactive \
     --accept-risk \
     --mode local \
