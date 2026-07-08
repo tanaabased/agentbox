@@ -265,14 +265,20 @@ LaunchDaemon environment variables.
 
 agentbox does not use OpenClaw's macOS `--install-daemon` path. On macOS, that path installs a
 per-user LaunchAgent that depends on a logged-in user session; agentbox instead installs a system
-LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user. The LaunchDaemon uses a
-sparse service environment aligned with OpenClaw's launcher markers, including `HOME`, `USER`,
-`LOGNAME`, `PATH`, `TMPDIR`, `OPENCLAW_GATEWAY_PORT`, `OPENCLAW_LAUNCHD_LABEL`,
+LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user. The LaunchDaemon invokes an
+agentbox-generated wrapper and service environment under
+`/Users/openclaw/.openclaw/service-env/`. That generated file is agentbox-owned output and may be
+rewritten on rerun; do not use it for local customizations.
+
+The generated service environment is aligned with OpenClaw's launcher markers, including `HOME`,
+`USER`, `LOGNAME`, `PATH`, `TMPDIR`, `NODE_EXTRA_CA_CERTS`, `NODE_USE_SYSTEM_CA`,
+`OPENCLAW_STATE_DIR`, `OPENCLAW_GATEWAY_PORT`, `OPENCLAW_LAUNCHD_LABEL`,
 `OPENCLAW_SERVICE_MARKER=openclaw`, `OPENCLAW_SERVICE_KIND=gateway`, and
 `OPENCLAW_SERVICE_VERSION`. agentbox also adds `AGENTBOX_MANAGED=1`,
 `AGENTBOX_SERVICE_KIND=openclaw-gateway`, `AGENTBOX_VERSION`, and
-`AGENTBOX_HEALTH_COMMAND=/opt/tanaab/agentbox/bin/health.sh --report` for local integrations that need
-to detect the managed host or inspect its health.
+`AGENTBOX_HEALTH_COMMAND=/opt/tanaab/agentbox/bin/health.sh --report` for local integrations that
+need to detect the managed host or inspect its health. For durable user-provided gateway runtime
+variables, prefer OpenClaw config or `/Users/openclaw/.openclaw/.env`.
 
 The Homebrew prefix is made group-writable by `brewer` by default so the OpenClaw runner user or
 other trusted local users can be granted package-management access through group membership. Use

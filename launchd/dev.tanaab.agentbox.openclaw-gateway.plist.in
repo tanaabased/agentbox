@@ -26,6 +26,9 @@
 
     <key>ProgramArguments</key>
     <array>
+      <string>/bin/sh</string>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_ENV_WRAPPER__</string>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_ENV_FILE__</string>
       <string>__AGENTBOX_OPENCLAW_GATEWAY_BIN__</string>
       <string>gateway</string>
       <string>--port</string>
@@ -40,7 +43,7 @@
     <string>__AGENTBOX_OPENCLAW_GATEWAY_USER__</string>
 
     <key>WorkingDirectory</key>
-    <string>__AGENTBOX_OPENCLAW_GATEWAY_HOME__</string>
+    <string>__AGENTBOX_OPENCLAW_GATEWAY_WORKING_DIRECTORY__</string>
 
     <key>StandardInPath</key>
     <string>/dev/null</string>
@@ -50,7 +53,5 @@
 
     <key>StandardErrorPath</key>
     <string>__AGENTBOX_OPENCLAW_GATEWAY_STDERR_LOG__</string>
-
-__AGENTBOX_OPENCLAW_GATEWAY_ENVIRONMENT__
   </dict>
 </plist>
