@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>__AGENTBOX_OPENCLAW_GATEWAY_LABEL__</string>
+
+    <key>Comment</key>
+    <string>OpenClaw Gateway managed by agentbox</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ExitTimeOut</key>
+    <integer>20</integer>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>Umask</key>
+    <integer>63</integer>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_BIN__</string>
+      <string>gateway</string>
+      <string>--port</string>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_PORT__</string>
+      <string>--bind</string>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_BIND__</string>
+      <string>--tailscale</string>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_TAILSCALE_MODE__</string>
+    </array>
+
+    <key>UserName</key>
+    <string>__AGENTBOX_OPENCLAW_GATEWAY_USER__</string>
+
+    <key>WorkingDirectory</key>
+    <string>__AGENTBOX_OPENCLAW_GATEWAY_HOME__</string>
+
+    <key>StandardInPath</key>
+    <string>/dev/null</string>
+
+    <key>StandardOutPath</key>
+    <string>__AGENTBOX_OPENCLAW_GATEWAY_STDOUT_LOG__</string>
+
+    <key>StandardErrorPath</key>
+    <string>__AGENTBOX_OPENCLAW_GATEWAY_STDERR_LOG__</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>HOME</key>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_HOME__</string>
+      <key>USER</key>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_USER__</string>
+      <key>LOGNAME</key>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_USER__</string>
+      <key>PATH</key>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_PATH__</string>
+      <key>OPENCLAW_GATEWAY_PORT</key>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_PORT__</string>
+      <key>OPENCLAW_SERVICE_MARKER</key>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_SERVICE_MARKER__</string>
+      <key>OPENCLAW_SERVICE_KIND</key>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_SERVICE_KIND__</string>
+    </dict>
+  </dict>
+</plist>

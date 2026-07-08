@@ -9,6 +9,7 @@
     <key>ProgramArguments</key>
     <array>
       <string>__AGENTBOX_TAILSCALED_BIN__</string>
+__AGENTBOX_TAILSCALED_STATEDIR_ARGUMENT__
     </array>
 
     <key>UserName</key>

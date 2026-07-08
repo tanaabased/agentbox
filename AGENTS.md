@@ -61,10 +61,10 @@ explicitly asked.
 - When changing option names, environment variables, help text, failure wording, version output,
   debug output, planning output, or status messages, update affected README usage/configuration
   content and Leia examples in the same change.
-- Any `boot.sh` public interface change must check `README.md`, `examples/cli-contract`, and the
+- Any `boot.sh` public interface change must check `README.md`, `examples/inputs`, and the
   affected mutating examples.
 - Any machine behavior change in `boot.sh` must check README setup/after-bootstrap guidance plus
-  the affected `envvars`, `options`, or `version` Leia scenarios.
+  the affected mutating Leia scenarios.
 - Keep planned-action output aligned with actual execution order.
 - Treat CLI help order as a readability convention, not a Leia-enforced contract. Prefer related
   bootstrap options near each other and keep generic controls such as `--force`, `--debug`,
@@ -108,9 +108,9 @@ explicitly asked.
 - For health-report assertions, print and match the targeted `--report` lines before running the
   final `--check` gate so CI logs show the health mismatch that caused the failure.
 - Prefer behavior-focused Leia `# should` labels over scenario labels. Avoid repeating the example
-  name or setup style in every block; use words like `custom`, `default`, `envvar`, `version`,
-  `configured`, `provided`, or `preexisting` only when that distinction is meaningful inside the
-  same README.
+  name or setup style in every block; use words like `custom`, `default`, `configured`,
+  `provided`, `preexisting`, or `source` only when that distinction is meaningful inside the same
+  README.
 - Keep OpenClaw runner account creation checks focused on identity and home-directory state. Assert
   privilege, autologin, SSH, and group membership in separate health-backed or domain-specific
   blocks. Only test runner profile pictures when preserving an existing picture is the scenario
@@ -124,8 +124,27 @@ explicitly asked.
 - Use fixed, readable local resource names in GitHub-hosted macOS examples when the resource exists
   only on the ephemeral runner. Keep externally registered or shared resources, especially Tailscale
   hostnames, unique per scenario and run.
+- Mutating Leia examples should run `boot.sh` once unless the example is explicitly about rerun,
+  idempotency, or source replacement behavior.
+- Defaults-focused examples should avoid overriding agentbox-owned default values, while still
+  providing required CI inputs such as source paths, passwords, secrets, and unique shared-resource
+  names.
+- Treat example placement as a small taxonomy:
+  `inputs` owns non-mutating public interface checks; `defaults` owns the baseline happy-path
+  bootstrap with default agentbox-owned settings; named domain examples own focused behavior such
+  as Tailscale, Homebrew, SSH, OpenClaw, users, rerun, or source replacement.
+- When adding coverage, prefer extending the narrowest existing example that owns the behavior. Add
+  a new example when the behavior needs incompatible bootstrap inputs, crosses enough domains that
+  it would blur an existing example, or intentionally needs another successful `boot.sh` run.
+- Keep `examples/inputs` non-mutating. It owns help text, displayed defaults, input validation, and
+  option/env precedence checks. Mutating examples should prove behavior domains such as Tailscale,
+  Homebrew, SSH, OpenClaw, users, rerun, or source replacement rather than re-testing every input
+  spelling.
 - Treat each blank-line-separated Leia block as a separate script. Do not rely on shell variables,
   functions, or working-directory changes persisting across `should` blocks.
+- Avoid braced shell variable expansions such as `${VAR}` in Leia examples when plain `$VAR` works.
+  Leia parsing has been brittle around braces; restructure commands instead of adding braces just
+  for readability.
 - Use `TMPDIR` for durable fixtures, unavoidable logs, and helper internals only.
 - Keep generated SSH public/private key fixtures in `TMPDIR`; they are real test inputs, not scratch
   assertion files.

@@ -1,7 +1,8 @@
-# Users Example
+# Users Existing Example
 
 This example verifies OpenClaw runner behavior for a preexisting non-admin macOS user. It is
-intended for CI by default because it mutates local users, SSH, Homebrew state, and launchd.
+intended for CI by default because it mutates local users, SSH, Homebrew state, OpenClaw, and
+launchd.
 
 ## Setup
 
@@ -11,11 +12,6 @@ command -v boot.sh >/dev/null
 
 # should have a local git checkout available as the agentbox source
 test -d "$GITHUB_WORKSPACE/.git"
-
-# should generate a public key fixture for authorized-key installation
-mkdir -p "$TMPDIR"
-rm -f "$TMPDIR/id_agentbox_users" "$TMPDIR/id_agentbox_users.pub"
-ssh-keygen -t ed25519 -N "" -C "agentbox-users@example.test" -f "$TMPDIR/id_agentbox_users" >/dev/null
 
 # should seed a non-admin runner with a missing home
 sudo sysadminctl \
@@ -29,28 +25,19 @@ sudo dscl . -create /Users/ted Picture "$GITHUB_WORKSPACE/assets/agentbox-dark.p
 test "$(dscl . -read /Users/ted Picture | cut -d " " -f 2-)" = "$GITHUB_WORKSPACE/assets/agentbox-dark.png"
 ! test -d /Users/ted
 
-# should fail early for malformed openclaw identity syntax
-if boot.sh \
-  --force \
-  --agentbox-version "$GITHUB_WORKSPACE" \
-  --tailscale-authkey off \
-  --brewgroup off \
-  --openclaw-identity "Ted Existing Claw" \
-  --skip-openclaw-autologin; then
-  exit 1
-fi
-
 # should reuse the seeded runner without needing an openclaw password
+mkdir -p "$TMPDIR"
+rm -f "$TMPDIR/id_agentbox_users_existing" "$TMPDIR/id_agentbox_users_existing.pub"
+ssh-keygen -t ed25519 -N "" -C "agentbox-users-existing@example.test" -f "$TMPDIR/id_agentbox_users_existing" >/dev/null
 boot.sh \
   --force \
-  --debug \
   --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey off \
   --brewgroup "tedsbrewclub" \
   --openclaw-identity "Ted Existing Claw <ted>" \
   --skip-openclaw-autologin \
-  --authorized-key "file:$TMPDIR/id_agentbox_users.pub" \
-  --hostname "TANAABAGENTBOXUSER"
+  --authorized-key "file:$TMPDIR/id_agentbox_users_existing.pub" \
+  --hostname "TANAABAGENTBOXUSERSEXISTING"
 ```
 
 ## Testing
@@ -76,13 +63,9 @@ dscl . -read "/Groups/tedsbrewclub" >/dev/null
 dscl . -read "/Groups/tedsbrewclub" GroupMembership | tr " " "\n" | grep -Fx "$(id -un)"
 dscl . -read "/Groups/tedsbrewclub" GroupMembership | tr " " "\n" | grep -Fx ted
 
-# should install authorized keys for the admin user
-test -f "$HOME/.ssh/authorized_keys"
-grep -qxF "$(cat "$TMPDIR/id_agentbox_users.pub")" "$HOME/.ssh/authorized_keys"
-
 # should install authorized keys for the openclaw runner user
 sudo test -f /Users/ted/.ssh/authorized_keys
-sudo grep -qxF "$(cat "$TMPDIR/id_agentbox_users.pub")" /Users/ted/.ssh/authorized_keys
+sudo grep -qxF "$(cat "$TMPDIR/id_agentbox_users_existing.pub")" /Users/ted/.ssh/authorized_keys
 test "$(sudo stat -f "%Lp" /Users/ted/.ssh)" = "700"
 test "$(sudo stat -f "%Lp" /Users/ted/.ssh/authorized_keys)" = "600"
 
@@ -96,34 +79,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 # should report openclaw runner brewgroup health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_openclaw_user_ok=1"
 
-# should report ssh hardening for allowed users
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_allowed_users=$(id -un) ted"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_group=com.apple.access_ssh"
-if sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_group_exists_ok=1"; then
-  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_admin_user_ok=1"
-  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_openclaw_user_ok=1"
-else
-  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_admin_user_ok=skipped"
-  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_openclaw_user_ok=skipped"
-fi
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_hardening_ok=1"
-
 # should pass the overall agentbox health check
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --check
-
-# should allow ssh login to the openclaw runner
-ssh \
-  -F /dev/null \
-  -o BatchMode=yes \
-  -o ConnectTimeout=10 \
-  -o IdentitiesOnly=yes \
-  -o PreferredAuthentications=publickey \
-  -o PasswordAuthentication=no \
-  -o KbdInteractiveAuthentication=no \
-  -o StrictHostKeyChecking=no \
-  -o UserKnownHostsFile=/dev/null \
-  -o LogLevel=VERBOSE \
-  -i "$TMPDIR/id_agentbox_users" \
-  ted@localhost true
 ```

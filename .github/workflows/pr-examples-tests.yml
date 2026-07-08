@@ -18,12 +18,16 @@ jobs:
       fail-fast: false
       matrix:
         example:
-          - cli-contract
-          - envvars
-          - no-tailscale
-          - options
-          - users
-          - version
+          - inputs
+          - defaults
+          - tailscale
+          - homebrew
+          - ssh
+          - openclaw
+          - rerun
+          - users-custom
+          - users-existing
+          - source
     steps:
       - name: Checkout code
         uses: actions/checkout@v7

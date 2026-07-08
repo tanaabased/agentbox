@@ -4,10 +4,9 @@
 target scope is zero-to-running-gateway: base host setup, a non-sudo OpenClaw runner user, SSH access,
 OpenClaw gateway onboarding, health verification, and host-level OpenClaw plugin installation.
 
-Current releases perform the base host bootstrap: Homebrew packages, a non-sudo OpenClaw runner
-user, classic SSH, optional Tailscale access, runner autologin, and launchd-managed health checks.
-OpenClaw gateway onboarding and global plugin installation are planned follow-up implementation
-work.
+Current releases perform the base host bootstrap and gateway bring-up: Homebrew packages, a
+non-sudo OpenClaw runner user, classic SSH, optional Tailscale access, runner autologin, OpenClaw
+gateway onboarding, an agentbox-owned gateway LaunchDaemon, and launchd-managed health checks.
 
 Agent workspaces layer on top of the OpenClaw host. EMORI-specific setup, per-agent dotfiles,
 project credentials, trading services, and application workloads remain outside the agentbox host
@@ -26,17 +25,18 @@ contract.
   `/etc/paths.d/00-agentbox-homebrew`.
 - Makes the Homebrew prefix group-writable by the configured brewgroup.
 - Creates or reuses a non-sudo OpenClaw runner user.
-- Sets macOS system identity and headless power, time, recovery, and firewall defaults.
+- Sets macOS system identity and headless power, time, and recovery defaults.
 - Enables OpenClaw runner autologin by default.
 - Enables classic SSH, installs optional authorized keys for the admin and OpenClaw runner users,
   ensures both users are allowed by macOS Remote Login access when that access group exists, and
   hardens sshd to key-only login when keys are provided.
 - Installs Tailscale from Homebrew and optionally joins the tailnet.
+- Runs gateway-only OpenClaw onboarding as the OpenClaw runner user.
+- Installs an agentbox-owned system LaunchDaemon for the OpenClaw gateway.
 - Installs a launchd health check under `/opt/tanaab/agentbox`.
 
 **What current releases do not yet do**
 
-- Install or start the OpenClaw gateway.
 - Install host-level OpenClaw plugins.
 
 **What remains out of scope**
@@ -54,7 +54,8 @@ contract.
 - Authorized keys enable SSH key-only hardening for the admin and OpenClaw runner users. Bad keys
   can lock out remote SSH, so keep physical or admin recovery access available.
 - OpenClaw runner autologin may be blocked by FileVault or local macOS policy; pass
-  `--skip-openclaw-autologin` when a GUI login session is not desired.
+  `--skip-openclaw-autologin` when a GUI login session is not desired. Gateway supervision does not
+  depend on autologin.
 
 ## Quickstart
 
@@ -212,6 +213,38 @@ agentbootbox \
   --hostname TANAABAGENTBOX1
 ```
 
+OpenClaw gateway onboarding is gateway-only by default: agentbox uses `--auth-choice skip`, skips
+OpenClaw workspace bootstrap files and skill installation, and keeps gateway token auth enabled.
+agentbox always binds the OpenClaw gateway to loopback. When Tailscale setup is enabled, agentbox
+also asks OpenClaw to expose the loopback gateway through Tailscale Serve:
+
+```sh
+agentbootbox \
+  --tailscale-authkey "$TS_AUTHKEY" \
+  --openclaw-gateway-port 18789 \
+  --hostname TANAABAGENTBOX1
+```
+
+For the Tailscale Serve route, confirm that MagicDNS and HTTPS Certificates are enabled in the
+Tailscale admin DNS settings. With those enabled, Tailscale serves the gateway through the node's
+MagicDNS HTTPS name while OpenClaw itself remains bound to `127.0.0.1`.
+
+Pass `--openclaw-auth-choice` only when you want OpenClaw onboarding to configure initial model
+auth. For example, OpenClaw can use provider-specific environment variables such as
+`OPENAI_API_KEY` when the matching auth choice is selected:
+
+```sh
+OPENAI_API_KEY="$OPENAI_API_KEY" \
+agentbootbox \
+  --tailscale-authkey "$TS_AUTHKEY" \
+  --openclaw-auth-choice openai-api-key \
+  --hostname TANAABAGENTBOX1
+```
+
+agentbox does not use OpenClaw's macOS `--install-daemon` path. On macOS, that path installs a
+per-user LaunchAgent that depends on a logged-in user session; agentbox instead installs a system
+LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user.
+
 The Homebrew prefix is made group-writable by `brewer` by default so the OpenClaw runner user or
 other trusted local users can be granted package-management access through group membership. Use
 `--brewgroup` to choose another group, or pass a falsey value to skip brewgroup setup:
@@ -247,7 +280,8 @@ Tailscale is the recommended remote access path, but it is not mandatory. When e
 installs an agentbox-owned system LaunchDaemon for `tailscaled`, checks whether the Mac is already
 joined, and only requires an auth key for a first join. The daemon is installed as
 `/Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist` and runs as `root`; agentbox does not
-use `brew services` as the Tailscale launchd wrapper.
+use `brew services` as the Tailscale launchd wrapper. Its daemon state directory is
+`/var/db/tanaab/agentbox/tailscale`.
 
 To skip Tailscale setup, pass a falsey auth-key value:
 
@@ -262,12 +296,23 @@ name, so `TANAABAGENTBOX1` joins as `AGENTBOX1`.
 
 To tag newly joined machines, create or use a Tailscale auth key that applies the desired tags.
 agentbox passes the auth key to `tailscale up` and does not manage tailnet tag policy itself.
+When Tailscale is enabled, agentbox sets the OpenClaw runner as the Tailscale operator so
+OpenClaw's gateway process can use native Tailscale Serve without sudo. Bootstrap fails if the
+OpenClaw gateway becomes ready but the expected Tailscale Serve route is not configured.
+agentbox also writes a macOS scoped resolver file for the tailnet MagicDNS suffix under
+`/etc/resolver/`, pointing that suffix at Tailscale's local DNS resolver `100.100.100.100`.
+
+agentbox does not enable macOS Application Firewall. When the OpenClaw gateway is exposed through
+Tailscale Serve, macOS Application Firewall can prevent Tailscale Serve HTTPS from reaching the
+gateway over the tailnet. If the firewall is already enabled, agentbox prints a warning and
+recommends disabling it for tailnet-hosted gateway access. Use Tailscale ACLs, no WAN port
+forwarding, SSH hardening, and loopback gateway binding as the access-control boundary.
 
 After joining, use the Tailscale admin console to confirm the node name, decide whether node key
 expiry should be disabled for this infrastructure node, and keep ACLs restrictive.
 
-If your tailnet uses MagicDNS or another friendly DNS name, such as `tanaab.net`, verify the node is
-reachable through that name as well as its Tailscale IP.
+If your tailnet uses another friendly DNS name, such as `tanaab.net`, verify the node is reachable
+through that name as well as its Tailscale IP.
 
 ## Configuration
 
@@ -286,6 +331,10 @@ they do not land in shell history.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
 - `AGENTBOX_OPENCLAW_AUTOLOGIN` or `--skip-openclaw-autologin`: autologin is enabled by default;
   set a falsey environment value or pass the flag to disable it.
+- `AGENTBOX_OPENCLAW_AUTH_CHOICE` or `--openclaw-auth-choice`: initial OpenClaw model auth choice;
+  defaults to `skip`.
+- `AGENTBOX_OPENCLAW_GATEWAY_PORT` or `--openclaw-gateway-port`: OpenClaw gateway port; defaults to
+  `18789`.
 - `AGENTBOX_OPENCLAW_IDENTITY` or `--openclaw-identity`: OpenClaw runner identity in
   `Full Name <shortname>` syntax; defaults to `A Tanaab-based Claw <openclaw>`.
 - `AGENTBOX_OPENCLAW_PASSWORD` or `--openclaw-password`: password used only when creating the
@@ -315,7 +364,16 @@ legacy Homebrew launchd wrapper is not.
 
 The report should also include `homebrew_login_path_file_ok=1`, `openclaw_cli_ok=1`, `node_cli_ok=1`,
 and `ripgrep_ok=1`. agentbox does not pin `node@24`; the Homebrew `openclaw-cli` formula owns its
-Node dependency unless OpenClaw onboarding later proves a stricter runtime pin is required.
+Node dependency.
+
+The report should include `openclaw_gateway_launchd_loaded_ok=1`,
+`openclaw_gateway_status_ok=1`, and `openclaw_gateway_ok=1`. The status check runs OpenClaw's
+native `gateway status --require-rpc` command as the OpenClaw runner. It also prints
+`openclaw_gateway_bind`, `openclaw_gateway_tailscale_mode`, and `openclaw_gateway_port`.
+Tailscale-enabled hosts should report `openclaw_gateway_bind=loopback` and
+`openclaw_gateway_tailscale_mode=serve` plus `openclaw_gateway_tailscale_serve_route_ok=1`;
+hosts bootstrapped with Tailscale disabled should report `openclaw_gateway_bind=loopback` and
+`openclaw_gateway_tailscale_mode=off`.
 
 When brewgroup setup is enabled, the report should include `brewgroup_admin_user_ok=1` and
 `brewgroup_openclaw_user_ok=1` plus `brew_prefix_ok=1`. The report should also include

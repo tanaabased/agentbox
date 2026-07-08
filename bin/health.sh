@@ -5,6 +5,7 @@ STATE_FILE="/var/db/tanaab/agentbox/health.env"
 LOG_FILE="/var/log/tanaab/agentbox/health.log"
 HEALTH_LABEL="dev.tanaab.agentbox.health"
 TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
+OPENCLAW_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
 SSHD_BIN="/usr/sbin/sshd"
 SOCKETFILTERFW="/usr/libexec/ApplicationFirewall/socketfilterfw"
@@ -23,10 +24,16 @@ AGENTBOX_HEALTH_ADMIN_USER=""
 AGENTBOX_HEALTH_OPENCLAW_USER=""
 AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=""
 AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED="0"
+AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL=""
+AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=""
+AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE=""
+AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT=""
+AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE=""
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
 AGENTBOX_HEALTH_SSH_ALLOWED_USERS=""
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
 STATE_LOADED="0"
+SSH_HARDENING_DIAGNOSTIC=""
 
 if [[ -r "${STATE_FILE}" ]]; then
   # shellcheck source=/dev/null
@@ -78,37 +85,37 @@ remote_login_value() {
   fi
 }
 
-sshd_hardened_value() {
+sshd_hardening_diagnostic() {
   local allowed_users="$1"
   local config
   local user
   local -a users=()
 
   if [[ -z "${allowed_users}" || ! -x "${SSHD_BIN}" ]]; then
-    printf '0'
-    return 0
+    printf 'missing allowed users or sshd binary'
+    return 1
   fi
 
-  config="$("${SSHD_BIN}" -T 2>/dev/null)" || {
-    printf '0'
-    return 0
+  config="$("${SSHD_BIN}" -T 2>&1)" || {
+    printf 'sshd -T failed: %s' "${config}"
+    return 1
   }
 
   printf "%s\n" "${config}" | grep -Fxq "passwordauthentication no" || {
-    printf '0'
-    return 0
+    printf 'missing effective config line: passwordauthentication no'
+    return 1
   }
   printf "%s\n" "${config}" | grep -Fxq "kbdinteractiveauthentication no" || {
-    printf '0'
-    return 0
+    printf 'missing effective config line: kbdinteractiveauthentication no'
+    return 1
   }
   printf "%s\n" "${config}" | grep -Fxq "permitrootlogin no" || {
-    printf '0'
-    return 0
+    printf 'missing effective config line: permitrootlogin no'
+    return 1
   }
   printf "%s\n" "${config}" | grep -Fxq "pubkeyauthentication yes" || {
-    printf '0'
-    return 0
+    printf 'missing effective config line: pubkeyauthentication yes'
+    return 1
   }
 
   IFS=' ' read -r -a users <<< "${allowed_users}"
@@ -118,12 +125,35 @@ sshd_hardened_value() {
     fi
 
     printf "%s\n" "${config}" | grep -Fxq "allowusers ${user}" || {
-      printf '0'
-      return 0
+      printf 'missing effective config line: allowusers %s' "${user}"
+      return 1
     }
   done
 
-  printf '1'
+  return 0
+}
+
+sshd_hardened_value() {
+  local allowed_users="$1"
+  local attempt
+  local diagnostic=""
+  local max_attempts="3"
+
+  SSH_HARDENING_DIAGNOSTIC=""
+
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    if diagnostic="$(sshd_hardening_diagnostic "${allowed_users}")"; then
+      printf '1'
+      return 0
+    fi
+
+    SSH_HARDENING_DIAGNOSTIC="${diagnostic} (attempt ${attempt}/${max_attempts})"
+    if [[ "${attempt}" -lt "${max_attempts}" ]]; then
+      sleep 1
+    fi
+  done
+
+  printf '0'
 }
 
 path_group_rwx_value() {
@@ -267,6 +297,72 @@ executable_ok_value() {
   fi
 }
 
+openclaw_gateway_status_ready() {
+  local openclaw_bin=""
+  local openclaw_home=""
+  local path_value=""
+
+  if [[ -z "${AGENTBOX_HEALTH_OPENCLAW_USER}" ||
+    -z "${AGENTBOX_HEALTH_BREW_PREFIX}" ||
+    -z "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT}" ]]; then
+    return 1
+  fi
+
+  openclaw_bin="${AGENTBOX_HEALTH_BREW_PREFIX}/bin/openclaw"
+  if [[ ! -x "${openclaw_bin}" ]]; then
+    return 1
+  fi
+
+  openclaw_home="$(user_home_dir_value "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
+  if [[ -z "${openclaw_home}" || ! -d "${openclaw_home}" ]]; then
+    return 1
+  fi
+
+  path_value="${AGENTBOX_HEALTH_BREW_PREFIX}/bin:${AGENTBOX_HEALTH_BREW_PREFIX}/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+  sudo -u "${AGENTBOX_HEALTH_OPENCLAW_USER}" env \
+    "HOME=${openclaw_home}" \
+    "USER=${AGENTBOX_HEALTH_OPENCLAW_USER}" \
+    "LOGNAME=${AGENTBOX_HEALTH_OPENCLAW_USER}" \
+    "PATH=${path_value}" \
+    "${openclaw_bin}" gateway status --require-rpc --timeout 10000 >/dev/null 2>&1
+}
+
+openclaw_gateway_status_ok_value() {
+  if openclaw_gateway_status_ready; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+openclaw_gateway_tailscale_serve_route_ok_value() {
+  local port="$1"
+  local status
+
+  if [[ -z "${port}" ]] || ! command -v tailscale >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+    printf '0'
+    return 0
+  fi
+
+  status="$(tailscale serve status --json 2>/dev/null || true)"
+  if [[ -z "${status}" ]]; then
+    printf '0'
+    return 0
+  fi
+
+  if printf "%s" "${status}" | jq -e --arg port "${port}" '
+    any((.Web // {}) | to_entries[]?;
+      (.key | endswith(":443"))
+      and ((.value.Handlers["/"].Proxy // "")
+        | test("^https?://(127[.]0[.]0[.]1|localhost|\\[::1\\]):" + $port + "$"))
+    )
+  ' >/dev/null 2>&1; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
 print_brewgroup() {
   if [[ "${STATE_LOADED}" != "1" ]]; then
     printf 'off\n'
@@ -295,8 +391,8 @@ generate_report() {
   local power_ok="0"
   local network_time_ok=""
   local restart_freeze_ok=""
-  local firewall_global_ok=""
-  local firewall_stealth_ok=""
+  local firewall_global_enabled=""
+  local firewall_stealth_enabled=""
   local remote_login_ok=""
   local ssh_access_admin_user_ok="skipped"
   local ssh_access_group_exists_ok="0"
@@ -325,6 +421,11 @@ generate_report() {
   local node_cli_ok="0"
   local openclaw_cli_path=""
   local openclaw_cli_ok="0"
+  local openclaw_gateway_label="${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL:-${OPENCLAW_GATEWAY_LABEL}}"
+  local openclaw_gateway_launchd_loaded_ok="0"
+  local openclaw_gateway_status_ok="0"
+  local openclaw_gateway_tailscale_serve_route_ok="skipped"
+  local openclaw_gateway_ok="0"
   local ripgrep_path=""
   local ripgrep_ok="0"
   local trusted_brewgroup_nested_ok="skipped"
@@ -335,6 +436,9 @@ generate_report() {
   local tailscale_backend_state=""
   local tailscale_hostname=""
   local tailscale_ip=""
+  local tailscale_firewall_warning="skipped"
+  local tailscale_operator_ok="skipped"
+  local tailscale_operator_user=""
   local tailscale_ok="skipped"
   local tailscale_status_json=""
 
@@ -357,8 +461,8 @@ generate_report() {
   autorestart_value="$(pmset_setting_value autorestart)"
   network_time_ok="$(systemsetup_toggle_value -getusingnetworktime)"
   restart_freeze_ok="$(systemsetup_toggle_value -getrestartfreeze)"
-  firewall_global_ok="$(firewall_global_value)"
-  firewall_stealth_ok="$(firewall_stealth_value)"
+  firewall_global_enabled="$(firewall_global_value)"
+  firewall_stealth_enabled="$(firewall_stealth_value)"
   remote_login_ok="$(remote_login_value)"
   admin_uid="$(id -u "${AGENTBOX_HEALTH_ADMIN_USER}" 2>/dev/null || true)"
   ssh_allowed_users="${AGENTBOX_HEALTH_SSH_ALLOWED_USERS:-${AGENTBOX_HEALTH_ADMIN_USER}}"
@@ -426,12 +530,15 @@ generate_report() {
   mark_required headless_power_ok "${power_ok}"
   mark_required network_time_ok "${network_time_ok}"
   mark_required restart_freeze_ok "${restart_freeze_ok}"
-  mark_required firewall_global_ok "${firewall_global_ok}"
-  if [[ "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}" == "1" && "${firewall_stealth_ok}" != "1" ]]; then
-    print_kv firewall_stealth_ok "${firewall_stealth_ok}"
-  else
-    mark_required firewall_stealth_ok "${firewall_stealth_ok}"
+  print_kv firewall_global_enabled "${firewall_global_enabled}"
+  print_kv firewall_stealth_enabled "${firewall_stealth_enabled}"
+  if [[ "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE}" == "serve" ]]; then
+    tailscale_firewall_warning="0"
+    if [[ "${firewall_global_enabled}" == "1" ]]; then
+      tailscale_firewall_warning="1"
+    fi
   fi
+  print_kv tailscale_firewall_warning "${tailscale_firewall_warning}"
   mark_required remote_login_ok "${remote_login_ok}"
 
   print_kv ssh_hardening_expected "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}"
@@ -452,6 +559,9 @@ generate_report() {
   if [[ "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}" == "1" ]]; then
     ssh_hardening_ok="$(sshd_hardened_value "${ssh_allowed_users}")"
     mark_required ssh_hardening_ok "${ssh_hardening_ok}"
+    if [[ "${ssh_hardening_ok}" != "1" && -n "${SSH_HARDENING_DIAGNOSTIC}" ]]; then
+      print_kv ssh_hardening_diagnostic "${SSH_HARDENING_DIAGNOSTIC}"
+    fi
   else
     print_kv ssh_hardening_ok "${ssh_hardening_ok}"
   fi
@@ -554,6 +664,22 @@ generate_report() {
   print_kv ripgrep_path "${ripgrep_path}"
   mark_required ripgrep_ok "${ripgrep_ok}"
 
+  print_kv openclaw_auth_choice "${AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE}"
+  print_kv openclaw_gateway_label "${openclaw_gateway_label}"
+  print_kv openclaw_gateway_bind "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND}"
+  print_kv openclaw_gateway_tailscale_mode "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE}"
+  print_kv openclaw_gateway_port "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT}"
+  if launchctl print "system/${openclaw_gateway_label}" >/dev/null 2>&1; then
+    openclaw_gateway_launchd_loaded_ok="1"
+  fi
+  openclaw_gateway_status_ok="$(openclaw_gateway_status_ok_value)"
+  if [[ "${openclaw_gateway_launchd_loaded_ok}" == "1" && "${openclaw_gateway_status_ok}" == "1" ]]; then
+    openclaw_gateway_ok="1"
+  fi
+  mark_required openclaw_gateway_launchd_loaded_ok "${openclaw_gateway_launchd_loaded_ok}"
+  mark_required openclaw_gateway_status_ok "${openclaw_gateway_status_ok}"
+  mark_required openclaw_gateway_ok "${openclaw_gateway_ok}"
+
   print_kv tailscale_expected "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}"
   print_kv expected_tailscale_hostname "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}"
   if [[ "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}" == "1" ]]; then
@@ -580,11 +706,13 @@ generate_report() {
         tailscale_hostname="$(printf "%s" "${tailscale_status_json}" | jq -r '.Self.HostName // ""' 2>/dev/null || true)"
         tailscale_ip="$(printf "%s" "${tailscale_status_json}" | jq -r '(.Self.TailscaleIPs // []) | .[0] // ""' 2>/dev/null || true)"
       fi
+      tailscale_operator_user="$(tailscale debug prefs 2>/dev/null | jq -r '.OperatorUser // ""' 2>/dev/null || true)"
     fi
 
     print_kv tailscale_backend_state "${tailscale_backend_state}"
     print_kv tailscale_hostname "${tailscale_hostname}"
     print_kv tailscale_ip "${tailscale_ip}"
+    print_kv tailscale_operator_user "${tailscale_operator_user}"
 
     if [[ "${tailscale_backend_state}" == "Running" &&
       -n "${tailscale_ip}" &&
@@ -594,15 +722,34 @@ generate_report() {
     else
       tailscale_ok="0"
     fi
+    if [[ -n "${AGENTBOX_HEALTH_OPENCLAW_USER}" &&
+      "${tailscale_operator_user}" == "${AGENTBOX_HEALTH_OPENCLAW_USER}" ]]; then
+      tailscale_operator_ok="1"
+    else
+      tailscale_operator_ok="0"
+    fi
+    if [[ "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE}" == "serve" ]]; then
+      openclaw_gateway_tailscale_serve_route_ok="$(
+        openclaw_gateway_tailscale_serve_route_ok_value "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT}"
+      )"
+      mark_required openclaw_gateway_tailscale_serve_route_ok "${openclaw_gateway_tailscale_serve_route_ok}"
+    fi
     mark_required tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
     mark_required tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
     mark_required tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
+    mark_required tailscale_operator_ok "${tailscale_operator_ok}"
     mark_required tailscale_ok "${tailscale_ok}"
   else
     print_kv tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
     print_kv tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
     print_kv tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
+    print_kv tailscale_operator_user "${tailscale_operator_user}"
+    print_kv tailscale_operator_ok "${tailscale_operator_ok}"
     print_kv tailscale_ok "${tailscale_ok}"
+  fi
+  if [[ "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}" != "1" ||
+    "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE}" != "serve" ]]; then
+    print_kv openclaw_gateway_tailscale_serve_route_ok "${openclaw_gateway_tailscale_serve_route_ok}"
   fi
 
   mark_required health_launchd_loaded_ok "${health_launchd_loaded_ok}"
