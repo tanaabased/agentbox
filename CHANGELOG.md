@@ -9,10 +9,10 @@
 - Added OpenClaw runner user creation, autologin, SSH keys, and health checks.
 - Added randomized selection from bundled OpenClaw runner profile images for newly created users.
 - Added `openclaw-cli`, `ripgrep`, and Homebrew login-shell `PATH` setup to the base bootstrap.
+- Added `unsupported.sh` as the hosted fallback for unsupported or unknown platforms.
 - Externalized the installed health script and agentbox LaunchDaemon plist bodies into root-level
   `bin/` and `launchd/` directories.
-- Renamed the hosted macOS entrypoint to `macos.sh` and redirected `/boot.sh` to it for
-  compatibility.
+- Renamed the hosted macOS entrypoint to `macos.sh`.
 - Updated Tailscale-enabled OpenClaw gateway setup to keep the gateway bound to loopback and expose
   it through Tailscale Serve.
 - Updated Tailscale setup to set the OpenClaw runner as the Tailscale operator and verify the

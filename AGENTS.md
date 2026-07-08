@@ -19,6 +19,7 @@ explicitly asked.
 ## Source Of Truth
 
 - `macos.sh` is the shipped shell entrypoint and main bootstrap surface.
+- `unsupported.sh` is the hosted fallback script for unsupported or unknown platforms.
 - `Brewfile` is the source of truth for base Homebrew packages.
 - `Brewfile.extras` is an optional personal-tooling Brewfile for operator apps, not part of the
   core host contract.
@@ -33,7 +34,8 @@ explicitly asked.
 
 ## Naming And Style
 
-- In markdown and docs prose, stylize this project as `agentbox`.
+- In markdown and docs prose, write the project/product name as plain text: agentbox.
+- Use backticks for `agentbox` only when referring to the CLI executable or command invocation.
 - Preserve literal identifiers exactly as written, including commands, paths, hostnames, environment
   variables, labels, generated strings, repository names, and URLs.
 
@@ -42,8 +44,8 @@ explicitly asked.
 - Do not edit, regenerate, stage, or commit files under `dist/` during local agent work.
 - `dist/` is CI/release-owned output. GitHub Actions may regenerate and stamp it during build,
   test, release, or hosting workflows.
-- Make source changes in `macos.sh`, `site/`, or `scripts/build-dist.js`; leave `dist/` unchanged
-  unless the user explicitly asks for a local generated-artifact update.
+- Make source changes in `macos.sh`, `unsupported.sh`, `site/`, or `scripts/build-dist.js`; leave
+  `dist/` unchanged unless the user explicitly asks for a local generated-artifact update.
 - Keep `/llms.txt` concise in `site/llms.txt`; `scripts/build-dist.js` copies it into `dist/`.
   Do not hand-edit `dist/llms.txt` or add full-context variants unless the hosted docs surface
   becomes larger.
@@ -177,6 +179,8 @@ explicitly asked.
   workflows own generated `dist/` changes.
 - Release workflows use the Bootbox-style shell-script distribution flow. Keep `dist/macos.sh` as
   the stamped hosted entrypoint.
+- Keep `dist/unsupported.sh` as the generated fallback for root redirects from unsupported or
+  unknown platforms.
 - Do not add unrelated package archives or upload behavior unless the release contract explicitly
   changes.
 - Generated hosting changes should check `scripts/build-dist.js`, `site/`, `dist/`, `netlify.toml`,

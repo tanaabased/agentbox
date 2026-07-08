@@ -7,11 +7,16 @@ const execFileAsync = promisify(execFile);
 const DIST_URL = new URL('../dist/', import.meta.url);
 const REPO_URL = new URL('../', import.meta.url);
 const REPO_ROOT = fileURLToPath(REPO_URL);
-const PUBLIC_ORIGIN = 'https://agentbox.boot.tanaab.sh';
+const PUBLIC_ORIGIN = 'https://agentbox.tanaab.sh';
 const PUBLISHED_SCRIPTS = [
   {
     sourcePath: 'macos.sh',
     destinationPath: 'macos.sh',
+    executable: true,
+  },
+  {
+    sourcePath: 'unsupported.sh',
+    destinationPath: 'unsupported.sh',
     executable: true,
   },
 ];

@@ -2,13 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="refresh" content="0; url=/macos.sh" />
+    <meta http-equiv="refresh" content="0; url=/unsupported.sh" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>agentbox bootstrap</title>
     <script>
       const TARGETS = {
-        default: '/macos.sh',
+        default: '/unsupported.sh',
         macos: '/macos.sh',
+        unsupported: '/unsupported.sh',
       };
 
       function getRedirectTarget(userAgent) {
@@ -16,7 +17,7 @@
           return TARGETS.macos;
         }
 
-        return TARGETS.default;
+        return TARGETS.unsupported;
       }
 
       const redirectTarget = getRedirectTarget(window.navigator.userAgent);
@@ -24,6 +25,9 @@
     </script>
   </head>
   <body>
-    <p>Redirecting to <a href="/macos.sh">/macos.sh</a>.</p>
+    <p>
+      Redirecting to <a href="/unsupported.sh">/unsupported.sh</a>. macOS users can use
+      <a href="/macos.sh">/macos.sh</a>.
+    </p>
   </body>
 </html>
