@@ -1,4 +1,4 @@
-name: Example Tests
+name: macOS Tests
 
 on:
   pull_request:
@@ -12,7 +12,7 @@ env:
 
 jobs:
   examples:
-    name: ${{ matrix.example }}
+    name: macOS / ${{ matrix.example }}
     runs-on: macos-26
     strategy:
       fail-fast: false
