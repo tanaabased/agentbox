@@ -5,8 +5,8 @@ target scope is zero-to-running-gateway: base host setup, a non-sudo OpenClaw ru
 OpenClaw gateway onboarding, health verification, and host-level OpenClaw plugin installation.
 
 Current releases perform the base host bootstrap and gateway bring-up: Homebrew packages, a
-non-sudo OpenClaw runner user, classic SSH, optional Tailscale access, runner autologin, OpenClaw
-gateway onboarding, an agentbox-owned gateway LaunchDaemon, and launchd-managed health checks.
+non-sudo OpenClaw runner user, classic SSH, optional Tailscale access, OpenClaw gateway onboarding,
+configurable gateway service mode, and launchd-managed health checks.
 
 Agent workspaces layer on top of the OpenClaw host. EMORI-specific setup, per-agent dotfiles,
 project credentials, trading services, and application workloads remain outside the agentbox host
@@ -26,13 +26,12 @@ contract.
 - Makes the Homebrew prefix group-writable by the configured brewgroup.
 - Creates or reuses a non-sudo OpenClaw runner user.
 - Sets macOS system identity and headless power, time, and recovery defaults.
-- Enables OpenClaw runner autologin by default.
 - Enables classic SSH, installs optional authorized keys for the admin and OpenClaw runner users,
   ensures both users are allowed by macOS Remote Login access when that access group exists, and
   hardens sshd to key-only login when keys are provided.
 - Installs Tailscale from Homebrew and optionally joins the tailnet.
 - Runs gateway-only OpenClaw onboarding as the OpenClaw runner user.
-- Installs an agentbox-owned system LaunchDaemon for the OpenClaw gateway.
+- Installs an agentbox-owned system LaunchDaemon for the OpenClaw gateway by default.
 - Installs a launchd health check under `/opt/tanaab/agentbox`.
 
 **What current releases do not yet do**
@@ -53,9 +52,9 @@ contract.
 - Tailscale is recommended and enabled by default, but can be skipped with a falsey auth-key value.
 - Authorized keys enable SSH key-only hardening for the admin and OpenClaw runner users. Bad keys
   can lock out remote SSH, so keep physical or admin recovery access available.
-- OpenClaw runner autologin may be blocked by FileVault or local macOS policy; pass
-  `--skip-openclaw-autologin` when a GUI login session is not desired. Gateway supervision does not
-  depend on autologin.
+- `--openclaw-service-mode user` delegates gateway supervision to OpenClaw's native per-user
+  service. On macOS, agentbox enables OpenClaw runner autologin for that mode so the user session
+  can return after reboot. FileVault or local macOS policy may block autologin.
 
 ## Quickstart
 
@@ -189,8 +188,8 @@ agentbootbox \
   --hostname TANAABAGENTBOX1
 ```
 
-Creating the runner, or enabling autologin for an existing runner, requires a password. Prefer the
-environment variable so the password does not land in shell history:
+Creating the runner, or enabling user-service autologin for an existing runner, requires a password.
+Prefer the environment variable so the password does not land in shell history:
 
 ```sh
 AGENTBOX_OPENCLAW_PASSWORD="$OPENCLAW_PASSWORD" \
@@ -202,16 +201,34 @@ password and one is required, it prompts without echoing input. For newly create
 selects one bundled profile image. If the runner already exists, agentbox verifies that it is not an
 admin user, preserves any existing profile picture, and does not reset the password.
 
-OpenClaw runner autologin is enabled by default because the target host is expected to run a GUI
-gateway session. Disable it when the box should not auto-login or when local macOS policy prevents
-autologin:
+The OpenClaw gateway service mode defaults to `system`. In `system` mode, agentbox runs OpenClaw
+onboarding with native service installation disabled, then installs an agentbox-owned system
+LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user. This is the recommended
+headless mode because it does not require a GUI login session or autologin:
 
 ```sh
 agentbootbox \
   --tailscale-authkey "$TS_AUTHKEY" \
-  --skip-openclaw-autologin \
+  --openclaw-service-mode system \
   --hostname TANAABAGENTBOX1
 ```
+
+Use `--openclaw-service-mode user` to delegate gateway supervision to OpenClaw's native per-user
+service installer. On macOS, that service is a LaunchAgent and requires a logged-in user session, so
+agentbox configures OpenClaw runner autologin in `user` mode to preserve reboot behavior on headless
+hosts:
+
+```sh
+agentbootbox \
+  --tailscale-authkey "$TS_AUTHKEY" \
+  --openclaw-service-mode user \
+  --hostname TANAABAGENTBOX1
+```
+
+agentbox validates the `user` mode option wiring and records the selected mode in health output, but
+agentbox CI does not run a full live `user` mode gateway because GitHub-hosted macOS runners do not
+provide the logged-in target-user GUI session required by macOS LaunchAgents. agentbox relies on
+OpenClaw's supported native user-service path for that supervisor behavior.
 
 OpenClaw gateway onboarding is gateway-only by default: agentbox uses `--auth-choice skip`, skips
 OpenClaw workspace bootstrap files and skill installation, and keeps gateway token auth enabled.
@@ -265,18 +282,15 @@ agentbootbox \
 ```
 
 This is only an auth-onboarding escape hatch. It does not configure runtime proxy, certificate, or
-LaunchDaemon environment variables.
+service environment variables.
 
-agentbox does not use OpenClaw's macOS `--install-daemon` path. On macOS, that path installs a
-per-user LaunchAgent that depends on a logged-in user session; agentbox instead installs a system
-LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user. The LaunchDaemon invokes an
-agentbox-generated wrapper and service environment under
-`/Users/openclaw/.openclaw/service-env/`. That generated file is agentbox-owned output and may be
-rewritten on rerun; do not use it for local customizations.
+In `system` mode, the agentbox LaunchDaemon invokes an agentbox-generated wrapper and service
+environment under `/Users/openclaw/.openclaw/service-env/`. That generated file is agentbox-owned
+output and may be rewritten on rerun; do not use it for local customizations.
 
-The generated service environment is aligned with OpenClaw's launcher markers, including `HOME`,
-`USER`, `LOGNAME`, `PATH`, `TMPDIR`, `NODE_EXTRA_CA_CERTS`, `NODE_USE_SYSTEM_CA`,
-`OPENCLAW_STATE_DIR`, `OPENCLAW_GATEWAY_PORT`, `OPENCLAW_LAUNCHD_LABEL`,
+The generated `system` mode service environment is aligned with OpenClaw's launcher markers,
+including `HOME`, `USER`, `LOGNAME`, `PATH`, `TMPDIR`, `NODE_EXTRA_CA_CERTS`,
+`NODE_USE_SYSTEM_CA`, `OPENCLAW_STATE_DIR`, `OPENCLAW_GATEWAY_PORT`, `OPENCLAW_LAUNCHD_LABEL`,
 `OPENCLAW_SERVICE_MARKER=openclaw`, `OPENCLAW_SERVICE_KIND=gateway`, and
 `OPENCLAW_SERVICE_VERSION`. agentbox also adds `AGENTBOX_MANAGED=1`,
 `AGENTBOX_SERVICE_KIND=openclaw-gateway`, `AGENTBOX_VERSION`, and
@@ -373,8 +387,6 @@ they do not land in shell history.
 - `AGENTBOX_DEBUG` or `--debug`: show debug output with secrets masked.
 - `AGENTBOX_FORCE` or `--force`: replace supported existing targets.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
-- `AGENTBOX_OPENCLAW_AUTOLOGIN` or `--skip-openclaw-autologin`: autologin is enabled by default;
-  set a falsey environment value or pass the flag to disable it.
 - `AGENTBOX_OPENCLAW_AUTH_CHOICE` or `--openclaw-auth-choice`: initial OpenClaw model auth choice;
   defaults to `skip`.
 - `AGENTBOX_OPENCLAW_AUTH_ENV` or `--openclaw-auth-env`: one extra parent environment variable name
@@ -384,7 +396,10 @@ they do not land in shell history.
 - `AGENTBOX_OPENCLAW_IDENTITY` or `--openclaw-identity`: OpenClaw runner identity in
   `Full Name <shortname>` syntax; defaults to `A Tanaab-based Claw <openclaw>`.
 - `AGENTBOX_OPENCLAW_PASSWORD` or `--openclaw-password`: password used only when creating the
-  OpenClaw runner or enabling autologin; prefer the environment variable.
+  OpenClaw runner or enabling `user` service autologin; prefer the environment variable.
+- `AGENTBOX_OPENCLAW_SERVICE_MODE` or `--openclaw-service-mode`: OpenClaw gateway supervision mode;
+  `system` installs the agentbox system LaunchDaemon, while `user` delegates to OpenClaw's native
+  per-user service and enables macOS autologin; defaults to `system`.
 - `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key for first join; use
   `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
 - `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive, local git checkout,
@@ -413,10 +428,11 @@ The report should also include `homebrew_login_path_file_ok=1`, `openclaw_cli_ok
 and `ripgrep_ok=1`. agentbox does not pin `node@24`; the Homebrew `openclaw-cli` formula owns its
 Node dependency.
 
-The report should include `openclaw_gateway_launchd_loaded_ok=1`,
-`openclaw_gateway_status_ok=1`, and `openclaw_gateway_ok=1`. The status check runs OpenClaw's
-native `gateway status --require-rpc` command as the OpenClaw runner. It also prints
-`openclaw_gateway_bind`, `openclaw_gateway_tailscale_mode`, and `openclaw_gateway_port`.
+The report should include `openclaw_service_mode=system`, `openclaw_gateway_launchd_loaded_ok=1`,
+`openclaw_gateway_status_ok=1`, and `openclaw_gateway_ok=1` for default system-mode installs. In
+`user` mode, `openclaw_gateway_launchd_loaded_ok` is `skipped` and `openclaw_gateway_ok` is based on
+OpenClaw's native `gateway status --require-rpc` check as the OpenClaw runner. The report also
+prints `openclaw_gateway_bind`, `openclaw_gateway_tailscale_mode`, and `openclaw_gateway_port`.
 Tailscale-enabled hosts should report `openclaw_gateway_bind=loopback` and
 `openclaw_gateway_tailscale_mode=serve`, `tailscale_magicdns_enabled=1`,
 `tailscale_https_certificates_enabled=1`, and `openclaw_gateway_tailscale_serve_route_ok=1`;
@@ -427,7 +443,7 @@ When brewgroup setup is enabled, the report should include `brewgroup_admin_user
 `brewgroup_openclaw_user_ok=1` plus `brew_prefix_ok=1`. The report should also include
 `openclaw_user_ok=1`. If macOS exposes the `com.apple.access_ssh` Remote Login access group, the
 report should include `ssh_access_admin_user_ok=1` and `ssh_access_openclaw_user_ok=1`; otherwise
-those fields are `skipped`. When autologin is enabled, the report should include
+those fields are `skipped`. When service mode is `user`, the report should include
 `openclaw_autologin_ok=1`. If trusted nesting is enabled, it should also include
 `trusted_brewgroup_nested_ok=1`. To expose the configured filesystem group to other systems, use:
 

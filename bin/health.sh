@@ -24,6 +24,7 @@ AGENTBOX_HEALTH_AGENTBOX_VERSION=""
 AGENTBOX_HEALTH_ADMIN_USER=""
 AGENTBOX_HEALTH_OPENCLAW_USER=""
 AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=""
+AGENTBOX_HEALTH_OPENCLAW_SERVICE_MODE="system"
 AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED="0"
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL=""
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=""
@@ -442,8 +443,9 @@ generate_report() {
   local node_cli_ok="0"
   local openclaw_cli_path=""
   local openclaw_cli_ok="0"
+  local openclaw_service_mode="${AGENTBOX_HEALTH_OPENCLAW_SERVICE_MODE:-system}"
   local openclaw_gateway_label="${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL:-${OPENCLAW_GATEWAY_LABEL}}"
-  local openclaw_gateway_launchd_loaded_ok="0"
+  local openclaw_gateway_launchd_loaded_ok="skipped"
   local openclaw_gateway_status_ok="0"
   local openclaw_gateway_tailscale_serve_route_ok="skipped"
   local openclaw_gateway_ok="0"
@@ -689,18 +691,30 @@ generate_report() {
   mark_required ripgrep_ok "${ripgrep_ok}"
 
   print_kv openclaw_auth_choice "${AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE}"
+  print_kv openclaw_service_mode "${openclaw_service_mode}"
   print_kv openclaw_gateway_label "${openclaw_gateway_label}"
   print_kv openclaw_gateway_bind "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND}"
   print_kv openclaw_gateway_tailscale_mode "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE}"
   print_kv openclaw_gateway_port "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT}"
-  if launchctl print "system/${openclaw_gateway_label}" >/dev/null 2>&1; then
-    openclaw_gateway_launchd_loaded_ok="1"
+  if [[ "${openclaw_service_mode}" == "system" ]]; then
+    openclaw_gateway_launchd_loaded_ok="0"
+    if launchctl print "system/${openclaw_gateway_label}" >/dev/null 2>&1; then
+      openclaw_gateway_launchd_loaded_ok="1"
+    fi
   fi
   openclaw_gateway_status_ok="$(openclaw_gateway_status_ok_value)"
-  if [[ "${openclaw_gateway_launchd_loaded_ok}" == "1" && "${openclaw_gateway_status_ok}" == "1" ]]; then
+  if [[ "${openclaw_service_mode}" == "system" &&
+    "${openclaw_gateway_launchd_loaded_ok}" == "1" &&
+    "${openclaw_gateway_status_ok}" == "1" ]]; then
+    openclaw_gateway_ok="1"
+  elif [[ "${openclaw_service_mode}" == "user" && "${openclaw_gateway_status_ok}" == "1" ]]; then
     openclaw_gateway_ok="1"
   fi
-  mark_required openclaw_gateway_launchd_loaded_ok "${openclaw_gateway_launchd_loaded_ok}"
+  if [[ "${openclaw_service_mode}" == "system" ]]; then
+    mark_required openclaw_gateway_launchd_loaded_ok "${openclaw_gateway_launchd_loaded_ok}"
+  else
+    print_kv openclaw_gateway_launchd_loaded_ok "${openclaw_gateway_launchd_loaded_ok}"
+  fi
   mark_required openclaw_gateway_status_ok "${openclaw_gateway_status_ok}"
   mark_required openclaw_gateway_ok "${openclaw_gateway_ok}"
 

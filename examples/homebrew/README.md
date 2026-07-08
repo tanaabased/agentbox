@@ -27,8 +27,7 @@ boot.sh \
   --brewgroup "bobsbrewcrew:staff" \
   --openclaw-identity "Bob Homebrew Claw <bob>" \
   --openclaw-password "BobHomebrewClawPass1!" \
-  --openclaw-auth-choice skip \
-  --skip-openclaw-autologin
+  --openclaw-auth-choice skip
 ```
 
 ## Testing

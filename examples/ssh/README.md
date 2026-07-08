@@ -28,7 +28,6 @@ boot.sh \
   --openclaw-identity "Sam SSH Claw <sam>" \
   --openclaw-password "SamSSHClawPass1!" \
   --openclaw-auth-choice skip \
-  --skip-openclaw-autologin \
   --authorized-key "file:$TMPDIR/id_agentbox_ssh_file.pub" \
   --authorized-key "$(cat "$TMPDIR/id_agentbox_ssh_raw.pub")"
 ```

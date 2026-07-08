@@ -20,8 +20,7 @@ AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh \
   --agentbox-version "$GITHUB_WORKSPACE" \
   --brewgroup off \
   --openclaw-identity "Tess Tailscale Claw <tess>" \
-  --openclaw-password "TessTailscaleClawPass1!" \
-  --skip-openclaw-autologin
+  --openclaw-password "TessTailscaleClawPass1!"
 ```
 
 ## Testing

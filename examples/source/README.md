@@ -21,7 +21,6 @@ boot.sh \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-password "SourceOpenClawPass1!" \
-  --skip-openclaw-autologin \
   --hostname "TANAABAGENTBOXSOURCE"
 git -C "$HOME/tanaab/agentbox" config --get remote.origin.url > "$TMPDIR/agentbox.local.origin"
 
@@ -37,7 +36,6 @@ boot.sh \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-password "SourceOpenClawPass1!" \
-  --skip-openclaw-autologin \
   --hostname "TANAABAGENTBOXSOURCE"
 ```
 

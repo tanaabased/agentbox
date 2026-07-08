@@ -39,8 +39,8 @@ boot.sh --help | grep -F -- "--openclaw-identity"
 boot.sh --help | grep -F -- "--openclaw-password"
 boot.sh --help | grep -F -- "--openclaw-auth-choice"
 boot.sh --help | grep -F -- "--openclaw-auth-env"
+boot.sh --help | grep -F -- "--openclaw-service-mode"
 boot.sh --help | grep -F -- "--openclaw-gateway-port"
-boot.sh --help | grep -F -- "--skip-openclaw-autologin"
 
 # should document operational options
 boot.sh --help | grep -F -- "--version"
@@ -61,7 +61,7 @@ boot.sh --help | grep -F "AGENTBOX_BREWGROUP             same as --brewgroup"
 # should document openclaw runner environment variables
 boot.sh --help | grep -F "AGENTBOX_OPENCLAW_IDENTITY     same as --openclaw-identity"
 boot.sh --help | grep -F "AGENTBOX_OPENCLAW_PASSWORD     same as --openclaw-password"
-boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN    falsey disables openclaw runner autologin"
+boot.sh --help | grep -F "AGENTBOX_OPENCLAW_SERVICE_MODE same as --openclaw-service-mode"
 boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice"
 boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env"
 boot.sh --help | grep -F "AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port"
@@ -100,8 +100,10 @@ if boot.sh --help | grep -F "AGENTBOX_BREW_GROUP"; then exit 1; fi
 if boot.sh --help | grep -F -- "--trusted-brewgroup"; then exit 1; fi
 if boot.sh --help | grep -F "AGENTBOX_TRUSTED_BREWGROUP"; then exit 1; fi
 
-# should not expose alternate openclaw autologin spelling
+# should not expose openclaw autologin controls
+if boot.sh --help | grep -F -- "--skip-openclaw-autologin"; then exit 1; fi
 if boot.sh --help | grep -F -- "--skip-openclaw-auto-login"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN"; then exit 1; fi
 if boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTO_LOGIN"; then exit 1; fi
 
 # should not expose skipped openclaw onboarding controls
@@ -162,10 +164,11 @@ boot.sh --help | grep -F -- "[default: none]"
 AGENTBOX_OPENCLAW_PASSWORD="secret-password" boot.sh --help | grep -F -- "--openclaw-password         sets the openclaw runner password"
 AGENTBOX_OPENCLAW_PASSWORD="secret-password" boot.sh --help | grep -F "[default: provided]"
 if AGENTBOX_OPENCLAW_PASSWORD="secret-password" boot.sh --help | grep -F "secret-password"; then exit 1; fi
-AGENTBOX_OPENCLAW_AUTOLOGIN=off boot.sh --help | grep -F -- "--skip-openclaw-autologin   skips default openclaw runner autologin"
-boot.sh --skip-openclaw-autologin --help | grep -F -- "--skip-openclaw-autologin   skips default openclaw runner autologin"
-if AGENTBOX_OPENCLAW_AUTOLOGIN=off boot.sh --help | grep -F -- "--skip-openclaw-autologin" | grep -F "[default:"; then exit 1; fi
-if boot.sh --skip-openclaw-autologin --help | grep -F -- "--skip-openclaw-autologin" | grep -F "[default:"; then exit 1; fi
+boot.sh --help | grep -F -- "--openclaw-service-mode     sets openclaw gateway supervision mode"
+boot.sh --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: system]"
+AGENTBOX_OPENCLAW_SERVICE_MODE=user boot.sh --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: user]"
+AGENTBOX_OPENCLAW_SERVICE_MODE=user boot.sh --openclaw-service-mode system --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: system]"
+if AGENTBOX_OPENCLAW_SERVICE_MODE=user boot.sh --openclaw-service-mode system --help | grep -F "[default: user]"; then exit 1; fi
 
 # should show openclaw identity input precedence
 AGENTBOX_OPENCLAW_IDENTITY="Env Input Claw <envinput>" boot.sh --help | grep -F "Env Input Claw <envinput>"
@@ -201,7 +204,7 @@ test "$command_status" -ne 0
 
 # should fail when openclaw identity syntax is malformed
 set +e
-output="$(boot.sh --tailscale-authkey off --brewgroup off --openclaw-identity "Missing Shortname" --skip-openclaw-autologin 2>&1)"
+output="$(boot.sh --tailscale-authkey off --brewgroup off --openclaw-identity "Missing Shortname" 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -247,7 +250,6 @@ output="$(FUTURE_OPENCLAW_API_KEY=test-value boot.sh \
   --openclaw-auth-choice future-api-key \
   --openclaw-auth-env future-openclaw-api-key \
   --openclaw-identity "Invalid Env Claw <invalidenv>" \
-  --skip-openclaw-autologin \
   2>&1)"
 command_status="$?"
 set -e
@@ -263,7 +265,6 @@ output="$(FUTURE_OPENCLAW_API_KEY=test-value boot.sh \
   --openclaw-auth-choice skip \
   --openclaw-auth-env FUTURE_OPENCLAW_API_KEY \
   --openclaw-identity "Skipped Env Claw <skippedenv>" \
-  --skip-openclaw-autologin \
   2>&1)"
 command_status="$?"
 set -e
@@ -279,7 +280,6 @@ output="$(env -u FUTURE_OPENCLAW_API_KEY boot.sh \
   --openclaw-auth-choice future-api-key \
   --openclaw-auth-env FUTURE_OPENCLAW_API_KEY \
   --openclaw-identity "Missing Env Claw <missingenv>" \
-  --skip-openclaw-autologin \
   2>&1)"
 command_status="$?"
 set -e
@@ -295,7 +295,6 @@ output="$(env -u OPENAI_API_KEY boot.sh \
   --brewgroup off \
   --openclaw-auth-choice openai-api-key \
   --openclaw-identity "Missing Key Claw <missingkey>" \
-  --skip-openclaw-autologin \
   2>&1)"
 command_status="$?"
 set -e
@@ -313,6 +312,35 @@ set -e
 printf "%s\n" "$output"
 printf "%s\n" "$output" | grep -F "option --openclaw-gateway-port must not be empty."
 printf "%s\n" "$output" | grep -F "Usage:"
+test "$command_status" -ne 0
+
+# should fail when openclaw service mode is missing
+set +e
+output="$(boot.sh --openclaw-service-mode 2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "option --openclaw-service-mode requires a value."
+printf "%s\n" "$output" | grep -F "Usage:"
+test "$command_status" -ne 0
+
+# should fail when openclaw service mode is empty
+set +e
+output="$(boot.sh --openclaw-service-mode= 2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "option --openclaw-service-mode must not be empty."
+printf "%s\n" "$output" | grep -F "Usage:"
+test "$command_status" -ne 0
+
+# should fail when openclaw service mode is invalid
+set +e
+output="$(boot.sh --tailscale-authkey off --brewgroup off --openclaw-service-mode launch-agent 2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "openclaw service mode launch-agent must be system or user."
 test "$command_status" -ne 0
 
 # should fail when openclaw password value is empty

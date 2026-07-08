@@ -35,7 +35,6 @@ boot.sh \
   --tailscale-authkey off \
   --brewgroup "tedsbrewclub" \
   --openclaw-identity "Ted Existing Claw <ted>" \
-  --skip-openclaw-autologin \
   --authorized-key "file:$TMPDIR/id_agentbox_users_existing.pub" \
   --hostname "TANAABAGENTBOXUSERSEXISTING"
 ```
@@ -54,7 +53,8 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 # should preserve the openclaw runner profile picture
 test "$(dscl . -read /Users/ted Picture | cut -d " " -f 2-)" = "$GITHUB_WORKSPACE/assets/agentbox-dark.png"
 
-# should keep openclaw runner autologin skipped
+# should use system openclaw service mode
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=system"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
 

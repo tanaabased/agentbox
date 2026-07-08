@@ -18,6 +18,7 @@ BOOTBOX_URL="https://bootbox.tanaab.sh/bootbox.sh"
 DEFAULT_AGENTBOX_HOSTNAME="TANAABAGENTBOX1"
 DEFAULT_BREWGROUP="brewer"
 DEFAULT_OPENCLAW_IDENTITY="A Tanaab-based Claw <openclaw>"
+DEFAULT_OPENCLAW_SERVICE_MODE="system"
 DEFAULT_OPENCLAW_GATEWAY_PORT="18789"
 DEFAULT_OPENCLAW_AUTH_CHOICE="skip"
 AGENTBOX_OPT_DIR="/opt/tanaab/agentbox"
@@ -275,7 +276,7 @@ OPENCLAW_IDENTITY_INPUT="${AGENTBOX_OPENCLAW_IDENTITY:-${DEFAULT_OPENCLAW_IDENTI
 OPENCLAW_FULL_NAME=""
 OPENCLAW_USER=""
 OPENCLAW_PASSWORD="${AGENTBOX_OPENCLAW_PASSWORD:-}"
-OPENCLAW_AUTOLOGIN_INPUT="${AGENTBOX_OPENCLAW_AUTOLOGIN:-1}"
+OPENCLAW_SERVICE_MODE="${AGENTBOX_OPENCLAW_SERVICE_MODE:-${DEFAULT_OPENCLAW_SERVICE_MODE}}"
 OPENCLAW_GATEWAY_BIND_VALUE="loopback"
 OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE=""
 OPENCLAW_GATEWAY_PORT="${AGENTBOX_OPENCLAW_GATEWAY_PORT:-${DEFAULT_OPENCLAW_GATEWAY_PORT}}"
@@ -376,7 +377,7 @@ brewgroup_display() {
 }
 
 openclaw_autologin_enabled() {
-  ! value_disabled "${OPENCLAW_AUTOLOGIN_INPUT:-1}"
+  [[ "${OPENCLAW_SERVICE_MODE}" == "user" ]]
 }
 
 openclaw_autologin_display() {
@@ -385,6 +386,10 @@ openclaw_autologin_display() {
   else
     printf "disabled"
   fi
+}
+
+openclaw_service_mode_display() {
+  printf "%s" "${OPENCLAW_SERVICE_MODE}"
 }
 
 openclaw_password_display() {
@@ -822,6 +827,21 @@ openclaw_gateway_port_valid() {
   (( 10#${port} >= 1 && 10#${port} <= 65535 ))
 }
 
+openclaw_service_mode_valid() {
+  case "${1:-}" in
+    system | user)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+openclaw_service_mode_is_system() {
+  [[ "${OPENCLAW_SERVICE_MODE}" == "system" ]]
+}
+
 derive_openclaw_gateway_tailscale_mode() {
   if tailscale_setup_disabled; then
     OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE="off"
@@ -938,6 +958,7 @@ usage() {
   local tailscale_authkey_display_value="none"
   local brewgroup_display_value="none"
   local openclaw_password_display_value="none"
+  local openclaw_service_mode_display_value="${DEFAULT_OPENCLAW_SERVICE_MODE}"
   local openclaw_gateway_port_display_value="${DEFAULT_OPENCLAW_GATEWAY_PORT}"
   local openclaw_auth_choice_display_value="${DEFAULT_OPENCLAW_AUTH_CHOICE}"
   local openclaw_auth_env_display_value="none"
@@ -955,6 +976,7 @@ usage() {
   tailscale_authkey_display_value="$(tailscale_authkey_display)"
   brewgroup_display_value="$(brewgroup_display)"
   openclaw_password_display_value="$(openclaw_password_display)"
+  openclaw_service_mode_display_value="$(openclaw_service_mode_display)"
   openclaw_gateway_port_display_value="$(openclaw_gateway_port_display)"
   openclaw_auth_choice_display_value="$(openclaw_auth_choice_display)"
   openclaw_auth_env_display_value="$(openclaw_auth_env_display)"
@@ -976,11 +998,11 @@ EOS
   usage_option "--tailscale-authkey" "uses a tailscale auth key to join; falsey disables setup" "${tailscale_authkey_display_value}"
   usage_option "--brewgroup" "manages homebrew prefix group write access; accepts group[:trusted-group]; falsey disables setup" "${brewgroup_display_value}"
   usage_option "--openclaw-identity" "configures the openclaw runner as \"full name <shortname>\"" "${OPENCLAW_IDENTITY_INPUT}"
-  usage_option "--openclaw-password" "sets the openclaw runner password for user creation or autologin" "${openclaw_password_display_value}"
+  usage_option "--openclaw-password" "sets the openclaw runner password for user creation or user service autologin" "${openclaw_password_display_value}"
+  usage_option "--openclaw-service-mode" "sets openclaw gateway supervision mode: system or user" "${openclaw_service_mode_display_value}"
   usage_option "--openclaw-auth-choice" "sets initial openclaw model auth choice" "${openclaw_auth_choice_display_value}"
   usage_option "--openclaw-auth-env" "passes one extra parent env var to openclaw auth onboarding" "${openclaw_auth_env_display_value}"
   usage_option "--openclaw-gateway-port" "sets openclaw gateway port" "${openclaw_gateway_port_display_value}"
-  usage_option "--skip-openclaw-autologin" "skips default openclaw runner autologin"
   usage_option "--version" "shows version of this script"
   usage_option "--debug" "shows debug messages" "${debug_display}"
   usage_option "--force" "forces supported replacement operations" "${force_display}"
@@ -998,7 +1020,7 @@ ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_BREWGROUP             same as --brewgroup
   AGENTBOX_OPENCLAW_IDENTITY     same as --openclaw-identity
   AGENTBOX_OPENCLAW_PASSWORD     same as --openclaw-password
-  AGENTBOX_OPENCLAW_AUTOLOGIN    falsey disables openclaw runner autologin
+  AGENTBOX_OPENCLAW_SERVICE_MODE same as --openclaw-service-mode
   AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice
   AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env
   AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port
@@ -1178,6 +1200,16 @@ parse_args() {
         OPENCLAW_AUTH_ENV="${1#*=}"
         shift
         ;;
+      --openclaw-service-mode)
+        require_next_option_value "--openclaw-service-mode" "$#"
+        OPENCLAW_SERVICE_MODE="$2"
+        shift 2
+        ;;
+      --openclaw-service-mode=*)
+        require_inline_option_value "--openclaw-service-mode" "${1#*=}"
+        OPENCLAW_SERVICE_MODE="${1#*=}"
+        shift
+        ;;
       --openclaw-gateway-port)
         require_next_option_value "--openclaw-gateway-port" "$#"
         OPENCLAW_GATEWAY_PORT="$2"
@@ -1186,10 +1218,6 @@ parse_args() {
       --openclaw-gateway-port=*)
         require_inline_option_value "--openclaw-gateway-port" "${1#*=}"
         OPENCLAW_GATEWAY_PORT="${1#*=}"
-        shift
-        ;;
-      --skip-openclaw-autologin)
-        OPENCLAW_AUTOLOGIN_INPUT="0"
         shift
         ;;
       --force)
@@ -1728,10 +1756,9 @@ openclaw_password_required() {
 abort_missing_openclaw_password() {
   local reason="$1"
 
-  abort_multi "$(cat <<EOABORT
+abort_multi "$(cat <<EOABORT
 openclaw runner password is required to ${reason}.
 set ${tty_bold}AGENTBOX_OPENCLAW_PASSWORD${tty_reset}, pass ${tty_bold}--openclaw-password${tty_reset}, or rerun interactively so agentbox can prompt without echoing the password.
-use ${tty_bold}--skip-openclaw-autologin${tty_reset} only when autologin should be disabled; creating a new runner user still requires a password.
 EOABORT
 )"
 }
@@ -1885,7 +1912,7 @@ create_openclaw_user() {
 
 ensure_openclaw_autologin() {
   if ! openclaw_autologin_enabled; then
-    log "${tty_tp}skipping${tty_reset} openclaw runner autologin because it is disabled"
+    log "${tty_tp}skipping${tty_reset} openclaw runner autologin because openclaw service mode is ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}"
     return 0
   fi
 
@@ -1899,11 +1926,11 @@ ensure_openclaw_autologin() {
   log "${tty_tp}configuring${tty_reset} openclaw runner autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}"
   debug "${tty_tp}running${tty_reset}" sudo sysadminctl -autologin set -userName "${OPENCLAW_USER}" -password "****"
   if ! sudo sysadminctl -autologin set -userName "${OPENCLAW_USER}" -password "${OPENCLAW_PASSWORD}"; then
-    abort "failed to configure openclaw runner autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}; rerun with ${tty_bold}--skip-openclaw-autologin${tty_reset} if this mac should not use gui autologin."
+    abort "failed to configure openclaw runner autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}; use ${tty_bold}--openclaw-service-mode system${tty_reset} if this mac should not use gui autologin."
   fi
 
   if ! openclaw_autologin_configured; then
-    abort "openclaw runner autologin did not become active for ${tty_ts}${OPENCLAW_USER}${tty_reset}; rerun with ${tty_bold}--skip-openclaw-autologin${tty_reset} if this mac should not use gui autologin."
+    abort "openclaw runner autologin did not become active for ${tty_ts}${OPENCLAW_USER}${tty_reset}; use ${tty_bold}--openclaw-service-mode system${tty_reset} if this mac should not use gui autologin."
   fi
 }
 
@@ -2316,6 +2343,7 @@ AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE=$(shell_quote "${AGENTBOX_HOMEBREW_PATHS_FIL
 AGENTBOX_HEALTH_ADMIN_USER=$(shell_quote "${ADMIN_USER}")
 AGENTBOX_HEALTH_OPENCLAW_USER=$(shell_quote "${OPENCLAW_USER}")
 AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=$(shell_quote "${OPENCLAW_FULL_NAME}")
+AGENTBOX_HEALTH_OPENCLAW_SERVICE_MODE=$(shell_quote "${OPENCLAW_SERVICE_MODE}")
 AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED=${openclaw_autologin_expected}
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL=$(shell_quote "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}")
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=$(shell_quote "${OPENCLAW_GATEWAY_BIND_VALUE}")
@@ -2729,6 +2757,7 @@ EOABORT
 validate_inputs_before_sudo() {
   TAILSCALE_AUTHKEY="$(trim_whitespace "${TAILSCALE_AUTHKEY}")"
   OPENCLAW_IDENTITY_INPUT="$(trim_whitespace "${OPENCLAW_IDENTITY_INPUT}")"
+  OPENCLAW_SERVICE_MODE="$(trim_whitespace "${OPENCLAW_SERVICE_MODE}")"
   OPENCLAW_GATEWAY_PORT="$(trim_whitespace "${OPENCLAW_GATEWAY_PORT}")"
   OPENCLAW_AUTH_CHOICE="$(trim_whitespace "${OPENCLAW_AUTH_CHOICE}")"
   OPENCLAW_AUTH_ENV="$(trim_whitespace "${OPENCLAW_AUTH_ENV}")"
@@ -2741,6 +2770,10 @@ validate_inputs_before_sudo() {
 
   if [[ "${OPENCLAW_AUTH_CHOICE}" =~ [[:space:]] ]]; then
     abort "openclaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} must not contain whitespace."
+  fi
+
+  if ! openclaw_service_mode_valid "${OPENCLAW_SERVICE_MODE}"; then
+    abort "openclaw service mode ${tty_ts}${OPENCLAW_SERVICE_MODE:-empty}${tty_reset} must be ${tty_ts}system${tty_reset} or ${tty_ts}user${tty_reset}."
   fi
 
   if [[ -n "${OPENCLAW_AUTH_ENV}" ]] && ! env_name_valid "${OPENCLAW_AUTH_ENV}"; then
@@ -2996,9 +3029,9 @@ plan_wrapper_execution() {
     plan_action "${tty_tp}create${tty_reset} non-admin openclaw runner user ${tty_ts}${OPENCLAW_FULL_NAME} <${OPENCLAW_USER}>${tty_reset}"
   fi
   if openclaw_autologin_enabled; then
-    plan_action "${tty_tp}ensure${tty_reset} openclaw runner autologin is configured for ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+    plan_action "${tty_tp}ensure${tty_reset} openclaw runner autologin is configured for ${tty_ts}${OPENCLAW_USER}${tty_reset} because openclaw service mode is ${tty_ts}user${tty_reset}"
   else
-    plan_action "${tty_tp}skip${tty_reset} openclaw runner autologin because ${tty_bold}--skip-openclaw-autologin${tty_reset} is set or ${tty_bold}AGENTBOX_OPENCLAW_AUTOLOGIN${tty_reset} is falsey"
+    plan_action "${tty_tp}skip${tty_reset} openclaw runner autologin because openclaw service mode is ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}"
   fi
   if brewgroup_setup_disabled; then
     plan_action "${tty_tp}skip${tty_reset} homebrew brewgroup setup because the brewgroup input is disabled"
@@ -3021,8 +3054,12 @@ plan_wrapper_execution() {
   else
     plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, tailscale serve prerequisites, and scoped magicdns resolver"
   fi
-  plan_action "${tty_tp}onboard${tty_reset} openclaw gateway config in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
-  plan_action "${tty_tp}install or refresh${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
+  plan_action "${tty_tp}onboard${tty_reset} openclaw gateway config in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  if openclaw_service_mode_is_system; then
+    plan_action "${tty_tp}install or refresh${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
+  else
+    plan_action "${tty_tp}delegate${tty_reset} openclaw gateway service install to openclaw native user service management"
+  fi
   plan_action "${tty_tp}verify${tty_reset} openclaw gateway readiness and configured tailscale exposure"
   plan_action "${tty_tp}install or refresh${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
   plan_action "${tty_tp}print${tty_reset} a nonfatal post-bootstrap health summary"
@@ -3769,10 +3806,15 @@ run_openclaw_gateway_onboarding() {
     --skip-skills
     --skip-ui
     --skip-hooks
-    --no-install-daemon
     --skip-health
     --suppress-gateway-token-output
   )
+
+  if openclaw_service_mode_is_system; then
+    openclaw_args+=(--no-install-daemon)
+  else
+    openclaw_args+=(--install-daemon)
+  fi
 
   if noninteractive_mode_enabled; then
     openclaw_args+=(--non-interactive --accept-risk --json)
@@ -3785,7 +3827,7 @@ run_openclaw_gateway_onboarding() {
     fi
   fi
 
-  log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode with loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode with service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   OPENCLAW_RUNNER_EXTRA_ENV_NAMES="${onboarding_env_names}" \
     OPENCLAW_RUNNER_STDIN_PATH="${runner_stdin_path}" \
     OPENCLAW_RUNNER_STDOUT_PATH="${runner_stdout_path}" \
@@ -3935,11 +3977,21 @@ print_openclaw_gateway_failure_diagnostics() {
     print_diagnostic_block "tailscale serve status:" "${serve_output}"
   fi
 
-  launchd_output="$(sudo launchctl print "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" 2>&1 || true)"
-  print_diagnostic_block "agentbox openclaw gateway launchd daemon state:" "${launchd_output}"
+  if openclaw_service_mode_is_system; then
+    launchd_output="$(sudo launchctl print "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" 2>&1 || true)"
+    print_diagnostic_block "agentbox openclaw gateway launchd daemon state:" "${launchd_output}"
 
-  print_openclaw_gateway_log_tail "openclaw gateway stderr" "${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
-  print_openclaw_gateway_log_tail "openclaw gateway stdout" "${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
+    print_openclaw_gateway_log_tail "openclaw gateway stderr" "${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
+    print_openclaw_gateway_log_tail "openclaw gateway stdout" "${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
+  fi
+}
+
+openclaw_gateway_failure_remediation() {
+  if openclaw_service_mode_is_system; then
+    printf "inspect %s/openclaw-gateway.stderr.log." "${AGENTBOX_LOG_DIR}"
+  else
+    printf "ensure %s has a logged-in macos gui session for openclaw's native user service, or rerun with --openclaw-service-mode system." "${OPENCLAW_USER}"
+  fi
 }
 
 wait_for_openclaw_gateway_status() {
@@ -3961,7 +4013,7 @@ wait_for_openclaw_gateway_status() {
   output="$(run_as_openclaw_runner "${openclaw_bin}" gateway status --require-rpc --timeout 10000 2>&1 || true)"
   debug "${tty_tp}openclaw gateway status output${tty_reset}" "${output}"
   print_openclaw_gateway_failure_diagnostics "${output}"
-  abort "openclaw gateway status did not become ready for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}; inspect ${tty_ts}${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log${tty_reset}."
+  abort "openclaw gateway status did not become ready for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}; $(openclaw_gateway_failure_remediation)"
 }
 
 wait_for_openclaw_gateway_tailscale_serve_route() {
@@ -3987,7 +4039,7 @@ wait_for_openclaw_gateway_tailscale_serve_route() {
   output="$(run_as_openclaw_runner "${openclaw_bin}" gateway status --require-rpc --timeout 10000 2>&1 || true)"
   debug "${tty_tp}openclaw gateway status output${tty_reset}" "${output}"
   print_openclaw_gateway_failure_diagnostics "${output}"
-  abort "openclaw gateway tailscale serve route did not become ready for port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}; inspect ${tty_ts}${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log${tty_reset}."
+  abort "openclaw gateway tailscale serve route did not become ready for port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}; $(openclaw_gateway_failure_remediation)"
 }
 
 run_agentbox_openclaw_gateway_setup() {
@@ -3997,8 +4049,12 @@ run_agentbox_openclaw_gateway_setup() {
   resolve_brew_prefix
   openclaw_bin="$(openclaw_bin_path)"
   run_openclaw_gateway_onboarding "${openclaw_bin}"
-  log "${tty_tp}installing${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
-  run_agentbox_openclaw_gateway_launchd_setup
+  if openclaw_service_mode_is_system; then
+    log "${tty_tp}installing${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
+    run_agentbox_openclaw_gateway_launchd_setup
+  else
+    log "${tty_tp}using${tty_reset} openclaw native user service for gateway supervision"
+  fi
   wait_for_openclaw_gateway_status "${openclaw_bin}"
   wait_for_openclaw_gateway_tailscale_serve_route "${openclaw_bin}"
 }
@@ -4027,7 +4083,8 @@ main() {
   debug raw AGENTBOX_BREWGROUP="$(brewgroup_display)"
   debug raw AGENTBOX_OPENCLAW_IDENTITY="${OPENCLAW_FULL_NAME} <${OPENCLAW_USER}>"
   debug raw AGENTBOX_OPENCLAW_PASSWORD="$(openclaw_password_display)"
-  debug raw AGENTBOX_OPENCLAW_AUTOLOGIN="$(openclaw_autologin_display)"
+  debug raw AGENTBOX_OPENCLAW_SERVICE_MODE="${OPENCLAW_SERVICE_MODE}"
+  debug raw OPENCLAW_AUTOLOGIN="$(openclaw_autologin_display)"
   debug raw OPENCLAW_ONBOARDING_MODE="$(openclaw_onboarding_mode_display)"
   debug raw AGENTBOX_OPENCLAW_AUTH_CHOICE="${OPENCLAW_AUTH_CHOICE}"
   debug raw AGENTBOX_OPENCLAW_AUTH_ENV="$(openclaw_auth_env_display)"

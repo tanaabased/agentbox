@@ -22,8 +22,7 @@ boot.sh \
   --brewgroup off \
   --openclaw-identity "Luna Fresh Claw <luna>" \
   --openclaw-password "LunaFreshClawPass1!" \
-  --openclaw-auth-choice skip \
-  --skip-openclaw-autologin
+  --openclaw-auth-choice skip
 ```
 
 ## Testing
@@ -38,7 +37,8 @@ test "$(stat -f "%Su" /Users/luna)" = "luna"
 # should report the openclaw runner as non-admin
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
 
-# should keep openclaw runner autologin skipped
+# should use system openclaw service mode
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=system"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
 
