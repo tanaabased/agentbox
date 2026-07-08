@@ -10,14 +10,13 @@ launchd.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should run boot.sh successfully with a new custom openclaw runner
 boot.sh \
   --force \
   --hostname "TANAABAGENTBOXUSERSCUSTOM" \
-  --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-identity "Luna Fresh Claw <luna>" \

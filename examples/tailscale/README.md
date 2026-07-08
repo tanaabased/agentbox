@@ -10,14 +10,13 @@ Homebrew state, SSH, launchd, and OpenClaw.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should run boot.sh successfully with tailscale disabled
 AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh \
   --force \
   --hostname "TANAABAGENTBOXTAILSCALE" \
-  --agentbox-version "$GITHUB_WORKSPACE" \
   --brewgroup off \
   --openclaw-identity "Tess Tailscale Claw <tess>" \
   --openclaw-password "TessTailscaleClawPass1!"

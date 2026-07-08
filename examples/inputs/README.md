@@ -21,9 +21,7 @@ boot.sh --help | grep -F "[CI=1]"
 boot.sh --help | grep -F "[AGENTBOX_*...]"
 boot.sh --help | grep -F "boot.sh [options]"
 
-# should document source selection options
-boot.sh --help | grep -F -- "--agentbox-version"
-boot.sh --help | grep -F "tar archive url/path"
+# should document brewfile options
 boot.sh --help | grep -F -- "--brewfile"
 boot.sh --help | grep -F "local path or url"
 
@@ -48,8 +46,7 @@ boot.sh --help | grep -F -- "--debug"
 boot.sh --help | grep -F -- "--force"
 boot.sh --help | grep -F -- "--yes"
 
-# should document source selection environment variables
-boot.sh --help | grep -F "AGENTBOX_VERSION               same as --agentbox-version"
+# should document brewfile environment variables
 boot.sh --help | grep -F "AGENTBOX_BREWFILE              same as --brewfile"
 
 # should document host access environment variables
@@ -75,6 +72,11 @@ if boot.sh --help | grep -F -- "--ci"; then exit 1; fi
 
 # should keep the unsupported macos override out of help
 if boot.sh --help | grep -F "AGENTBOX_ALLOW_UNSUPPORTED_MACOS"; then exit 1; fi
+
+# should keep hidden payload controls out of help
+if boot.sh --help | grep -F -- "--agentbox-version"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_VERSION"; then exit 1; fi
+if boot.sh --help | grep -F "AGENTBOX_PAYLOAD_DIR"; then exit 1; fi
 
 # should keep hidden plural authorized-key inputs out of help
 if boot.sh --help | grep -F -- "--authorized-keys"; then exit 1; fi
@@ -302,6 +304,16 @@ printf "%s\n" "$output"
 printf "%s\n" "$output" | grep -F "openclaw auth choice openai-api-key requires one of these parent environment variables"
 printf "%s\n" "$output" | grep -F "OPENAI_API_KEY"
 printf "%s\n" "$output" | grep -F "https://docs.openclaw.ai/providers"
+test "$command_status" -ne 0
+
+# should fail when removed agentbox version option is used
+set +e
+output="$(boot.sh --agentbox-version 1.2.3 2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "unrecognized option --agentbox-version"
+printf "%s\n" "$output" | grep -F "Usage:"
 test "$command_status" -ne 0
 
 # should fail when openclaw gateway port is empty

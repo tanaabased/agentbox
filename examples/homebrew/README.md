@@ -10,8 +10,8 @@ OpenClaw.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should run boot.sh successfully with homebrew options
 mkdir -p "$TMPDIR"
@@ -20,7 +20,6 @@ printf 'brew "tree"\n' > "$TMPDIR/Brewfile.extra-url"
 boot.sh \
   --force \
   --hostname "TANAABAGENTBOXHOMEBREW" \
-  --agentbox-version "$GITHUB_WORKSPACE" \
   --brewfile "$TMPDIR/Brewfile.extra-local" \
   --brewfile "file://$TMPDIR/Brewfile.extra-url" \
   --tailscale-authkey off \

@@ -1,6 +1,7 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
-- Added `--agentbox-version` support for HTTPS tar archive URLs and local tar archives.
+- Added automatic agentbox payload resolution so `boot.sh` uses source-relative payloads during
+  development and matching release archive payloads for hosted releases.
 - Added `--brewfile` and `AGENTBOX_BREWFILE` for optional extra Bootbox Brewfiles.
 - Added `Brewfile.extras` for optional Codex, Codex App, OpenClaw, and Warp casks.
 - Added gateway-only OpenClaw onboarding, OpenClaw gateway configuration, an agentbox-owned gateway

@@ -1,8 +1,8 @@
 # Source Example
 
-This example verifies source selection and replacement for a local git checkout and a local
-`agentbox` tar archive. It is intended for CI by default because it mutates system settings,
-Homebrew state, SSH, OpenClaw, and launchd.
+This example verifies that CI runs `boot.sh` with an explicit agentbox payload directory and that
+runtime files come from that payload. It is intended for CI by default because it mutates system
+settings, Homebrew state, SSH, OpenClaw, and launchd.
 
 ## Setup
 
@@ -10,29 +10,13 @@ Homebrew state, SSH, OpenClaw, and launchd.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
+test "$AGENTBOX_PAYLOAD_DIR" = "$GITHUB_WORKSPACE"
 
-# should install from the local git source
-mkdir -p "$TMPDIR"
+# should run boot.sh successfully with the workflow payload
 boot.sh \
   --force \
-  --agentbox-version "$GITHUB_WORKSPACE" \
-  --tailscale-authkey off \
-  --brewgroup off \
-  --openclaw-password "SourceOpenClawPass1!" \
-  --hostname "TANAABAGENTBOXSOURCE"
-git -C "$HOME/tanaab/agentbox" config --get remote.origin.url > "$TMPDIR/agentbox.local.origin"
-
-# should replace the checkout from a local archive
-git -C "$GITHUB_WORKSPACE" archive \
-  --format=tar.gz \
-  --prefix=agentbox-current/ \
-  --output="$TMPDIR/agentbox-current.tar.gz" \
-  HEAD
-boot.sh \
-  --force \
-  --agentbox-version "$TMPDIR/agentbox-current.tar.gz" \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-password "SourceOpenClawPass1!" \
@@ -42,22 +26,20 @@ boot.sh \
 ## Testing
 
 ```bash
-# should record the local git source
-grep -Fx "$GITHUB_WORKSPACE" "$TMPDIR/agentbox.local.origin"
+# should install the health script from the workflow payload
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/bin/health.sh" /opt/tanaab/agentbox/bin/health.sh
 
-# should extract source files from the local archive
-test -f "$HOME/tanaab/agentbox/boot.sh"
-! test -d "$HOME/tanaab/agentbox/.git"
+# should satisfy the workflow payload brewfile
+brew bundle check --file "$AGENTBOX_PAYLOAD_DIR/Brewfile" --no-upgrade
 
-# should extract profile picture assets from the local archive
-test -f "$HOME/tanaab/agentbox/assets/profile1.png"
-test -f "$HOME/tanaab/agentbox/assets/profile8.png"
+# should keep payload profile picture assets available
+test -f "$AGENTBOX_PAYLOAD_DIR/assets/profile1.png"
+test -f "$AGENTBOX_PAYLOAD_DIR/assets/profile8.png"
 
-# should extract runtime support assets from the local archive
-test -f "$HOME/tanaab/agentbox/bin/health.sh"
-test -f "$HOME/tanaab/agentbox/launchd/dev.tanaab.agentbox.health.plist.in"
-test -f "$HOME/tanaab/agentbox/launchd/dev.tanaab.agentbox.tailscaled.plist.in"
-test -f "$HOME/tanaab/agentbox/launchd/dev.tanaab.agentbox.openclaw-gateway.plist.in"
+# should keep payload launchd templates available
+test -f "$AGENTBOX_PAYLOAD_DIR/launchd/dev.tanaab.agentbox.health.plist.in"
+test -f "$AGENTBOX_PAYLOAD_DIR/launchd/dev.tanaab.agentbox.tailscaled.plist.in"
+test -f "$AGENTBOX_PAYLOAD_DIR/launchd/dev.tanaab.agentbox.openclaw-gateway.plist.in"
 
 # should pass the overall agentbox health check
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"

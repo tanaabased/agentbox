@@ -14,7 +14,8 @@ contract.
 
 **What current releases do**
 
-- Materializes this repo at `~/tanaab/agentbox` through the hosted `boot.sh` wrapper.
+- Uses a release-matched or source-relative agentbox payload for the core Brewfile and runtime
+  assets.
 - Applies the repo [`Brewfile`](./Brewfile) through
   [Bootbox](https://github.com/tanaabased/bootbox).
 - Can append extra local or URL Brewfiles, such as [`Brewfile.extras`](./Brewfile.extras), after
@@ -134,33 +135,15 @@ agentbootbox \
   --hostname TANAABAGENTBOX1
 ```
 
-Use `--agentbox-version` to install a tagged release, local source checkout, or tar archive instead
-of cloning the default branch:
-
-```sh
-agentbootbox \
-  --tailscale-authkey "$TS_AUTHKEY" \
-  --agentbox-version 1.2.3 \
-  --hostname TANAABAGENTBOX1
-
-agentbootbox \
-  --tailscale-authkey "$TS_AUTHKEY" \
-  --agentbox-version https://api.github.com/repos/tanaabased/agentbox/tarball \
-  --hostname TANAABAGENTBOX1
-
-agentbootbox \
-  --tailscale-authkey "$TS_AUTHKEY" \
-  --agentbox-version ~/Downloads/agentbox-current.tar.gz \
-  --hostname TANAABAGENTBOX1
-```
-
-The GitHub API tarball URL above resolves to the repository default branch when no `ref` is
-provided. Archive installs require current agentbox contents, including root-level `bin/` and
-`launchd/` runtime assets.
+`boot.sh` resolves its agentbox payload automatically. When run from a source checkout, it uses the
+checkout beside the script. When run as a released hosted script, it fetches the matching release
+archive for the script version and uses that payload for the core Brewfile, health script, launchd
+templates, and profile assets. It does not clone the default branch as a fallback, because that can
+pair an old script with newer runtime files.
 
 Use `--brewfile` to append extra Bootbox Brewfiles after the core agentbox `Brewfile`. Values can be
 local paths or URLs. Relative local paths are resolved from the invocation directory first, then from
-the materialized agentbox checkout:
+the resolved agentbox payload:
 
 ```sh
 agentbootbox \
@@ -410,8 +393,6 @@ they do not land in shell history.
   per-user service and enables macOS autologin; defaults to `system`.
 - `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key for first join; use
   `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
-- `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive, local git checkout,
-  HTTPS tar archive URL, or local `.tar`, `.tar.gz`, or `.tgz` archive path to install.
 - `CI`: run in CI mode and disable prompts.
 - `NONINTERACTIVE` or `--yes`: skip interactive prompts.
 

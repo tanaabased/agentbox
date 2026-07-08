@@ -14,8 +14,8 @@ defaults.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should have a tailscale auth key from the workflow secret
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
@@ -24,7 +24,6 @@ test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 boot.sh \
   --force \
   --hostname "TANAABAGENTBOX-DEF$GITHUB_RUN_ID" \
-  --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --openclaw-password "DefaultOpenClawPass1!"
 ```
@@ -42,13 +41,12 @@ command -v jq >/dev/null
 # should install tailscale
 test -x "$(brew --prefix)/bin/tailscale"
 
-# should materialize agentbox from the local workflow checkout
-test -d "$HOME/tanaab/agentbox/.git"
-test -f "$HOME/tanaab/agentbox/boot.sh"
-test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "$GITHUB_WORKSPACE"
+# should use the workflow payload
+test "$AGENTBOX_PAYLOAD_DIR" = "$GITHUB_WORKSPACE"
+test -f "$AGENTBOX_PAYLOAD_DIR/boot.sh"
 
 # should satisfy the agentbox brewfile
-brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
+brew bundle check --file "$AGENTBOX_PAYLOAD_DIR/Brewfile" --no-upgrade
 
 # should install openclaw cli through homebrew
 test -x "$(brew --prefix)/bin/openclaw"

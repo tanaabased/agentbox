@@ -10,8 +10,8 @@ system settings, Homebrew state, SSH, launchd, OpenClaw, and Tailscale.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should have a tailscale auth key from the workflow secret
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
@@ -25,7 +25,6 @@ OPENAI_API_KEY="$OPENAI_API_KEY" boot.sh \
   --debug \
   --force \
   --hostname "TANAABAGENTBOX-OC$GITHUB_RUN_ID" \
-  --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --openclaw-password "OpenClawGatewayPass1!" \
   --openclaw-auth-choice openai-api-key \

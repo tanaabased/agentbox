@@ -10,8 +10,8 @@ launchd.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should seed a non-admin runner with a missing home
 sudo sysadminctl \
@@ -31,7 +31,6 @@ rm -f "$TMPDIR/id_agentbox_users_existing" "$TMPDIR/id_agentbox_users_existing.p
 ssh-keygen -t ed25519 -N "" -C "agentbox-users-existing@example.test" -f "$TMPDIR/id_agentbox_users_existing" >/dev/null
 boot.sh \
   --force \
-  --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey off \
   --brewgroup "tedsbrewclub" \
   --openclaw-identity "Ted Existing Claw <ted>" \

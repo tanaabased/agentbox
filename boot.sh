@@ -5,7 +5,7 @@ set -euo pipefail
 # Examples:
 #
 #   $ AGENTBOX_AUTHORIZED_KEY="$(cat ~/.ssh/id_ed25519.pub)" AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" ./boot.sh --hostname TANAABAGENTBOX1
-#   $ ./boot.sh --authorized-key file:~/.ssh/id_ed25519.pub --tailscale-authkey "$TS_AUTHKEY" --agentbox-version 1.2.3 --yes
+#   $ ./boot.sh --authorized-key file:~/.ssh/id_ed25519.pub --tailscale-authkey "$TS_AUTHKEY" --yes
 #   $ AGENTBOX_DEBUG=1 AGENTBOX_AUTHORIZED_KEY="$(cat ~/.ssh/id_ed25519.pub)" AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" ./boot.sh --yes
 #
 # Option precedence: CLI options override environment variables, which override defaults.
@@ -36,7 +36,6 @@ OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL="ai.openclaw.gateway"
 AGENTBOX_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
 HOMEBREW_TAILSCALE_SYSTEM_PLIST_PATH="/Library/LaunchDaemons/${HOMEBREW_TAILSCALE_LABEL}.plist"
-AGENTBOX_REPO_HTTPS_URL="https://github.com/tanaabased/agentbox.git"
 AGENTBOX_REPO_ARCHIVE_BASE_URL="https://github.com/tanaabased/agentbox/archive/refs/tags"
 SSHD_BIN="/usr/sbin/sshd"
 SSHD_CONFIG_PATH="/etc/ssh/sshd_config"
@@ -268,7 +267,10 @@ INVOCATION_CWD="${PWD}"
 
 DEBUG="${AGENTBOX_DEBUG:-${DEBUG:-${RUNNER_DEBUG:-}}}"
 FORCE="${AGENTBOX_FORCE:-}"
-AGENTBOX_VERSION_VALUE="${AGENTBOX_VERSION:-}"
+AGENTBOX_PAYLOAD_DIR_INPUT="${AGENTBOX_PAYLOAD_DIR:-}"
+AGENTBOX_PAYLOAD_DIR=""
+AGENTBOX_PAYLOAD_SOURCE_KIND=""
+AGENTBOX_PAYLOAD_RELEASE_TAG=""
 AGENTBOX_HOSTNAME_VALUE="${AGENTBOX_HOSTNAME:-${DEFAULT_AGENTBOX_HOSTNAME}}"
 BREWGROUP_INPUT="${AGENTBOX_BREWGROUP:-${DEFAULT_BREWGROUP}}"
 BREWGROUP_VALUE=""
@@ -301,12 +303,6 @@ DETECTED_ARCH=""
 DETECTED_OS=""
 ARCH=""
 OS=""
-AGENTBOX_VERSION_TAG=""
-AGENTBOX_SOURCE_KIND=""
-AGENTBOX_SOURCE_LOCAL_PATH=""
-AGENTBOX_SOURCE_ARCHIVE_URL=""
-AGENTBOX_SOURCE_ARCHIVE_PATH=""
-AGENTBOX_TARGET_PATH=""
 AGENTBOX_CORE_BREWFILE=""
 AGENTBOX_BIN_DIR=""
 AGENTBOX_LAUNCHD_DIR=""
@@ -662,16 +658,6 @@ normalize_release_tag() {
   fi
 }
 
-agentbox_version_display() {
-  if [[ -z "${AGENTBOX_VERSION_VALUE}" ]]; then
-    printf "latest"
-  elif is_semver_value "${AGENTBOX_VERSION_VALUE}"; then
-    normalize_release_tag "${AGENTBOX_VERSION_VALUE}"
-  else
-    printf "%s" "${AGENTBOX_VERSION_VALUE}"
-  fi
-}
-
 display_home_path() {
   local path="$1"
 
@@ -704,78 +690,8 @@ expand_home_path() {
   printf "%s" "${path}"
 }
 
-http_url_value() {
-  [[ "${1:-}" == http://* || "${1:-}" == https://* ]]
-}
-
-tar_archive_path_value() {
-  case "${1:-}" in
-    *.tar | *.tar.gz | *.tgz)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
 brewfile_source_url_value() {
   [[ "${1:-}" =~ ^[[:alpha:]][[:alnum:].+-]*:// ]]
-}
-
-find_git_repo_root() {
-  local path="$1"
-  local parent
-
-  while :; do
-    if [[ -d "${path}/.git" ]]; then
-      printf "%s" "${path}"
-      return 0
-    fi
-
-    if [[ -f "${path}/HEAD" && -d "${path}/objects" && -d "${path}/refs" ]]; then
-      printf "%s" "${path}"
-      return 0
-    fi
-
-    parent="$(dirname "${path}")"
-    if [[ "${parent}" == "${path}" ]]; then
-      return 1
-    fi
-
-    path="${parent}"
-  done
-}
-
-resolve_local_repo_source_path() {
-  local source_path="$1"
-  local absolute_path
-  local repo_root
-
-  if ! absolute_path="$(cd "${source_path}" 2>/dev/null && pwd -P)"; then
-    return 1
-  fi
-
-  if ! repo_root="$(find_git_repo_root "${absolute_path}")"; then
-    return 1
-  fi
-
-  printf "%s" "${repo_root}"
-}
-
-resolve_local_archive_source_path() {
-  local source_path
-  local source_dir
-  local source_name
-
-  source_path="$(expand_home_path "$1")"
-  if [[ ! -f "${source_path}" ]] || ! tar_archive_path_value "${source_path}"; then
-    return 1
-  fi
-
-  source_dir="$(cd "$(dirname "${source_path}")" 2>/dev/null && pwd -P)" || return 1
-  source_name="$(basename "${source_path}")"
-  printf "%s/%s" "${source_dir}" "${source_name}"
 }
 
 resolve_extra_brewfile_source_path() {
@@ -800,7 +716,7 @@ resolve_extra_brewfile_source_path() {
     return 0
   fi
 
-  target_path="${AGENTBOX_TARGET_PATH}/${brewfile}"
+  target_path="${AGENTBOX_PAYLOAD_DIR}/${brewfile}"
   if [[ -f "${target_path}" ]]; then
     printf "%s" "${target_path}"
     return 0
@@ -934,7 +850,7 @@ select_openclaw_profile_image_source() {
 
   count="$(array_count AGENTBOX_PROFILE_IMAGE_SOURCES)"
   if [[ "${count}" -lt 1 ]]; then
-    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime assets ${tty_ts}assets/profile*.png${tty_reset}."
+    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required runtime assets ${tty_ts}assets/profile*.png${tty_reset}."
   fi
 
   index=$((RANDOM % count))
@@ -992,7 +908,6 @@ Usage: ${tty_dim}[NONINTERACTIVE=1] [CI=1] [AGENTBOX_*...]${tty_reset} ${tty_bol
 ${tty_tp}Options:${tty_reset}
 EOS
 
-  usage_option "--agentbox-version" "installs a tagged release, local git repo, or tar archive url/path" "$(agentbox_version_display)"
   usage_option "--brewfile" "adds an extra Brewfile from a local path or url" "${extra_brewfiles_display_value}"
   usage_option "--hostname" "sets the system hostname and tailscale name source" "${AGENTBOX_HOSTNAME_VALUE}"
   usage_option "--authorized-key" "adds an ssh public key or public-key file path" "${authorized_keys_display}"
@@ -1013,7 +928,6 @@ EOS
   cat <<EOS
 
 ${tty_tp}Environment Variables:${tty_reset}
-  AGENTBOX_VERSION               same as --agentbox-version
   AGENTBOX_BREWFILE              same as --brewfile
   AGENTBOX_HOSTNAME              same as --hostname
   AGENTBOX_AUTHORIZED_KEY        same as --authorized-key
@@ -1075,16 +989,6 @@ reset_extra_brewfile_specs_for_cli() {
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --agentbox-version)
-        require_next_option_value "--agentbox-version" "$#"
-        AGENTBOX_VERSION_VALUE="$2"
-        shift 2
-        ;;
-      --agentbox-version=*)
-        require_inline_option_value "--agentbox-version" "${1#*=}"
-        AGENTBOX_VERSION_VALUE="${1#*=}"
-        shift
-        ;;
       --brewfile)
         require_next_option_value "--brewfile" "$#"
         reset_extra_brewfile_specs_for_cli
@@ -1326,64 +1230,27 @@ test_curl() {
   version_compare "$(major_minor "${curl_name_and_version##* }")" "$(major_minor "${REQUIRED_CURL_VERSION}")"
 }
 
-agentbox_target_display() {
-  display_home_path "${AGENTBOX_TARGET_PATH}"
+agentbox_payload_display() {
+  display_home_path "${AGENTBOX_PAYLOAD_DIR}"
 }
 
 agentbox_brewfile_display() {
   display_home_path "${AGENTBOX_CORE_BREWFILE}"
 }
 
-prepare_agentbox_source() {
-  AGENTBOX_TARGET_PATH="${HOME}/tanaab/agentbox"
-  AGENTBOX_VERSION_TAG=""
-  AGENTBOX_SOURCE_KIND=""
-  AGENTBOX_SOURCE_LOCAL_PATH=""
-  AGENTBOX_SOURCE_ARCHIVE_URL=""
-  AGENTBOX_SOURCE_ARCHIVE_PATH=""
-
-  if [[ -z "${AGENTBOX_VERSION_VALUE}" || "${AGENTBOX_VERSION_VALUE}" == "latest" ]]; then
-    AGENTBOX_SOURCE_KIND="default"
-  elif is_semver_value "${AGENTBOX_VERSION_VALUE}"; then
-    AGENTBOX_SOURCE_KIND="version"
-    AGENTBOX_VERSION_TAG="$(normalize_release_tag "${AGENTBOX_VERSION_VALUE}")"
-  elif http_url_value "${AGENTBOX_VERSION_VALUE}"; then
-    AGENTBOX_SOURCE_KIND="archive_url"
-    AGENTBOX_SOURCE_ARCHIVE_URL="${AGENTBOX_VERSION_VALUE}"
-  elif tar_archive_path_value "${AGENTBOX_VERSION_VALUE}"; then
-    AGENTBOX_SOURCE_KIND="archive_file"
-    if ! AGENTBOX_SOURCE_ARCHIVE_PATH="$(resolve_local_archive_source_path "${AGENTBOX_VERSION_VALUE}")"; then
-      abort "local agentbox archive ${tty_ts}${AGENTBOX_VERSION_VALUE}${tty_reset} must resolve to an existing .tar, .tar.gz, or .tgz file."
-    fi
-  else
-    AGENTBOX_SOURCE_KIND="local"
-
-    if ! AGENTBOX_SOURCE_LOCAL_PATH="$(resolve_local_repo_source_path "${AGENTBOX_VERSION_VALUE}")"; then
-      abort "local agentbox source ${tty_ts}${AGENTBOX_VERSION_VALUE}${tty_reset} must resolve to a local git repo."
-    fi
-
-    if [[ "${AGENTBOX_SOURCE_LOCAL_PATH}" == "${AGENTBOX_TARGET_PATH}" ]]; then
-      abort "local agentbox source ${tty_ts}${AGENTBOX_SOURCE_LOCAL_PATH}${tty_reset} cannot be the same as target ${tty_ts}$(agentbox_target_display)${tty_reset}."
-    fi
-  fi
-}
-
-agentbox_source_display() {
-  case "${AGENTBOX_SOURCE_KIND:-default}" in
-    version)
-      printf "%s" "${AGENTBOX_VERSION_TAG}"
+agentbox_payload_source_display() {
+  case "${AGENTBOX_PAYLOAD_SOURCE_KIND:-unresolved}" in
+    explicit)
+      printf "explicit payload dir"
       ;;
-    archive_url)
-      printf "%s" "${AGENTBOX_SOURCE_ARCHIVE_URL}"
+    source)
+      printf "source-relative payload"
       ;;
-    archive_file)
-      display_home_path "${AGENTBOX_SOURCE_ARCHIVE_PATH}"
-      ;;
-    local)
-      display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}"
+    release)
+      printf "release archive %s" "${AGENTBOX_PAYLOAD_RELEASE_TAG}"
       ;;
     *)
-      printf "default branch over https"
+      printf "unresolved"
       ;;
   esac
 }
@@ -1394,17 +1261,125 @@ repo_archive_url() {
   printf "%s/%s.tar.gz" "${AGENTBOX_REPO_ARCHIVE_BASE_URL}" "${tag}"
 }
 
-extract_agentbox_archive() {
+prepare_agentbox_payload() {
+  AGENTBOX_PAYLOAD_DIR=""
+  AGENTBOX_PAYLOAD_SOURCE_KIND=""
+  AGENTBOX_PAYLOAD_RELEASE_TAG=""
+}
+
+resolve_existing_dir_path() (
+  local path
+
+  path="$(expand_home_path "$1")"
+  if [[ ! -d "${path}" ]]; then
+    return 1
+  fi
+
+  cd "${path}" 2>/dev/null && pwd -P
+)
+
+agentbox_payload_valid() {
+  local dir="$1"
+  local profile_image_source
+
+  [[ -d "${dir}" ]] || return 1
+  [[ -f "${dir}/Brewfile" ]] || return 1
+  [[ -f "${dir}/bin/health.sh" ]] || return 1
+  [[ -f "${dir}/launchd/dev.tanaab.agentbox.health.plist.in" ]] || return 1
+  [[ -f "${dir}/launchd/dev.tanaab.agentbox.tailscaled.plist.in" ]] || return 1
+  [[ -f "${dir}/launchd/dev.tanaab.agentbox.openclaw-gateway.plist.in" ]] || return 1
+
+  for profile_image_source in "${dir}"/assets/profile*.png; do
+    if [[ -f "${profile_image_source}" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+validate_agentbox_payload_dir() {
+  local dir="$1"
+
+  if ! agentbox_payload_valid "${dir}"; then
+    abort "agentbox payload at ${tty_ts}$(display_home_path "${dir}")${tty_reset} must include Brewfile, bin/health.sh, launchd templates, and assets/profile*.png."
+  fi
+}
+
+agentbox_script_real_path() {
+  local link_target
+  local script_dir
+  local script_path="${0}"
+
+  if [[ "${script_path}" != */* ]]; then
+    script_path="$(command -v "${script_path}" 2>/dev/null || true)"
+  fi
+
+  if [[ -z "${script_path}" ]]; then
+    return 1
+  fi
+
+  while [[ -L "${script_path}" ]]; do
+    script_dir="$(cd -P "$(dirname "${script_path}")" 2>/dev/null && pwd)" || return 1
+    link_target="$(readlink "${script_path}")" || return 1
+    case "${link_target}" in
+      /*)
+        script_path="${link_target}"
+        ;;
+      *)
+        script_path="${script_dir}/${link_target}"
+        ;;
+    esac
+  done
+
+  script_dir="$(cd -P "$(dirname "${script_path}")" 2>/dev/null && pwd)" || return 1
+  printf "%s/%s" "${script_dir}" "$(basename "${script_path}")"
+}
+
+resolve_source_relative_agentbox_payload() {
+  local candidate
+  local resolved_candidate
+  local script_dir
+  local script_path
+
+  script_path="$(agentbox_script_real_path)" || return 1
+  script_dir="$(dirname "${script_path}")"
+
+  for candidate in "${script_dir}" "${script_dir}/.." "${script_dir}/../.."; do
+    resolved_candidate="$(resolve_existing_dir_path "${candidate}")" || continue
+    if agentbox_payload_valid "${resolved_candidate}"; then
+      printf "%s" "${resolved_candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+script_version_release_fetch_allowed() {
+  is_semver_value "${SCRIPT_VERSION}" || return 1
+
+  case "${SCRIPT_VERSION}" in
+    *-ci.* | *-dev* | *dirty* | *unreleased*)
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+extract_agentbox_archive_payload() {
   local archive_path="$1"
   local extract_dir="$2"
   local payload_root=""
   local entry
   local entry_count="0"
 
-  execute mkdir -p "${extract_dir}" "${AGENTBOX_TARGET_PATH}"
+  execute mkdir -p "${extract_dir}"
   execute tar -xf "${archive_path}" -C "${extract_dir}"
 
-  if [[ -f "${extract_dir}/Brewfile" ]]; then
+  if agentbox_payload_valid "${extract_dir}"; then
     payload_root="${extract_dir}"
   else
     for entry in "${extract_dir}"/* "${extract_dir}"/.[!.]* "${extract_dir}"/..?*; do
@@ -1416,74 +1391,62 @@ extract_agentbox_archive() {
       payload_root="${entry}"
     done
 
-    if [[ "${entry_count}" != "1" || ! -d "${payload_root}" || ! -f "${payload_root}/Brewfile" ]]; then
-      abort "agentbox archive must contain a Brewfile at archive root or inside one top-level directory."
+    if [[ "${entry_count}" != "1" ]] || ! agentbox_payload_valid "${payload_root}"; then
+      abort "agentbox archive must contain current agentbox payload files at archive root or inside one top-level directory."
     fi
   fi
 
-  execute cp -R "${payload_root}/." "${AGENTBOX_TARGET_PATH}"
+  resolve_existing_dir_path "${payload_root}"
 }
 
-repo_prepare_target() {
-  local target="$1"
-
-  if [[ -e "${target}" ]]; then
-    if ! force_enabled; then
-      return 1
-    fi
-
-    execute rm -rf "${target}"
-  fi
-
-  execute mkdir -p "$(dirname "${target}")"
-  return 0
-}
-
-agentbox_target_git_repo() {
-  git -C "${AGENTBOX_TARGET_PATH}" rev-parse --is-inside-work-tree >/dev/null 2>&1
-}
-
-warn_agentbox_fetch_skipped() {
-  local target_display
-  target_display="$(agentbox_target_display)"
-
-  if [[ "${AGENTBOX_SOURCE_KIND}" == "default" ]] && agentbox_target_git_repo; then
-    warn "${tty_tp}skipping${tty_reset} agentbox fetch because ${tty_ts}${target_display}${tty_reset} already exists and ${tty_bold}--force${tty_reset} is not set; using the existing checkout. to update it manually, run: ${tty_bold}git -C ${target_display} pull --ff-only${tty_reset}"
-  else
-    warn "${tty_tp}skipping${tty_reset} agentbox fetch because ${tty_ts}${target_display}${tty_reset} already exists and ${tty_bold}--force${tty_reset} is not set; using the existing directory. re-run with ${tty_bold}--force${tty_reset} to replace it."
-  fi
-}
-
-fetch_agentbox_source() {
+resolve_release_agentbox_payload() {
   local archive_path
   local archive_url
+  local payload_dir
 
-  if ! repo_prepare_target "${AGENTBOX_TARGET_PATH}"; then
-    warn_agentbox_fetch_skipped
+  if ! script_version_release_fetch_allowed; then
+    return 1
+  fi
+
+  AGENTBOX_PAYLOAD_RELEASE_TAG="$(normalize_release_tag "${SCRIPT_VERSION}")"
+  archive_url="$(repo_archive_url "${AGENTBOX_PAYLOAD_RELEASE_TAG}")"
+  archive_path="${BOOT_TMPDIR}/agentbox-${AGENTBOX_PAYLOAD_RELEASE_TAG}.tar.gz"
+  log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} release payload ${tty_ts}${AGENTBOX_PAYLOAD_RELEASE_TAG}${tty_reset}"
+  execute "${CURL}" -fsSL "${archive_url}" -o "${archive_path}"
+  payload_dir="$(extract_agentbox_archive_payload "${archive_path}" "${BOOT_TMPDIR}/agentbox-release")"
+
+  AGENTBOX_PAYLOAD_DIR="${payload_dir}"
+  AGENTBOX_PAYLOAD_SOURCE_KIND="release"
+}
+
+resolve_agentbox_payload() {
+  local explicit_payload_dir
+  local source_payload_dir
+
+  AGENTBOX_PAYLOAD_DIR_INPUT="$(trim_whitespace "${AGENTBOX_PAYLOAD_DIR_INPUT}")"
+
+  if [[ -n "${AGENTBOX_PAYLOAD_DIR_INPUT}" ]]; then
+    if ! explicit_payload_dir="$(resolve_existing_dir_path "${AGENTBOX_PAYLOAD_DIR_INPUT}")"; then
+      abort "agentbox payload dir ${tty_ts}${AGENTBOX_PAYLOAD_DIR_INPUT}${tty_reset} must resolve to an existing directory."
+    fi
+
+    validate_agentbox_payload_dir "${explicit_payload_dir}"
+    AGENTBOX_PAYLOAD_DIR="${explicit_payload_dir}"
+    AGENTBOX_PAYLOAD_SOURCE_KIND="explicit"
     return 0
   fi
 
-  if [[ "${AGENTBOX_SOURCE_KIND}" == "version" ]]; then
-    archive_url="$(repo_archive_url "${AGENTBOX_VERSION_TAG}")"
-    archive_path="${BOOT_TMPDIR}/agentbox-${AGENTBOX_VERSION_TAG}.tar.gz"
-    log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} release ${tty_ts}${AGENTBOX_VERSION_TAG}${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
-    execute "${CURL}" -fsSL "${archive_url}" -o "${archive_path}"
-    extract_agentbox_archive "${archive_path}" "${BOOT_TMPDIR}/agentbox-source"
-  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_url" ]]; then
-    archive_path="${BOOT_TMPDIR}/agentbox-archive.tar.gz"
-    log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}${AGENTBOX_SOURCE_ARCHIVE_URL}${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
-    execute "${CURL}" -fsSL "${AGENTBOX_SOURCE_ARCHIVE_URL}" -o "${archive_path}"
-    extract_agentbox_archive "${archive_path}" "${BOOT_TMPDIR}/agentbox-source"
-  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_file" ]]; then
-    log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_ARCHIVE_PATH}")${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
-    extract_agentbox_archive "${AGENTBOX_SOURCE_ARCHIVE_PATH}" "${BOOT_TMPDIR}/agentbox-source"
-  elif [[ "${AGENTBOX_SOURCE_KIND}" == "local" ]]; then
-    log "${tty_tp}cloning${tty_reset} ${tty_ts}agentbox${tty_reset} from local git repo ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}")${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
-    execute git clone "${AGENTBOX_SOURCE_LOCAL_PATH}" "${AGENTBOX_TARGET_PATH}"
-  else
-    log "${tty_tp}cloning${tty_reset} ${tty_ts}agentbox${tty_reset} from ${tty_ts}${AGENTBOX_REPO_HTTPS_URL}${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
-    execute git clone "${AGENTBOX_REPO_HTTPS_URL}" "${AGENTBOX_TARGET_PATH}"
+  if source_payload_dir="$(resolve_source_relative_agentbox_payload)"; then
+    AGENTBOX_PAYLOAD_DIR="${source_payload_dir}"
+    AGENTBOX_PAYLOAD_SOURCE_KIND="source"
+    return 0
   fi
+
+  if resolve_release_agentbox_payload; then
+    return 0
+  fi
+
+  abort "could not resolve an agentbox payload for script version ${tty_ts}${SCRIPT_VERSION}${tty_reset}; run from a source checkout, use a released script version, or set AGENTBOX_PAYLOAD_DIR to a current agentbox checkout."
 }
 
 resolve_extra_brewfiles() {
@@ -1503,7 +1466,7 @@ resolve_extra_brewfiles() {
     fi
 
     if ! resolved_brewfile="$(resolve_extra_brewfile_source_path "${brewfile}")"; then
-      abort "extra Brewfile ${tty_ts}${brewfile}${tty_reset} must be a url or resolve to a local file relative to ${tty_ts}$(display_home_path "${INVOCATION_CWD}")${tty_reset} or ${tty_ts}$(agentbox_target_display)${tty_reset}."
+      abort "extra Brewfile ${tty_ts}${brewfile}${tty_reset} must be a url or resolve to a local file relative to ${tty_ts}$(display_home_path "${INVOCATION_CWD}")${tty_reset} or ${tty_ts}$(agentbox_payload_display)${tty_reset}."
     fi
 
     RESOLVED_EXTRA_BREWFILES+=("${resolved_brewfile}")
@@ -1513,10 +1476,10 @@ resolve_extra_brewfiles() {
 discover_agentbox_payload() {
   local profile_image_source
 
-  AGENTBOX_CORE_BREWFILE="${AGENTBOX_TARGET_PATH}/Brewfile"
-  AGENTBOX_BIN_DIR="${AGENTBOX_TARGET_PATH}/bin"
-  AGENTBOX_LAUNCHD_DIR="${AGENTBOX_TARGET_PATH}/launchd"
-  AGENTBOX_ASSETS_DIR="${AGENTBOX_TARGET_PATH}/assets"
+  AGENTBOX_CORE_BREWFILE="${AGENTBOX_PAYLOAD_DIR}/Brewfile"
+  AGENTBOX_BIN_DIR="${AGENTBOX_PAYLOAD_DIR}/bin"
+  AGENTBOX_LAUNCHD_DIR="${AGENTBOX_PAYLOAD_DIR}/launchd"
+  AGENTBOX_ASSETS_DIR="${AGENTBOX_PAYLOAD_DIR}/assets"
   AGENTBOX_HEALTH_SCRIPT_SOURCE="${AGENTBOX_BIN_DIR}/health.sh"
   AGENTBOX_HEALTH_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.health.plist.in"
   AGENTBOX_TAILSCALED_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.tailscaled.plist.in"
@@ -1525,23 +1488,23 @@ discover_agentbox_payload() {
   AGENTBOX_PROFILE_IMAGE_SOURCE=""
 
   if [[ ! -f "${AGENTBOX_CORE_BREWFILE}" ]]; then
-    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required Brewfile ${tty_ts}$(agentbox_brewfile_display)${tty_reset}."
+    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required Brewfile ${tty_ts}$(agentbox_brewfile_display)${tty_reset}."
   fi
 
   if [[ ! -f "${AGENTBOX_HEALTH_SCRIPT_SOURCE}" ]]; then
-    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_HEALTH_SCRIPT_SOURCE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
+    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_HEALTH_SCRIPT_SOURCE}")${tty_reset}; use a current agentbox checkout or release payload that includes bin/ and launchd/."
   fi
 
   if [[ ! -f "${AGENTBOX_HEALTH_PLIST_TEMPLATE}" ]]; then
-    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_HEALTH_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
+    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_HEALTH_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or release payload that includes bin/ and launchd/."
   fi
 
   if [[ ! -f "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}" ]]; then
-    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
+    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or release payload that includes bin/ and launchd/."
   fi
 
   if [[ ! -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE}" ]]; then
-    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
+    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or release payload that includes bin/ and launchd/."
   fi
 
   for profile_image_source in "${AGENTBOX_ASSETS_DIR}"/profile*.png; do
@@ -1551,7 +1514,7 @@ discover_agentbox_payload() {
   done
 
   if ! array_has_values AGENTBOX_PROFILE_IMAGE_SOURCES; then
-    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime assets ${tty_ts}assets/profile*.png${tty_reset}; use a current agentbox checkout or archive that includes bundled profile images."
+    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required runtime assets ${tty_ts}assets/profile*.png${tty_reset}; use a current agentbox checkout or release payload that includes bundled profile images."
   fi
 
   select_openclaw_profile_image_source
@@ -3039,30 +3002,8 @@ bootbox_run_or_abort() {
   fi
 }
 
-plan_agentbox_fetch() {
-  local target_display
-  target_display="$(agentbox_target_display)"
-
-  if [[ -e "${AGENTBOX_TARGET_PATH}" ]]; then
-    if force_enabled; then
-      plan_action "${tty_tp}replace${tty_reset} existing ${tty_ts}agentbox${tty_reset} checkout at ${tty_ts}${target_display}${tty_reset} because ${tty_bold}--force${tty_reset} is set"
-    else
-      plan_action "${tty_tp}skip${tty_reset} fetching ${tty_ts}agentbox${tty_reset} because ${tty_ts}${target_display}${tty_reset} already exists and ${tty_bold}--force${tty_reset} is not set"
-      return 0
-    fi
-  fi
-
-  if [[ "${AGENTBOX_SOURCE_KIND}" == "version" ]]; then
-    plan_action "${tty_tp}extract${tty_reset} ${tty_ts}agentbox${tty_reset} release ${tty_ts}${AGENTBOX_VERSION_TAG}${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
-  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_url" ]]; then
-    plan_action "${tty_tp}extract${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}${AGENTBOX_SOURCE_ARCHIVE_URL}${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
-  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_file" ]]; then
-    plan_action "${tty_tp}extract${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_ARCHIVE_PATH}")${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
-  elif [[ "${AGENTBOX_SOURCE_KIND}" == "local" ]]; then
-    plan_action "${tty_tp}clone${tty_reset} ${tty_ts}agentbox${tty_reset} from local git repo ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}")${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
-  else
-    plan_action "${tty_tp}clone${tty_reset} ${tty_ts}agentbox${tty_reset} from public https default branch to ${tty_ts}${target_display}${tty_reset}"
-  fi
+plan_agentbox_payload() {
+  plan_action "${tty_tp}use${tty_reset} ${tty_ts}agentbox${tty_reset} payload from ${tty_ts}$(agentbox_payload_display)${tty_reset} ${tty_dim}($(agentbox_payload_source_display))${tty_reset}"
 }
 
 plan_wrapper_execution() {
@@ -3071,7 +3012,7 @@ plan_wrapper_execution() {
     plan_action "${tty_tp}install${tty_reset} ${tty_ts}bootbox core packages${tty_reset}"
   fi
 
-  plan_agentbox_fetch
+  plan_agentbox_payload
   plan_action "${tty_tp}ensure${tty_reset} macos ComputerName, HostName, and LocalHostName are ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
   plan_action "${tty_tp}ensure${tty_reset} headless power, time, and recovery settings"
   if array_has_values EXTRA_BREWFILE_SPECS; then
@@ -4162,7 +4103,7 @@ main() {
   parse_args "$@"
   validate_platform
   apply_noninteractive_mode
-  prepare_agentbox_source
+  prepare_agentbox_payload
   validate_inputs_before_sudo
   check_sudo_access
   validate_inputs
@@ -4173,9 +4114,7 @@ main() {
   debug raw NONINTERACTIVE="${NONINTERACTIVE:-}"
   debug raw DEBUG="${DEBUG:-}"
   debug raw FORCE="${FORCE:-}"
-  debug raw AGENTBOX_VERSION="$(agentbox_version_display)"
-  debug raw AGENTBOX_SOURCE="$(agentbox_source_display)"
-  debug raw AGENTBOX_TARGET="$(agentbox_target_display)"
+  debug raw AGENTBOX_VERSION="${SCRIPT_VERSION}"
   debug raw AGENTBOX_EXTRA_BREWFILES="$(extra_brewfiles_display)"
   debug raw AGENTBOX_HOSTNAME="${AGENTBOX_HOSTNAME_VALUE}"
   debug raw AGENTBOX_BREWGROUP="$(brewgroup_display)"
@@ -4205,6 +4144,13 @@ main() {
   debug raw OS="${OS}"
 
   prepare_bootbox_script
+  resolve_agentbox_payload
+  discover_agentbox_payload
+  resolve_extra_brewfiles
+  debug raw AGENTBOX_PAYLOAD_DIR="$(agentbox_payload_display)"
+  debug raw AGENTBOX_PAYLOAD_SOURCE="$(agentbox_payload_source_display)"
+  debug raw AGENTBOX_CORE_BREWFILE="$(agentbox_brewfile_display)"
+  debug raw AGENTBOX_RESOLVED_EXTRA_BREWFILES="$(array_join "," RESOLVED_EXTRA_BREWFILES)"
   run_bootbox_check_core || true
   debug raw CORE_NEEDS_REMEDIATION="${CORE_NEEDS_REMEDIATION}"
   plan_wrapper_execution
@@ -4215,11 +4161,6 @@ main() {
   fi
 
   ensure_bootbox_core_requirements
-  fetch_agentbox_source
-  discover_agentbox_payload
-  resolve_extra_brewfiles
-  debug raw AGENTBOX_CORE_BREWFILE="$(agentbox_brewfile_display)"
-  debug raw AGENTBOX_RESOLVED_EXTRA_BREWFILES="$(array_join "," RESOLVED_EXTRA_BREWFILES)"
   run_agentbox_hostname_setup
   run_agentbox_macos_settings
   run_bootbox_for_agentbox_brewfile
