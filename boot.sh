@@ -1740,6 +1740,7 @@ prompt_for_openclaw_password() {
   local reason="$1"
   local password=""
   local confirm=""
+  local input_path
 
   if [[ -n "${OPENCLAW_PASSWORD}" ]]; then
     return 0
@@ -1749,11 +1750,13 @@ prompt_for_openclaw_password() {
     abort_missing_openclaw_password "${reason}"
   fi
 
+  input_path="$(interactive_tty_input)"
+
   printf "enter password for OpenClaw runner %s to %s: " "${tty_ts}${OPENCLAW_USER}${tty_reset}" "${reason}" >&2
-  IFS= read -r -s password
+  IFS= read -r -s password < "${input_path}"
   printf "\n" >&2
   printf "confirm password for OpenClaw runner %s: " "${tty_ts}${OPENCLAW_USER}${tty_reset}" >&2
-  IFS= read -r -s confirm
+  IFS= read -r -s confirm < "${input_path}"
   printf "\n" >&2
 
   if [[ -z "${password}" ]]; then
@@ -2600,23 +2603,50 @@ show_planned_actions() {
 }
 
 getc() {
+  local input_path
   local save_state
-  save_state="$(/bin/stty -g)"
-  /bin/stty raw -echo
-  IFS='' read -r -n 1 -d '' "$@"
-  /bin/stty "${save_state}"
+
+  input_path="$(interactive_tty_input)"
+  save_state="$(/bin/stty -g < "${input_path}")"
+  /bin/stty raw -echo < "${input_path}"
+  IFS='' read -r -n 1 -d '' "$@" < "${input_path}"
+  /bin/stty "${save_state}" < "${input_path}"
 }
 
 wait_for_user() {
   local c
 
-  trap 'stty sane; tput sgr0; echo; exit 1' SIGINT
+  trap 'if [[ -r /dev/tty ]]; then /bin/stty sane < /dev/tty; else /bin/stty sane; fi; tput sgr0; echo; exit 1' SIGINT
 
   echo
   echo "press ${tty_bold}RETURN${tty_reset}/${tty_bold}ENTER${tty_reset} to continue or any other key to abort:"
   getc c
   if ! [[ "${c}" == $'\r' || "${c}" == $'\n' ]]; then
     exit 1
+  fi
+}
+
+interactive_tty_available() {
+  [[ -r /dev/tty && -w /dev/tty ]] || [[ -t 0 ]]
+}
+
+interactive_tty_input() {
+  if [[ -r /dev/tty && -w /dev/tty ]]; then
+    printf "/dev/tty"
+  else
+    printf "/dev/stdin"
+  fi
+}
+
+noninteractive_mode_enabled() {
+  [[ -n "${NONINTERACTIVE-}" ]]
+}
+
+openclaw_onboarding_mode_display() {
+  if noninteractive_mode_enabled; then
+    printf "non-interactive"
+  else
+    printf "interactive"
   fi
 }
 
@@ -2793,13 +2823,15 @@ apply_noninteractive_mode() {
     if [[ -n "${CI-}" ]]; then
       warn "${tty_tp}running${tty_reset} in ${tty_ts}non-interactive mode${tty_reset} because \`\$CI\` is set."
       NONINTERACTIVE=1
-    elif [[ ! -t 0 ]]; then
+    elif ! interactive_tty_available; then
       if [[ -z "${INTERACTIVE-}" ]]; then
-        warn "${tty_tp}running${tty_reset} in ${tty_ts}non-interactive mode${tty_reset} because \`stdin\` is not a TTY."
+        warn "${tty_tp}running${tty_reset} in ${tty_ts}non-interactive mode${tty_reset} because no interactive terminal is available."
         NONINTERACTIVE=1
       else
-        warn "${tty_tp}running${tty_reset} in ${tty_ts}interactive mode${tty_reset} despite \`stdin\` not being a TTY because \`\$INTERACTIVE\` is set."
+        abort "cannot run interactive mode because no interactive terminal is available."
       fi
+    elif [[ ! -t 0 ]]; then
+      debug "${tty_tp}using${tty_reset} ${tty_ts}/dev/tty${tty_reset} for interactive input because \`stdin\` is not a TTY."
     fi
   else
     log "${tty_tp}running${tty_reset} in ${tty_ts}non-interactive mode${tty_reset} ${tty_dim}because \$NONINTERACTIVE is set${tty_reset}"
@@ -2989,7 +3021,7 @@ plan_wrapper_execution() {
   else
     plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, Tailscale Serve prerequisites, and scoped magicdns resolver"
   fi
-  plan_action "${tty_tp}onboard${tty_reset} openclaw gateway config for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  plan_action "${tty_tp}onboard${tty_reset} openclaw gateway config in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   plan_action "${tty_tp}install or refresh${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
   plan_action "${tty_tp}verify${tty_reset} openclaw gateway readiness and configured tailscale exposure"
   plan_action "${tty_tp}install or refresh${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
@@ -3658,6 +3690,8 @@ run_as_openclaw_runner() {
   local extra_env_names="${OPENCLAW_RUNNER_EXTRA_ENV_NAMES:-}"
   local home
   local path_value
+  local stdin_path="${OPENCLAW_RUNNER_STDIN_PATH:-}"
+  local stdout_path="${OPENCLAW_RUNNER_STDOUT_PATH:-}"
 
   home="$(openclaw_runner_home_required)"
   path_value="$(openclaw_runner_path)"
@@ -3680,7 +3714,21 @@ run_as_openclaw_runner() {
   done
 
   debug "${tty_tp}running${tty_reset}" sudo -u "${OPENCLAW_USER}" env "${env_display_args[@]}" "$@"
-  sudo -u "${OPENCLAW_USER}" env "${env_args[@]}" "$@"
+  if [[ -n "${stdin_path}" && -n "${stdout_path}" ]]; then
+    debug "${tty_tp}using${tty_reset}" "${stdin_path}" "for OpenClaw runner stdin and" "${stdout_path}" "for stdout"
+    # shellcheck disable=SC2024
+    sudo -u "${OPENCLAW_USER}" env "${env_args[@]}" "$@" < "${stdin_path}" > "${stdout_path}"
+  elif [[ -n "${stdin_path}" ]]; then
+    debug "${tty_tp}using${tty_reset}" "${stdin_path}" "for OpenClaw runner stdin"
+    # shellcheck disable=SC2024
+    sudo -u "${OPENCLAW_USER}" env "${env_args[@]}" "$@" < "${stdin_path}"
+  elif [[ -n "${stdout_path}" ]]; then
+    debug "${tty_tp}using${tty_reset}" "${stdout_path}" "for OpenClaw runner stdout"
+    # shellcheck disable=SC2024
+    sudo -u "${OPENCLAW_USER}" env "${env_args[@]}" "$@" > "${stdout_path}"
+  else
+    sudo -u "${OPENCLAW_USER}" env "${env_args[@]}" "$@"
+  fi
 }
 
 execute_as_openclaw_runner() {
@@ -3691,8 +3739,11 @@ execute_as_openclaw_runner() {
 
 run_openclaw_gateway_onboarding() {
   local openclaw_bin="$1"
+  local -a openclaw_args=()
   local custom_auth_env_value
   local onboarding_env_names
+  local runner_stdin_path=""
+  local runner_stdout_path=""
 
   onboarding_env_names="$(openclaw_auth_choice_present_env_name_list "${OPENCLAW_AUTH_CHOICE}")"
   if [[ -n "${OPENCLAW_AUTH_ENV}" ]]; then
@@ -3704,25 +3755,40 @@ run_openclaw_gateway_onboarding() {
       esac
     fi
   fi
-  log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} with loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
-  OPENCLAW_RUNNER_EXTRA_ENV_NAMES="${onboarding_env_names}" execute_as_openclaw_runner "${openclaw_bin}" onboard \
-    --non-interactive \
-    --accept-risk \
-    --mode local \
-    --flow quickstart \
-    --auth-choice "${OPENCLAW_AUTH_CHOICE}" \
-    --gateway-port "${OPENCLAW_GATEWAY_PORT}" \
-    --gateway-bind "${OPENCLAW_GATEWAY_BIND_VALUE}" \
-    --tailscale "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" \
-    --gateway-auth token \
-    --skip-bootstrap \
-    --skip-skills \
-    --skip-ui \
-    --skip-hooks \
-    --no-install-daemon \
-    --skip-health \
-    --suppress-gateway-token-output \
-    --json
+  openclaw_args=(
+    onboard
+    --mode local
+    --flow quickstart
+    --auth-choice "${OPENCLAW_AUTH_CHOICE}"
+    --gateway-port "${OPENCLAW_GATEWAY_PORT}"
+    --gateway-bind "${OPENCLAW_GATEWAY_BIND_VALUE}"
+    --tailscale "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}"
+    --gateway-auth token
+    --skip-bootstrap
+    --skip-skills
+    --skip-ui
+    --skip-hooks
+    --no-install-daemon
+    --skip-health
+    --suppress-gateway-token-output
+  )
+
+  if noninteractive_mode_enabled; then
+    openclaw_args+=(--non-interactive --accept-risk --json)
+  else
+    if [[ ! -t 0 ]]; then
+      runner_stdin_path="$(interactive_tty_input)"
+    fi
+    if [[ ! -t 1 && -w /dev/tty ]]; then
+      runner_stdout_path="/dev/tty"
+    fi
+  fi
+
+  log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode with loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  OPENCLAW_RUNNER_EXTRA_ENV_NAMES="${onboarding_env_names}" \
+    OPENCLAW_RUNNER_STDIN_PATH="${runner_stdin_path}" \
+    OPENCLAW_RUNNER_STDOUT_PATH="${runner_stdout_path}" \
+    execute_as_openclaw_runner "${openclaw_bin}" "${openclaw_args[@]}"
 }
 
 write_openclaw_gateway_service_env_files() {
@@ -3961,6 +4027,7 @@ main() {
   debug raw AGENTBOX_OPENCLAW_IDENTITY="${OPENCLAW_FULL_NAME} <${OPENCLAW_USER}>"
   debug raw AGENTBOX_OPENCLAW_PASSWORD="$(openclaw_password_display)"
   debug raw AGENTBOX_OPENCLAW_AUTOLOGIN="$(openclaw_autologin_display)"
+  debug raw OPENCLAW_ONBOARDING_MODE="$(openclaw_onboarding_mode_display)"
   debug raw AGENTBOX_OPENCLAW_AUTH_CHOICE="${OPENCLAW_AUTH_CHOICE}"
   debug raw AGENTBOX_OPENCLAW_AUTH_ENV="$(openclaw_auth_env_display)"
   debug raw OPENCLAW_GATEWAY_BIND="${OPENCLAW_GATEWAY_BIND_VALUE}"

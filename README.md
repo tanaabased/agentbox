@@ -215,8 +215,12 @@ agentbootbox \
 
 OpenClaw gateway onboarding is gateway-only by default: agentbox uses `--auth-choice skip`, skips
 OpenClaw workspace bootstrap files and skill installation, and keeps gateway token auth enabled.
-agentbox always binds the OpenClaw gateway to loopback. When Tailscale setup is enabled, agentbox
-also asks OpenClaw to expose the loopback gateway through Tailscale Serve:
+agentbox keeps those gateway-only settings in both interactive and non-interactive runs. When
+agentbox runs interactively, OpenClaw can show its normal onboarding prompts for the remaining
+choices. When `CI`, `NONINTERACTIVE`, `--yes`, or a missing interactive terminal puts agentbox in
+non-interactive mode, agentbox passes OpenClaw's non-interactive onboarding flags and explicit risk
+acknowledgement. agentbox always binds the OpenClaw gateway to loopback. When Tailscale setup is
+enabled, agentbox also asks OpenClaw to expose the loopback gateway through Tailscale Serve:
 
 ```sh
 agentbootbox \

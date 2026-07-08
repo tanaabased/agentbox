@@ -58,6 +58,11 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 # should not print the OpenAI API key
 ! grep -F -- "$OPENAI_API_KEY" "$TMPDIR/openclaw.log"
 
+# should run OpenClaw onboarding non-interactively in CI
+grep -F -- "--non-interactive" "$TMPDIR/openclaw.log"
+grep -F -- "--accept-risk" "$TMPDIR/openclaw.log"
+grep -F -- "--json" "$TMPDIR/openclaw.log"
+
 # should render the openclaw gateway LaunchDaemon arguments
 sudo /usr/libexec/PlistBuddy -c "Print :WorkingDirectory" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw"
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:0" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/bin/sh"
