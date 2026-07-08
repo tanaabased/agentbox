@@ -22,6 +22,7 @@ jobs:
           - envvars
           - no-tailscale
           - options
+          - users
           - version
     steps:
       - name: Checkout code

@@ -1,14 +1,15 @@
 # agentbox
 
-`agentbox` prepares a physically accessible macOS 26.x Mac to become a managed OpenCLAW host. The
-target scope is zero-to-running-gateway: base host setup, a non-sudo OpenCLAW runner user, SSH access,
-OpenCLAW gateway onboarding, health verification, and host-level OpenCLAW plugin installation.
+`agentbox` prepares a physically accessible macOS 26.x Mac to become a managed OpenClaw host. The
+target scope is zero-to-running-gateway: base host setup, a non-sudo OpenClaw runner user, SSH access,
+OpenClaw gateway onboarding, health verification, and host-level OpenClaw plugin installation.
 
-Current releases still perform the base host bootstrap: Homebrew packages, classic SSH, optional
-Tailscale access, and launchd-managed health checks. The OpenCLAW runner user, gateway onboarding,
-and global plugin installation are planned follow-up implementation work.
+Current releases perform the base host bootstrap: Homebrew packages, a non-sudo OpenClaw runner
+user, classic SSH, optional Tailscale access, runner autologin, and launchd-managed health checks.
+OpenClaw gateway onboarding and global plugin installation are planned follow-up implementation
+work.
 
-Agent workspaces layer on top of the OpenCLAW host. EMORI/Emery-specific setup, per-agent dotfiles,
+Agent workspaces layer on top of the OpenClaw host. EMORI-specific setup, per-agent dotfiles,
 project credentials, trading services, and application workloads remain outside the agentbox host
 contract.
 
@@ -19,27 +20,28 @@ contract.
   [Bootbox](https://github.com/tanaabased/bootbox).
 - Can append extra local or URL Brewfiles, such as [`Brewfile.extras`](./Brewfile.extras), after
   the core host Brewfile.
-- Installs the OpenCLAW CLI and `ripgrep` as base host tools; OpenCLAW CLI brings the
+- Installs the OpenClaw CLI and `ripgrep` as base host tools; OpenClaw CLI brings the
   Homebrew-managed Node runtime it needs.
 - Exposes the Homebrew prefix `bin` and `sbin` directories to all login shells through
   `/etc/paths.d/00-agentbox-homebrew`.
 - Makes the Homebrew prefix group-writable by the configured brewgroup.
+- Creates or reuses a non-sudo OpenClaw runner user.
 - Sets macOS system identity and headless power, time, recovery, and firewall defaults.
-- Enables classic SSH, installs optional authorized keys, and hardens sshd to key-only login when
-  keys are provided.
+- Enables OpenClaw runner autologin by default.
+- Enables classic SSH, installs optional authorized keys for the admin and OpenClaw runner users,
+  ensures both users are allowed by macOS Remote Login access when that access group exists, and
+  hardens sshd to key-only login when keys are provided.
 - Installs Tailscale from Homebrew and optionally joins the tailnet.
 - Installs a launchd health check under `/opt/tanaab/agentbox`.
 
 **What current releases do not yet do**
 
-- Create the non-sudo OpenCLAW runner user.
-- Install or start the OpenCLAW gateway.
-- Install host-level OpenCLAW plugins.
-- Configure auto-login, unless a future OpenCLAW gateway/runtime model requires it.
+- Install or start the OpenClaw gateway.
+- Install host-level OpenClaw plugins.
 
 **What remains out of scope**
 
-- Configure EMORI/Emery or any other agent workspace as a special case.
+- Configure EMORI or any other agent workspace as a special case.
 - Install per-agent dotfiles, project credentials, trading services, or app-specific workloads.
 - Configure Wi-Fi, Screen Sharing, Tailscale SSH, router port forwarding, or public WAN exposure.
 
@@ -49,8 +51,10 @@ contract.
 - Requires a sudo-capable admin user.
 - Designed for Mac hardware you physically control; Mac VPS behavior is unverified.
 - Tailscale is recommended and enabled by default, but can be skipped with a falsey auth-key value.
-- Authorized keys enable SSH key-only hardening. Bad keys can lock out remote SSH, so keep physical
-  or admin recovery access available.
+- Authorized keys enable SSH key-only hardening for the admin and OpenClaw runner users. Bad keys
+  can lock out remote SSH, so keep physical or admin recovery access available.
+- OpenClaw runner autologin may be blocked by FileVault or local macOS policy; pass
+  `--skip-openclaw-autologin` when a GUI login session is not desired.
 
 ## Quickstart
 
@@ -59,6 +63,7 @@ script on the Mac you are preparing:
 
 ```sh
 curl -fsSL https://agentbox.boot.tanaab.sh/boot.sh | \
+  AGENTBOX_OPENCLAW_PASSWORD="$OPENCLAW_PASSWORD" \
   AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" \
   AGENTBOX_HOSTNAME=TANAABAGENTBOX1 \
   bash
@@ -111,8 +116,9 @@ agentbootbox --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
 ```
 
 Authorized keys are optional runtime inputs for classic SSH. When provided, `boot.sh` installs them
-for the invoking admin user and hardens SSH to key-only access for that user. Supported values are
-public-key lines, explicit `file:` references, and existing public-key paths:
+for the invoking admin user and the OpenClaw runner, then hardens SSH to key-only access for those
+users. Supported values are public-key lines, explicit `file:` references, and existing public-key
+paths:
 
 ```sh
 agentbootbox \
@@ -168,9 +174,44 @@ agentbootbox \
 ```
 
 `Brewfile.extras` is intentionally not part of the core host contract. It installs personal operator
-apps: Codex, Codex App, OpenCLAW, and Warp.
+apps: Codex, Codex App, OpenClaw, and Warp.
 
-The Homebrew prefix is made group-writable by `brewer` by default so the OpenCLAW runner user or
+The OpenClaw runner defaults to `A Tanaab-based Claw <openclaw>`, where the value inside angle
+brackets is the macOS short username. Use `--openclaw-identity` to choose another non-admin local
+account. The short name must be lowercase and macOS-safe:
+
+```sh
+agentbootbox \
+  --tailscale-authkey "$TS_AUTHKEY" \
+  --openclaw-identity "Agentbox OpenClaw <agentboxclaw>" \
+  --hostname TANAABAGENTBOX1
+```
+
+Creating the runner, or enabling autologin for an existing runner, requires a password. Prefer the
+environment variable so the password does not land in shell history:
+
+```sh
+AGENTBOX_OPENCLAW_PASSWORD="$OPENCLAW_PASSWORD" \
+agentbootbox --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
+```
+
+agentbox never prints, persists, or generates the runner password. When run interactively without a
+password and one is required, it prompts without echoing input. For newly created runners, agentbox
+selects one bundled profile image. If the runner already exists, agentbox verifies that it is not an
+admin user, preserves any existing profile picture, and does not reset the password.
+
+OpenClaw runner autologin is enabled by default because the target host is expected to run a GUI
+gateway session. Disable it when the box should not auto-login or when local macOS policy prevents
+autologin:
+
+```sh
+agentbootbox \
+  --tailscale-authkey "$TS_AUTHKEY" \
+  --skip-openclaw-autologin \
+  --hostname TANAABAGENTBOX1
+```
+
+The Homebrew prefix is made group-writable by `brewer` by default so the OpenClaw runner user or
 other trusted local users can be granted package-management access through group membership. Use
 `--brewgroup` to choose another group, or pass a falsey value to skip brewgroup setup:
 
@@ -180,7 +221,9 @@ agentbootbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup off --hostname TANAAB
 ```
 
 When brewgroup setup is enabled, agentbox adds the invoking admin user to the configured brewgroup
-as a direct member so the bootstrap account keeps write access to the Homebrew prefix.
+as a direct member so the bootstrap account keeps write access to the Homebrew prefix. It also adds
+the OpenClaw runner as a direct member so the runner can use the Homebrew-managed OpenClaw CLI and
+related tools.
 
 For controlled agentbox hosts, you may append a trusted nested group with
 `--brewgroup brewgroup:trusted-group`. For example, `--brewgroup brewer:staff` keeps the Homebrew
@@ -230,21 +273,28 @@ reachable through that name as well as its Tailscale IP.
 The public configuration surface is intentionally small. Prefer environment variables for secrets so
 they do not land in shell history.
 
-- `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key for first join; use
-  `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
+- `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
+  classic SSH; providing keys also enables key-only SSH hardening.
+- `AGENTBOX_BREWFILE` or `--brewfile`: optional comma-separated extra Brewfile sources to append
+  after the core agentbox `Brewfile`; accepts local paths and URLs.
 - `AGENTBOX_BREWGROUP` or `--brewgroup`: Homebrew prefix group for write access; defaults to
   `brewer`; accepts `brewgroup:trusted-group` for opt-in nested trusted group access; use `off`,
   `false`, `no`, `0`, or `null` to skip brewgroup setup.
+- `AGENTBOX_DEBUG` or `--debug`: show debug output with secrets masked.
+- `AGENTBOX_FORCE` or `--force`: replace supported existing targets.
 - `AGENTBOX_HOSTNAME` or `--hostname`: canonical macOS hostname and Tailscale hostname source.
-- `AGENTBOX_AUTHORIZED_KEY` or `--authorized-key`: optional public key or public-key file path for
-  classic SSH; providing keys also enables key-only SSH hardening.
+- `AGENTBOX_OPENCLAW_AUTOLOGIN` or `--skip-openclaw-autologin`: autologin is enabled by default;
+  set a falsey environment value or pass the flag to disable it.
+- `AGENTBOX_OPENCLAW_IDENTITY` or `--openclaw-identity`: OpenClaw runner identity in
+  `Full Name <shortname>` syntax; defaults to `A Tanaab-based Claw <openclaw>`.
+- `AGENTBOX_OPENCLAW_PASSWORD` or `--openclaw-password`: password used only when creating the
+  OpenClaw runner or enabling autologin; prefer the environment variable.
+- `AGENTBOX_TAILSCALE_AUTHKEY` or `--tailscale-authkey`: Tailscale auth key for first join; use
+  `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup.
 - `AGENTBOX_VERSION` or `--agentbox-version`: tagged agentbox release archive, local git checkout,
   HTTPS tar archive URL, or local `.tar`, `.tar.gz`, or `.tgz` archive path to install.
-- `AGENTBOX_BREWFILE` or `--brewfile`: optional comma-separated extra Brewfile sources to append
-  after the core agentbox `Brewfile`; accepts local paths and URLs.
-- `AGENTBOX_FORCE` or `--force`: replace supported existing targets.
-- `AGENTBOX_DEBUG` or `--debug`: show debug output with secrets masked.
-- `NONINTERACTIVE`, `CI`, or `--yes`: skip interactive prompts.
+- `CI`: run in CI mode and disable prompts.
+- `NONINTERACTIVE` or `--yes`: skip interactive prompts.
 
 Run `boot.sh --help` for the exact current CLI and environment-variable contract.
 
@@ -264,10 +314,14 @@ legacy Homebrew launchd wrapper is not.
 
 The report should also include `homebrew_login_path_file_ok=1`, `openclaw_cli_ok=1`, `node_cli_ok=1`,
 and `ripgrep_ok=1`. agentbox does not pin `node@24`; the Homebrew `openclaw-cli` formula owns its
-Node dependency unless OpenCLAW onboarding later proves a stricter runtime pin is required.
+Node dependency unless OpenClaw onboarding later proves a stricter runtime pin is required.
 
 When brewgroup setup is enabled, the report should include `brewgroup_admin_user_ok=1` and
-`brew_prefix_ok=1`. If trusted nesting is enabled, it should also include
+`brewgroup_openclaw_user_ok=1` plus `brew_prefix_ok=1`. The report should also include
+`openclaw_user_ok=1`. If macOS exposes the `com.apple.access_ssh` Remote Login access group, the
+report should include `ssh_access_admin_user_ok=1` and `ssh_access_openclaw_user_ok=1`; otherwise
+those fields are `skipped`. When autologin is enabled, the report should include
+`openclaw_autologin_ok=1`. If trusted nesting is enabled, it should also include
 `trusted_brewgroup_nested_ok=1`. To expose the configured filesystem group to other systems, use:
 
 ```sh
@@ -282,6 +336,7 @@ was disabled.
 
 ```sh
 ssh -o PreferredAuthentications=publickey <admin-user>@<tailscale-name-or-ip>
+ssh -o PreferredAuthentications=publickey <openclaw-user>@<tailscale-name-or-ip>
 ```
 
 - Review the periodic health log:

@@ -17,7 +17,8 @@ test -d "$GITHUB_WORKSPACE/.git"
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 
 # should prepare a clean agentbox target and runner state
-../../scripts/cleanup-agentbox-runner.sh
+openclaw_user="agentboxclawenv$GITHUB_RUN_ID$GITHUB_RUN_ATTEMPT"
+../../scripts/cleanup-agentbox-runner.sh --user "$openclaw_user"
 mkdir -p "$TMPDIR"
 
 # should generate a public key fixture for envvar authorized-key installation
@@ -29,6 +30,8 @@ AGENTBOX_DEBUG=1 \
 AGENTBOX_FORCE=1 \
 AGENTBOX_HOSTNAME="TANAABAGENTBOX-TEST$GITHUB_RUN_ID" \
 AGENTBOX_BREWGROUP="agentboxbrewenv$GITHUB_RUN_ID" \
+AGENTBOX_OPENCLAW_IDENTITY="Emori Bootstrap Claw <emori>" \
+AGENTBOX_OPENCLAW_PASSWORD="AgentboxOpenClawEnv$GITHUB_RUN_ID!" \
 AGENTBOX_VERSION="$GITHUB_WORKSPACE" \
 AGENTBOX_AUTHORIZED_KEY="$(cat "$TMPDIR/id_agentbox_envvars.pub")" \
 boot.sh
@@ -41,6 +44,8 @@ AGENTBOX_DEBUG=1 \
 AGENTBOX_FORCE=1 \
 AGENTBOX_HOSTNAME="TANAABAGENTBOX-TEST$GITHUB_RUN_ID" \
 AGENTBOX_BREWGROUP="agentboxbrewenv$GITHUB_RUN_ID" \
+AGENTBOX_OPENCLAW_IDENTITY="Emori Bootstrap Claw <emori>" \
+AGENTBOX_OPENCLAW_PASSWORD="AgentboxOpenClawEnv$GITHUB_RUN_ID!" \
 AGENTBOX_VERSION="$GITHUB_WORKSPACE" \
 AGENTBOX_AUTHORIZED_KEY="$(cat "$TMPDIR/id_agentbox_envvars.pub")" \
 boot.sh
@@ -64,28 +69,51 @@ test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "$GITH
 # should satisfy the agentbox Brewfile
 brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
 
-# should install OpenCLAW CLI, Node, and ripgrep through Homebrew
+# should install openclaw cli node and ripgrep through Homebrew
 test -x "$(brew --prefix)/bin/openclaw"
 test -x "$(brew --prefix)/bin/node"
 test -x "$(brew --prefix)/bin/rg"
 
-# should expose Homebrew commands to login shells
+# should write Homebrew login shell PATH entries
 grep -Fx "$(brew --prefix)/bin" /etc/paths.d/00-agentbox-homebrew
 grep -Fx "$(brew --prefix)/sbin" /etc/paths.d/00-agentbox-homebrew
+
+# should expose Homebrew commands in bash login shells
+env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /bin/bash -lc 'command -v openclaw' | grep -Fx "$(brew --prefix)/bin/openclaw"
+env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /bin/bash -lc 'command -v node' | grep -Fx "$(brew --prefix)/bin/node"
+env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /bin/bash -lc 'command -v rg' | grep -Fx "$(brew --prefix)/bin/rg"
 
 # should make the Homebrew prefix writable by the configured brewgroup
 dscl . -read "/Groups/agentboxbrewenv$GITHUB_RUN_ID" >/dev/null
 dseditgroup -o checkmember -m "$(id -un)" "agentboxbrewenv$GITHUB_RUN_ID"
+dseditgroup -o checkmember -m emori "agentboxbrewenv$GITHUB_RUN_ID"
 brew_prefix="$(brew --prefix)"
 test "$(stat -f "%Sg" "$brew_prefix")" = "agentboxbrewenv$GITHUB_RUN_ID"
 brew_prefix_mode="$(stat -f "%Lp" "$brew_prefix")"
 test "$((8#$brew_prefix_mode & 8#070))" = "$((8#070))"
 
-# should install the envvar-provided public key for the runner user
+# should create the envvar configured openclaw runner user
+id -u emori >/dev/null
+dscl . -read /Users/emori RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^[[:space:]]*//' | grep -Fx "Emori Bootstrap Claw"
+if dseditgroup -o checkmember -m emori admin >/dev/null 2>&1; then exit 1; fi
+test -d /Users/emori
+test "$(stat -f "%Su" /Users/emori)" = "emori"
+test -f /opt/tanaab/agentbox/profile.png
+
+# should configure envvar openclaw runner autologin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_user=emori"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=1"
+
+# should install the envvar provided public key for the admin and openclaw runner users
 test -f "$HOME/.ssh/authorized_keys"
 grep -qxF "$(cat "$TMPDIR/id_agentbox_envvars.pub")" "$HOME/.ssh/authorized_keys"
 test "$(stat -f "%Lp" "$HOME/.ssh")" = "700"
 test "$(stat -f "%Lp" "$HOME/.ssh/authorized_keys")" = "600"
+sudo test -f /Users/emori/.ssh/authorized_keys
+sudo grep -qxF "$(cat "$TMPDIR/id_agentbox_envvars.pub")" /Users/emori/.ssh/authorized_keys
+test "$(sudo stat -f "%Lp" /Users/emori/.ssh)" = "700"
+test "$(sudo stat -f "%Lp" /Users/emori/.ssh/authorized_keys)" = "600"
 
 # should report healthy macOS, SSH, launchd, and Tailscale state
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_hostname=TANAABAGENTBOX-TEST$GITHUB_RUN_ID"
@@ -93,6 +121,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ex
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_enabled=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_expected=agentboxbrewenv$GITHUB_RUN_ID"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_admin_user_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_openclaw_user_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_enabled=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_expected=off"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_nested_ok=skipped"
@@ -105,7 +134,22 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "node_cli_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ripgrep_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "macos_identity_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_allowed_users=$(id -un) emori"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_group=com.apple.access_ssh"
+if sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_group_exists_ok=1"; then
+  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_admin_user_ok=1"
+  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_openclaw_user_ok=1"
+else
+  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_admin_user_ok=skipped"
+  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_openclaw_user_ok=skipped"
+fi
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_hardening_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user=emori"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_full_name=Emori Bootstrap Claw"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_exists_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_home_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_loaded_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_homebrew_launchd_absent_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_homebrew_user_launchd_absent_ok=1"
@@ -115,7 +159,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ag
 test "$(sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup)" = "agentboxbrewenv$GITHUB_RUN_ID"
 sudo /opt/tanaab/agentbox/bin/health.sh --check
 
-# should allow key-based SSH login with the generated private key
+# should allow admin ssh login with the generated private key
 ssh \
   -F /dev/null \
   -o BatchMode=yes \
@@ -126,9 +170,24 @@ ssh \
   -o KbdInteractiveAuthentication=no \
   -o StrictHostKeyChecking=no \
   -o UserKnownHostsFile=/dev/null \
-  -o LogLevel=ERROR \
+  -o LogLevel=VERBOSE \
   -i "$TMPDIR/id_agentbox_envvars" \
   "$(id -un)@localhost" true
+
+# should allow openclaw ssh login with the generated private key
+ssh \
+  -F /dev/null \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o IdentitiesOnly=yes \
+  -o PreferredAuthentications=publickey \
+  -o PasswordAuthentication=no \
+  -o KbdInteractiveAuthentication=no \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o LogLevel=VERBOSE \
+  -i "$TMPDIR/id_agentbox_envvars" \
+  emori@localhost true
 
 # should install the launchd health check tool
 test -x /opt/tanaab/agentbox/bin/health.sh
@@ -139,8 +198,10 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ro
 
 ```bash
 # should remove agentbox runner state and example fixtures
+openclaw_user="agentboxclawenv$GITHUB_RUN_ID$GITHUB_RUN_ATTEMPT"
 ../../scripts/cleanup-agentbox-runner.sh \
   --authorized-key-file "$TMPDIR/id_agentbox_envvars.pub" \
+  --user "$openclaw_user" \
   --brewgroup "agentboxbrewenv$GITHUB_RUN_ID" \
   --remove-tmpdir
 ```

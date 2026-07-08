@@ -111,15 +111,37 @@ remove_brewgroup() {
   fi
 }
 
+user_exists() {
+  dscl . -read "/Users/$1" >/dev/null 2>&1 || id -u "$1" >/dev/null 2>&1
+}
+
+user_home_dir() {
+  dscl . -read "/Users/$1" NFSHomeDirectory 2>/dev/null | awk '/NFSHomeDirectory:/ {print $2; exit}'
+}
+
 remove_user() {
   local user="$1"
+  local home=""
 
   if [[ -z "${user}" || "${user}" == "$(id -un)" || "${user}" == "root" ]]; then
     return 0
   fi
 
-  if dscl . -read "/Users/${user}" >/dev/null 2>&1; then
-    sudo dscl . -delete "/Users/${user}" >/dev/null 2>&1 || true
+  home="$(user_home_dir "${user}")"
+  sudo sysadminctl -deleteUser "${user}" >/dev/null 2>&1 || true
+  sudo dscl . -delete "/Users/${user}" >/dev/null 2>&1 || true
+  sudo dscacheutil -flushcache >/dev/null 2>&1 || true
+
+  if [[ -n "${home}" && "${home}" == "/Users/${user}" && -d "${home}" ]]; then
+    sudo rm -rf "${home}" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -d "/Users/${user}" ]]; then
+    sudo rm -rf "/Users/${user}" >/dev/null 2>&1 || true
+  fi
+
+  if user_exists "${user}"; then
+    abort "failed to remove user ${user}."
   fi
 }
 
@@ -145,6 +167,7 @@ sudo launchctl bootout system /Library/LaunchDaemons/dev.tanaab.agentbox.health.
 sudo launchctl bootout system /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist >/dev/null 2>&1 || true
 sudo launchctl bootout system /Library/LaunchDaemons/homebrew.mxcl.tailscale.plist >/dev/null 2>&1 || true
 launchctl bootout "gui/$(id -u)/homebrew.mxcl.tailscale" >/dev/null 2>&1 || true
+sudo sysadminctl -autologin off >/dev/null 2>&1 || true
 sudo rm -f /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist
 sudo rm -f /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist
 sudo rm -f /Library/LaunchDaemons/homebrew.mxcl.tailscale.plist

@@ -14,7 +14,7 @@ command -v boot.sh >/dev/null
 test -d "$GITHUB_WORKSPACE/.git"
 
 # should prepare a clean agentbox target and runner state
-../../scripts/cleanup-agentbox-runner.sh
+../../scripts/cleanup-agentbox-runner.sh --user openclaw
 mkdir -p "$TMPDIR"
 
 # should generate a public key fixture for authorized-key installation
@@ -35,6 +35,8 @@ boot.sh \
   --brewfile "file://$TMPDIR/Brewfile.extra-url" \
   --tailscale-authkey off \
   --brewgroup off \
+  --openclaw-password "AgentboxOpenClawNoTailscale$GITHUB_RUN_ID!" \
+  --skip-openclaw-autologin \
   --authorized-key "file:$TMPDIR/id_agentbox_no_tailscale.pub"
 test -f "$HOME/tanaab/agentbox/Brewfile"
 command -v tailscale >/dev/null
@@ -64,20 +66,40 @@ brew bundle check --file "$TMPDIR/Brewfile.extra-url" --no-upgrade
 command -v hello >/dev/null
 command -v tree >/dev/null
 
-# should install OpenCLAW CLI, Node, and ripgrep through Homebrew
+# should install openclaw cli node and ripgrep through Homebrew
 test -x "$(brew --prefix)/bin/openclaw"
 test -x "$(brew --prefix)/bin/node"
 test -x "$(brew --prefix)/bin/rg"
 
-# should expose Homebrew commands to login shells
+# should write Homebrew login shell PATH entries
 grep -Fx "$(brew --prefix)/bin" /etc/paths.d/00-agentbox-homebrew
 grep -Fx "$(brew --prefix)/sbin" /etc/paths.d/00-agentbox-homebrew
 
-# should install the provided public key for the runner user
+# should expose Homebrew commands in bash login shells
+env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /bin/bash -lc 'command -v openclaw' | grep -Fx "$(brew --prefix)/bin/openclaw"
+env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /bin/bash -lc 'command -v node' | grep -Fx "$(brew --prefix)/bin/node"
+env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /bin/bash -lc 'command -v rg' | grep -Fx "$(brew --prefix)/bin/rg"
+
+# should create the default openclaw runner user
+id -u openclaw >/dev/null
+dscl . -read /Users/openclaw RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^[[:space:]]*//' | grep -Fx "A Tanaab-based Claw"
+if dseditgroup -o checkmember -m openclaw admin >/dev/null 2>&1; then exit 1; fi
+test -d /Users/openclaw
+test "$(stat -f "%Su" /Users/openclaw)" = "openclaw"
+
+# should keep the default openclaw runner autologin skipped
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
+
+# should install the provided public key for the admin and openclaw runner users
 test -f "$HOME/.ssh/authorized_keys"
 grep -qxF "$(cat "$TMPDIR/id_agentbox_no_tailscale.pub")" "$HOME/.ssh/authorized_keys"
 test "$(stat -f "%Lp" "$HOME/.ssh")" = "700"
 test "$(stat -f "%Lp" "$HOME/.ssh/authorized_keys")" = "600"
+sudo test -f /Users/openclaw/.ssh/authorized_keys
+sudo grep -qxF "$(cat "$TMPDIR/id_agentbox_no_tailscale.pub")" /Users/openclaw/.ssh/authorized_keys
+test "$(sudo stat -f "%Lp" /Users/openclaw/.ssh)" = "700"
+test "$(sudo stat -f "%Lp" /Users/openclaw/.ssh/authorized_keys)" = "600"
 
 # should report healthy macOS, SSH, launchd, and skipped Tailscale state
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_hostname=TANAABAGENTBOX-NOTS$GITHUB_RUN_ID"
@@ -86,6 +108,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ss
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_enabled=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_expected=off"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_admin_user_ok=skipped"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_openclaw_user_ok=skipped"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_enabled=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_expected=off"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_nested_ok=skipped"
@@ -96,6 +119,18 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ho
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_cli_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "node_cli_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ripgrep_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_allowed_users=$(id -un) openclaw"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_group=com.apple.access_ssh"
+if sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_group_exists_ok=1"; then
+  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_admin_user_ok=1"
+  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_openclaw_user_ok=1"
+else
+  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_admin_user_ok=skipped"
+  sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ssh_access_openclaw_user_ok=skipped"
+fi
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user=openclaw"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_full_name=A Tanaab-based Claw"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_loaded_ok=skipped"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_homebrew_launchd_absent_ok=skipped"
@@ -106,7 +141,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ag
 test "$(sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup)" = "off"
 sudo /opt/tanaab/agentbox/bin/health.sh --check
 
-# should allow key-based SSH login with the generated private key
+# should allow admin ssh login with the generated private key
 ssh \
   -F /dev/null \
   -o BatchMode=yes \
@@ -117,9 +152,24 @@ ssh \
   -o KbdInteractiveAuthentication=no \
   -o StrictHostKeyChecking=no \
   -o UserKnownHostsFile=/dev/null \
-  -o LogLevel=ERROR \
+  -o LogLevel=VERBOSE \
   -i "$TMPDIR/id_agentbox_no_tailscale" \
   "$(id -un)@localhost" true
+
+# should allow openclaw ssh login with the generated private key
+ssh \
+  -F /dev/null \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o IdentitiesOnly=yes \
+  -o PreferredAuthentications=publickey \
+  -o PasswordAuthentication=no \
+  -o KbdInteractiveAuthentication=no \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o LogLevel=VERBOSE \
+  -i "$TMPDIR/id_agentbox_no_tailscale" \
+  "openclaw@localhost" true
 
 # should install the launchd health check tool
 test -x /opt/tanaab/agentbox/bin/health.sh
@@ -137,5 +187,6 @@ if tailscale ip -4 2>/dev/null | grep -E "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"; 
 # should remove agentbox runner state and example fixtures
 ../../scripts/cleanup-agentbox-runner.sh \
   --authorized-key-file "$TMPDIR/id_agentbox_no_tailscale.pub" \
+  --user openclaw \
   --remove-tmpdir
 ```

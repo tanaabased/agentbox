@@ -8,6 +8,7 @@ TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
 SSHD_BIN="/usr/sbin/sshd"
 SOCKETFILTERFW="/usr/libexec/ApplicationFirewall/socketfilterfw"
+SSH_ACCESS_GROUP="com.apple.access_ssh"
 
 AGENTBOX_HEALTH_EXPECTED_HOSTNAME=""
 AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=""
@@ -19,7 +20,11 @@ AGENTBOX_HEALTH_TRUSTED_BREWGROUP="off"
 AGENTBOX_HEALTH_BREW_PREFIX=""
 AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
 AGENTBOX_HEALTH_ADMIN_USER=""
+AGENTBOX_HEALTH_OPENCLAW_USER=""
+AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=""
+AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED="0"
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
+AGENTBOX_HEALTH_SSH_ALLOWED_USERS=""
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
 STATE_LOADED="0"
 
@@ -74,10 +79,12 @@ remote_login_value() {
 }
 
 sshd_hardened_value() {
-  local user="$1"
+  local allowed_users="$1"
   local config
+  local user
+  local -a users=()
 
-  if [[ -z "${user}" || ! -x "${SSHD_BIN}" ]]; then
+  if [[ -z "${allowed_users}" || ! -x "${SSHD_BIN}" ]]; then
     printf '0'
     return 0
   fi
@@ -103,10 +110,18 @@ sshd_hardened_value() {
     printf '0'
     return 0
   }
-  printf "%s\n" "${config}" | grep -Fxq "allowusers ${user}" || {
-    printf '0'
-    return 0
-  }
+
+  IFS=' ' read -r -a users <<< "${allowed_users}"
+  for user in "${users[@]}"; do
+    if [[ -z "${user}" ]]; then
+      continue
+    fi
+
+    printf "%s\n" "${config}" | grep -Fxq "allowusers ${user}" || {
+      printf '0'
+      return 0
+    }
+  done
 
   printf '1'
 }
@@ -152,6 +167,32 @@ group_user_member_value() {
   else
     printf '0'
   fi
+}
+
+group_exists_value() {
+  if [[ -n "$1" ]] && dscl . -read "/Groups/$1" >/dev/null 2>&1; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+user_exists_value() {
+  if [[ -n "$1" ]] && id -u "$1" >/dev/null 2>&1; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+user_home_dir_value() {
+  local user="$1"
+
+  dscl . -read "/Users/${user}" NFSHomeDirectory 2>/dev/null | awk '/NFSHomeDirectory:/ {print $2; exit}'
+}
+
+autologin_user_value() {
+  defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true
 }
 
 nested_group_value() {
@@ -257,12 +298,24 @@ generate_report() {
   local firewall_global_ok=""
   local firewall_stealth_ok=""
   local remote_login_ok=""
+  local ssh_access_admin_user_ok="skipped"
+  local ssh_access_group_exists_ok="0"
+  local ssh_access_openclaw_user_ok="skipped"
   local ssh_hardening_ok="skipped"
+  local ssh_allowed_users=""
   local brew_prefix_group=""
   local brew_prefix_group_ok="skipped"
   local brew_prefix_group_rwx_ok="skipped"
   local brew_prefix_ok="skipped"
   local brewgroup_admin_user_ok="skipped"
+  local brewgroup_openclaw_user_ok="skipped"
+  local openclaw_autologin_ok="skipped"
+  local openclaw_autologin_user=""
+  local openclaw_home=""
+  local openclaw_user_exists_ok="0"
+  local openclaw_user_home_ok="0"
+  local openclaw_user_non_admin_ok="0"
+  local openclaw_user_ok="0"
   local homebrew_bin_path=""
   local homebrew_sbin_path=""
   local homebrew_login_path_bin_ok="0"
@@ -308,6 +361,27 @@ generate_report() {
   firewall_stealth_ok="$(firewall_stealth_value)"
   remote_login_ok="$(remote_login_value)"
   admin_uid="$(id -u "${AGENTBOX_HEALTH_ADMIN_USER}" 2>/dev/null || true)"
+  ssh_allowed_users="${AGENTBOX_HEALTH_SSH_ALLOWED_USERS:-${AGENTBOX_HEALTH_ADMIN_USER}}"
+  openclaw_user_exists_ok="$(user_exists_value "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
+  openclaw_home="$(user_home_dir_value "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
+  openclaw_autologin_user="$(autologin_user_value)"
+
+  if [[ "${openclaw_user_exists_ok}" == "1" && -n "${openclaw_home}" && -d "${openclaw_home}" ]]; then
+    openclaw_user_home_ok="1"
+  fi
+
+  if [[ "${openclaw_user_exists_ok}" == "1" &&
+    "$(group_user_member_value admin "${AGENTBOX_HEALTH_OPENCLAW_USER}")" != "1" &&
+    "${AGENTBOX_HEALTH_OPENCLAW_USER}" != "${AGENTBOX_HEALTH_ADMIN_USER}" &&
+    "${AGENTBOX_HEALTH_OPENCLAW_USER}" != "root" ]]; then
+    openclaw_user_non_admin_ok="1"
+  fi
+
+  if [[ "${openclaw_user_exists_ok}" == "1" &&
+    "${openclaw_user_home_ok}" == "1" &&
+    "${openclaw_user_non_admin_ok}" == "1" ]]; then
+    openclaw_user_ok="1"
+  fi
 
   if [[ -z "${autorestart_value}" && "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}" == "1" ]]; then
     autorestart_ok="skipped"
@@ -362,20 +436,56 @@ generate_report() {
 
   print_kv ssh_hardening_expected "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}"
   print_kv admin_user "${AGENTBOX_HEALTH_ADMIN_USER}"
+  print_kv ssh_allowed_users "${ssh_allowed_users}"
+  print_kv ssh_access_group "${SSH_ACCESS_GROUP}"
+  ssh_access_group_exists_ok="$(group_exists_value "${SSH_ACCESS_GROUP}")"
+  print_kv ssh_access_group_exists_ok "${ssh_access_group_exists_ok}"
+  if [[ "${ssh_access_group_exists_ok}" == "1" ]]; then
+    ssh_access_admin_user_ok="$(group_user_member_value "${SSH_ACCESS_GROUP}" "${AGENTBOX_HEALTH_ADMIN_USER}")"
+    ssh_access_openclaw_user_ok="$(group_user_member_value "${SSH_ACCESS_GROUP}" "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
+    mark_required ssh_access_admin_user_ok "${ssh_access_admin_user_ok}"
+    mark_required ssh_access_openclaw_user_ok "${ssh_access_openclaw_user_ok}"
+  else
+    print_kv ssh_access_admin_user_ok "${ssh_access_admin_user_ok}"
+    print_kv ssh_access_openclaw_user_ok "${ssh_access_openclaw_user_ok}"
+  fi
   if [[ "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}" == "1" ]]; then
-    ssh_hardening_ok="$(sshd_hardened_value "${AGENTBOX_HEALTH_ADMIN_USER}")"
+    ssh_hardening_ok="$(sshd_hardened_value "${ssh_allowed_users}")"
     mark_required ssh_hardening_ok "${ssh_hardening_ok}"
   else
     print_kv ssh_hardening_ok "${ssh_hardening_ok}"
+  fi
+
+  print_kv openclaw_user "${AGENTBOX_HEALTH_OPENCLAW_USER}"
+  print_kv openclaw_full_name "${AGENTBOX_HEALTH_OPENCLAW_FULL_NAME}"
+  print_kv openclaw_home "${openclaw_home}"
+  mark_required openclaw_user_exists_ok "${openclaw_user_exists_ok}"
+  mark_required openclaw_user_home_ok "${openclaw_user_home_ok}"
+  mark_required openclaw_user_non_admin_ok "${openclaw_user_non_admin_ok}"
+  mark_required openclaw_user_ok "${openclaw_user_ok}"
+  print_kv openclaw_autologin_expected "${AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED}"
+  print_kv openclaw_autologin_user "${openclaw_autologin_user}"
+  if [[ "${AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED}" == "1" ]]; then
+    if [[ -n "${AGENTBOX_HEALTH_OPENCLAW_USER}" && "${openclaw_autologin_user}" == "${AGENTBOX_HEALTH_OPENCLAW_USER}" ]]; then
+      openclaw_autologin_ok="1"
+    else
+      openclaw_autologin_ok="0"
+    fi
+    mark_required openclaw_autologin_ok "${openclaw_autologin_ok}"
+  else
+    print_kv openclaw_autologin_ok "${openclaw_autologin_ok}"
   fi
 
   print_kv brewgroup_enabled "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}"
   print_kv brewgroup_expected "${AGENTBOX_HEALTH_BREWGROUP}"
   if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" ]]; then
     brewgroup_admin_user_ok="$(group_user_member_value "${AGENTBOX_HEALTH_BREWGROUP}" "${AGENTBOX_HEALTH_ADMIN_USER}")"
+    brewgroup_openclaw_user_ok="$(group_user_member_value "${AGENTBOX_HEALTH_BREWGROUP}" "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
     mark_required brewgroup_admin_user_ok "${brewgroup_admin_user_ok}"
+    mark_required brewgroup_openclaw_user_ok "${brewgroup_openclaw_user_ok}"
   else
     print_kv brewgroup_admin_user_ok "${brewgroup_admin_user_ok}"
+    print_kv brewgroup_openclaw_user_ok "${brewgroup_openclaw_user_ok}"
   fi
   print_kv trusted_brewgroup_enabled "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED}"
   print_kv trusted_brewgroup_expected "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP}"

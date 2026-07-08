@@ -6,14 +6,14 @@ explicitly asked.
 
 ## Purpose
 
-- This repo owns the path from a physically accessible macOS 26.x Mac to a managed OpenCLAW host:
-  headless access, macOS settings, base packages, SSH/Tailscale connectivity, non-sudo OpenCLAW
-  runner-user setup, launchd health, recovery, security hardening, and OpenCLAW gateway onboarding.
-- The boundary ends when the Mac has a working OpenCLAW gateway and is ready for agent workspaces to
+- This repo owns the path from a physically accessible macOS 26.x Mac to a managed OpenClaw host:
+  headless access, macOS settings, base packages, SSH/Tailscale connectivity, non-sudo OpenClaw
+  runner-user setup, launchd health, recovery, security hardening, and OpenClaw gateway onboarding.
+- The boundary ends when the Mac has a working OpenClaw gateway and is ready for agent workspaces to
   be layered on top.
-- Future global OpenCLAW plugin installation belongs here when it is host-level substrate rather than
+- Future global OpenClaw plugin installation belongs here when it is host-level substrate rather than
   workspace-specific agent behavior.
-- Do not add EMORI/Emery-specific setup, per-agent dotfiles, trading credentials, app-specific
+- Do not add EMORI-specific setup, per-agent dotfiles, trading credentials, app-specific
   services, agent-specific plugin installs, router port forwarding, or public WAN exposure here.
 
 ## Source Of Truth
@@ -66,6 +66,10 @@ explicitly asked.
 - Any machine behavior change in `boot.sh` must check README setup/after-bootstrap guidance plus
   the affected `envvars`, `options`, or `version` Leia scenarios.
 - Keep planned-action output aligned with actual execution order.
+- Treat CLI help order as a readability convention, not a Leia-enforced contract. Prefer related
+  bootstrap options near each other and keep generic controls such as `--force`, `--debug`,
+  `--version`, `--help`, and `--yes` together near the bottom. Prefer alphabetical ordering for
+  README/configuration reference lists unless they intentionally mirror help output.
 - Keep `--brewfile` as an extra-Brewfile append surface. The core agentbox `Brewfile` must remain
   first in the delegated Bootbox Brewfile list.
 - Treat the generated agentbox health script as the source of truth for machine health
@@ -161,6 +165,10 @@ explicitly asked.
   reintroduce the Tailscale GUI cask or Tailscale SSH mode.
 - Preserve managed sshd hardening through `/etc/ssh/sshd_config.d/agentbox.conf`; do not patch
   `/etc/ssh/sshd_config` directly.
+- Keep the OpenClaw runner user non-admin, require a user-provided or prompted password for account
+  creation/autologin, and never print, persist, generate, or debug-log that password.
+- Preserve existing OpenClaw runner profile pictures; only apply a bundled `assets/profile*.png`
+  image when the user has no configured picture.
 - Keep agentbox health checks strict for real machines. Managed macOS runner health skips must be
   recorded in the generated state file, set only from known runner environments, and kept narrowly
   scoped to unavailable virtualized/managed settings.
