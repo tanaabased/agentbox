@@ -1,14 +1,14 @@
 # OpenClaw Example
 
-This example runs the real `boot.sh` setup with OpenClaw gateway options, then verifies the
+This example runs the real `agentbox` setup with OpenClaw gateway options, then verifies the
 resulting GitHub-hosted macOS runner state. It is intended for CI by default because it mutates
 system settings, Homebrew state, SSH, launchd, OpenClaw, and Tailscale.
 
 ## Setup
 
 ```bash
-# should have prepared boot.sh on PATH
-command -v boot.sh >/dev/null
+# should have prepared agentbox on PATH
+command -v agentbox >/dev/null
 
 # should have a workflow payload available for agentbox
 test -d "$AGENTBOX_PAYLOAD_DIR/.git"
@@ -19,9 +19,9 @@ test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 # should have an openai api key from the workflow secret
 test -n "$OPENAI_API_KEY"
 
-# should run boot.sh successfully with custom openclaw gateway options
+# should run agentbox successfully with custom openclaw gateway options
 set -o pipefail
-OPENAI_API_KEY="$OPENAI_API_KEY" boot.sh \
+OPENAI_API_KEY="$OPENAI_API_KEY" agentbox \
   --debug \
   --force \
   --hostname "TANAABAGENTBOX-OC$GITHUB_RUN_ID" \

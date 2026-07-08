@@ -1,202 +1,202 @@
 # Inputs Example
 
-This example keeps lightweight coverage on the public `boot.sh` input surface. It does not run the
+This example keeps lightweight coverage on the public `agentbox` input surface. It does not run the
 bootstrap path; mutating setup coverage lives in the defaults, tailscale, homebrew, ssh, openclaw,
 rerun, users-custom, users-existing, and source examples.
 
 ## Setup
 
 ```bash
-# should have prepared boot.sh on PATH
-command -v boot.sh >/dev/null
+# should have prepared agentbox on PATH
+command -v agentbox >/dev/null
 ```
 
 ## Testing
 
 ```bash
 # should show agentbox usage
-boot.sh --help | grep -F "Usage:"
-boot.sh --help | grep -F "[NONINTERACTIVE=1]"
-boot.sh --help | grep -F "[CI=1]"
-boot.sh --help | grep -F "[AGENTBOX_*...]"
-boot.sh --help | grep -F "boot.sh [options]"
+agentbox --help | grep -F "Usage:"
+agentbox --help | grep -F "[NONINTERACTIVE=1]"
+agentbox --help | grep -F "[CI=1]"
+agentbox --help | grep -F "[AGENTBOX_*...]"
+agentbox --help | grep -F "agentbox [options]"
 
 # should document brewfile options
-boot.sh --help | grep -F -- "--brewfile"
-boot.sh --help | grep -F "local path or url"
+agentbox --help | grep -F -- "--brewfile"
+agentbox --help | grep -F "local path or url"
 
 # should document host access options
-boot.sh --help | grep -F -- "--authorized-key"
-boot.sh --help | grep -F -- "--tailscale-authkey"
-boot.sh --help | grep -F -- "--brewgroup"
-boot.sh --help | grep -F -- "group[:trusted-group]"
-boot.sh --help | grep -F -- "--hostname"
+agentbox --help | grep -F -- "--authorized-key"
+agentbox --help | grep -F -- "--tailscale-authkey"
+agentbox --help | grep -F -- "--brewgroup"
+agentbox --help | grep -F -- "group[:trusted-group]"
+agentbox --help | grep -F -- "--hostname"
 
 # should document openclaw runner options
-boot.sh --help | grep -F -- "--openclaw-identity"
-boot.sh --help | grep -F -- "--openclaw-password"
-boot.sh --help | grep -F -- "--openclaw-auth-choice"
-boot.sh --help | grep -F -- "--openclaw-auth-env"
-boot.sh --help | grep -F -- "--openclaw-service-mode"
-boot.sh --help | grep -F -- "--openclaw-gateway-port"
+agentbox --help | grep -F -- "--openclaw-identity"
+agentbox --help | grep -F -- "--openclaw-password"
+agentbox --help | grep -F -- "--openclaw-auth-choice"
+agentbox --help | grep -F -- "--openclaw-auth-env"
+agentbox --help | grep -F -- "--openclaw-service-mode"
+agentbox --help | grep -F -- "--openclaw-gateway-port"
 
 # should document operational options
-boot.sh --help | grep -F -- "--version"
-boot.sh --help | grep -F -- "--debug"
-boot.sh --help | grep -F -- "--force"
-boot.sh --help | grep -F -- "--yes"
+agentbox --help | grep -F -- "--version"
+agentbox --help | grep -F -- "--debug"
+agentbox --help | grep -F -- "--force"
+agentbox --help | grep -F -- "--yes"
 
 # should document brewfile environment variables
-boot.sh --help | grep -F "AGENTBOX_BREWFILE              same as --brewfile"
+agentbox --help | grep -F "AGENTBOX_BREWFILE              same as --brewfile"
 
 # should document host access environment variables
-boot.sh --help | grep -F "AGENTBOX_HOSTNAME              same as --hostname"
-boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEY        same as --authorized-key"
-boot.sh --help | grep -F "AGENTBOX_TAILSCALE_AUTHKEY     same as --tailscale-authkey"
-boot.sh --help | grep -F "AGENTBOX_BREWGROUP             same as --brewgroup"
+agentbox --help | grep -F "AGENTBOX_HOSTNAME              same as --hostname"
+agentbox --help | grep -F "AGENTBOX_AUTHORIZED_KEY        same as --authorized-key"
+agentbox --help | grep -F "AGENTBOX_TAILSCALE_AUTHKEY     same as --tailscale-authkey"
+agentbox --help | grep -F "AGENTBOX_BREWGROUP             same as --brewgroup"
 
 # should document openclaw runner environment variables
-boot.sh --help | grep -F "AGENTBOX_OPENCLAW_IDENTITY     same as --openclaw-identity"
-boot.sh --help | grep -F "AGENTBOX_OPENCLAW_PASSWORD     same as --openclaw-password"
-boot.sh --help | grep -F "AGENTBOX_OPENCLAW_SERVICE_MODE same as --openclaw-service-mode"
-boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice"
-boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env"
-boot.sh --help | grep -F "AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port"
+agentbox --help | grep -F "AGENTBOX_OPENCLAW_IDENTITY     same as --openclaw-identity"
+agentbox --help | grep -F "AGENTBOX_OPENCLAW_PASSWORD     same as --openclaw-password"
+agentbox --help | grep -F "AGENTBOX_OPENCLAW_SERVICE_MODE same as --openclaw-service-mode"
+agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice"
+agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env"
+agentbox --help | grep -F "AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port"
 
 # should document operational environment variables
-boot.sh --help | grep -F "AGENTBOX_FORCE                 same as --force"
-boot.sh --help | grep -F "NONINTERACTIVE                 same as --yes"
-boot.sh --help | grep -F "AGENTBOX_DEBUG                 same as --debug"
-boot.sh --help | grep -F "CI                             runs in CI mode and disables prompts"
-if boot.sh --help | grep -F -- "--ci"; then exit 1; fi
+agentbox --help | grep -F "AGENTBOX_FORCE                 same as --force"
+agentbox --help | grep -F "NONINTERACTIVE                 same as --yes"
+agentbox --help | grep -F "AGENTBOX_DEBUG                 same as --debug"
+agentbox --help | grep -F "CI                             runs in CI mode and disables prompts"
+if agentbox --help | grep -F -- "--ci"; then exit 1; fi
 
 # should keep the unsupported macos override out of help
-if boot.sh --help | grep -F "AGENTBOX_ALLOW_UNSUPPORTED_MACOS"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_ALLOW_UNSUPPORTED_MACOS"; then exit 1; fi
 
 # should keep hidden payload controls out of help
-if boot.sh --help | grep -F -- "--agentbox-version"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_VERSION"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_PAYLOAD_DIR"; then exit 1; fi
+if agentbox --help | grep -F -- "--agentbox-version"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_VERSION"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_PAYLOAD_DIR"; then exit 1; fi
 
 # should keep hidden plural authorized-key inputs out of help
-if boot.sh --help | grep -F -- "--authorized-keys"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_AUTHORIZED_KEYS"; then exit 1; fi
+if agentbox --help | grep -F -- "--authorized-keys"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_AUTHORIZED_KEYS"; then exit 1; fi
 
 # should keep hidden plural brewfile inputs out of help
-if boot.sh --help | grep -F -- "--brewfiles"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_BREWFILES"; then exit 1; fi
+if agentbox --help | grep -F -- "--brewfiles"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_BREWFILES"; then exit 1; fi
 
 # should not expose abbreviated openclaw aliases
-if boot.sh --help | grep -F -- "--oc-"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_OC_"; then exit 1; fi
+if agentbox --help | grep -F -- "--oc-"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_OC_"; then exit 1; fi
 
 # should keep removed tailscale tag inputs out of help
-if boot.sh --help | grep -F -- "--tailscale-tag"; then exit 1; fi
-if boot.sh --help | grep -F -- "--tailscale-tags"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAG"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_TAILSCALE_TAGS"; then exit 1; fi
+if agentbox --help | grep -F -- "--tailscale-tag"; then exit 1; fi
+if agentbox --help | grep -F -- "--tailscale-tags"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_TAILSCALE_TAG"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_TAILSCALE_TAGS"; then exit 1; fi
 
 # should not expose dashed brewgroup aliases
-if boot.sh --help | grep -F -- "--brew-group"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_BREW_GROUP"; then exit 1; fi
-if boot.sh --help | grep -F -- "--trusted-brewgroup"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_TRUSTED_BREWGROUP"; then exit 1; fi
+if agentbox --help | grep -F -- "--brew-group"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_BREW_GROUP"; then exit 1; fi
+if agentbox --help | grep -F -- "--trusted-brewgroup"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_TRUSTED_BREWGROUP"; then exit 1; fi
 
 # should not expose openclaw autologin controls
-if boot.sh --help | grep -F -- "--skip-openclaw-autologin"; then exit 1; fi
-if boot.sh --help | grep -F -- "--skip-openclaw-auto-login"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_OPENCLAW_AUTO_LOGIN"; then exit 1; fi
+if agentbox --help | grep -F -- "--skip-openclaw-autologin"; then exit 1; fi
+if agentbox --help | grep -F -- "--skip-openclaw-auto-login"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTO_LOGIN"; then exit 1; fi
 
 # should not expose skipped openclaw onboarding controls
-if boot.sh --help | grep -F -- "--skip-openclaw-onboarding"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_OPENCLAW_ONBOARDING"; then exit 1; fi
+if agentbox --help | grep -F -- "--skip-openclaw-onboarding"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_OPENCLAW_ONBOARDING"; then exit 1; fi
 
 # should not expose secret passthrough controls
-if boot.sh --help | grep -F -- "--openclaw-secret-input-mode"; then exit 1; fi
-if boot.sh --help | grep -F "AGENTBOX_OPENCLAW_SECRET_INPUT_MODE"; then exit 1; fi
+if agentbox --help | grep -F -- "--openclaw-secret-input-mode"; then exit 1; fi
+if agentbox --help | grep -F "AGENTBOX_OPENCLAW_SECRET_INPUT_MODE"; then exit 1; fi
 
 # should not expose removed legacy surfaces
-if boot.sh --help | grep -F -- "--op-token"; then exit 1; fi
-if boot.sh --help | grep -F -- "--ssh-key"; then exit 1; fi
-if boot.sh --help | grep -F -- "--me"; then exit 1; fi
-if boot.sh --help | grep -F -- "--tanaab"; then exit 1; fi
-if boot.sh --help | grep -F "PIROME"; then exit 1; fi
-if boot.sh --help | grep -F "OP_SERVICE_ACCOUNT_TOKEN"; then exit 1; fi
-if boot.sh --help | grep -F ".codex-plugin"; then exit 1; fi
-if boot.sh --help | grep -F "piroplugin"; then exit 1; fi
+if agentbox --help | grep -F -- "--op-token"; then exit 1; fi
+if agentbox --help | grep -F -- "--ssh-key"; then exit 1; fi
+if agentbox --help | grep -F -- "--me"; then exit 1; fi
+if agentbox --help | grep -F -- "--tanaab"; then exit 1; fi
+if agentbox --help | grep -F "PIROME"; then exit 1; fi
+if agentbox --help | grep -F "OP_SERVICE_ACCOUNT_TOKEN"; then exit 1; fi
+if agentbox --help | grep -F ".codex-plugin"; then exit 1; fi
+if agentbox --help | grep -F "piroplugin"; then exit 1; fi
 
 # should print a version string
-test -n "$(boot.sh --version)"
+test -n "$(agentbox --version)"
 
 # should mask tailscale auth key defaults in help
-AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" boot.sh --help | grep -F "tske...mple"
-if AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" boot.sh --help | grep -F "tskey-secret-example"; then exit 1; fi
+AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" agentbox --help | grep -F "tske...mple"
+if AGENTBOX_TAILSCALE_AUTHKEY="tskey-secret-example" agentbox --help | grep -F "tskey-secret-example"; then exit 1; fi
 
 # should show falsey tailscale auth key values as disabled
-AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "falsey disables setup"
-AGENTBOX_TAILSCALE_AUTHKEY=off boot.sh --help | grep -F "[default: disabled]"
+AGENTBOX_TAILSCALE_AUTHKEY=off agentbox --help | grep -F "falsey disables setup"
+AGENTBOX_TAILSCALE_AUTHKEY=off agentbox --help | grep -F "[default: disabled]"
 
 # should show hostname input precedence
-AGENTBOX_HOSTNAME=TANAABENVINPUT boot.sh --help | grep -F "[default: TANAABENVINPUT]"
-AGENTBOX_HOSTNAME=TANAABENVINPUT boot.sh --hostname TANAABCLIINPUT --help | grep -F "[default: TANAABCLIINPUT]"
-if AGENTBOX_HOSTNAME=TANAABENVINPUT boot.sh --hostname TANAABCLIINPUT --help | grep -F "TANAABENVINPUT"; then exit 1; fi
+AGENTBOX_HOSTNAME=TANAABENVINPUT agentbox --help | grep -F "[default: TANAABENVINPUT]"
+AGENTBOX_HOSTNAME=TANAABENVINPUT agentbox --hostname TANAABCLIINPUT --help | grep -F "[default: TANAABCLIINPUT]"
+if AGENTBOX_HOSTNAME=TANAABENVINPUT agentbox --hostname TANAABCLIINPUT --help | grep -F "TANAABENVINPUT"; then exit 1; fi
 
 # should show the default brewgroup value
-boot.sh --help | grep -F "[default: brewer]"
+agentbox --help | grep -F "[default: brewer]"
 
 # should show disabled brewgroup input
-AGENTBOX_BREWGROUP=off boot.sh --help | grep -F "[default: disabled]"
+AGENTBOX_BREWGROUP=off agentbox --help | grep -F "[default: disabled]"
 
 # should show trusted brewgroup input
-AGENTBOX_BREWGROUP=brewer:staff boot.sh --help | grep -F "[default: brewer:staff]"
+AGENTBOX_BREWGROUP=brewer:staff agentbox --help | grep -F "[default: brewer:staff]"
 
 # should show extra brewfile input precedence
-boot.sh --help | grep -F -- "--brewfile                  adds an extra Brewfile from a local path or url [default: none]"
-AGENTBOX_BREWFILE="Brewfile.extras,https://example.test/Brewfile" boot.sh --help | grep -F "[default: Brewfile.extras,https://example.test/Brewfile]"
-AGENTBOX_BREWFILE="Brewfile.env" boot.sh --brewfile Brewfile.cli --help | grep -F "[default: Brewfile.cli]"
-if AGENTBOX_BREWFILE="Brewfile.env" boot.sh --brewfile Brewfile.cli --help | grep -F "Brewfile.env"; then exit 1; fi
-AGENTBOX_BREWFILE="Brewfile.env" boot.sh --brewfile= --help | grep -F "[default: none]"
+agentbox --help | grep -F -- "--brewfile                  adds an extra Brewfile from a local path or url [default: none]"
+AGENTBOX_BREWFILE="Brewfile.extras,https://example.test/Brewfile" agentbox --help | grep -F "[default: Brewfile.extras,https://example.test/Brewfile]"
+AGENTBOX_BREWFILE="Brewfile.env" agentbox --brewfile Brewfile.cli --help | grep -F "[default: Brewfile.cli]"
+if AGENTBOX_BREWFILE="Brewfile.env" agentbox --brewfile Brewfile.cli --help | grep -F "Brewfile.env"; then exit 1; fi
+AGENTBOX_BREWFILE="Brewfile.env" agentbox --brewfile= --help | grep -F "[default: none]"
 
 # should show openclaw runner defaults without leaking passwords
-boot.sh --help | grep -F -- "--openclaw-identity         configures the openclaw runner as \"full name <shortname>\""
-boot.sh --help | grep -F "A Tanaab-based Claw <openclaw>"
-boot.sh --help | grep -F -- "--openclaw-password         sets the openclaw runner password"
-boot.sh --help | grep -F -- "[default: none]"
-AGENTBOX_OPENCLAW_PASSWORD="secret-password" boot.sh --help | grep -F -- "--openclaw-password         sets the openclaw runner password"
-AGENTBOX_OPENCLAW_PASSWORD="secret-password" boot.sh --help | grep -F "[default: provided]"
-if AGENTBOX_OPENCLAW_PASSWORD="secret-password" boot.sh --help | grep -F "secret-password"; then exit 1; fi
-boot.sh --help | grep -F -- "--openclaw-service-mode     sets openclaw gateway supervision mode"
-boot.sh --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: system]"
-AGENTBOX_OPENCLAW_SERVICE_MODE=user boot.sh --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: user]"
-AGENTBOX_OPENCLAW_SERVICE_MODE=user boot.sh --openclaw-service-mode system --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: system]"
-if AGENTBOX_OPENCLAW_SERVICE_MODE=user boot.sh --openclaw-service-mode system --help | grep -F "[default: user]"; then exit 1; fi
+agentbox --help | grep -F -- "--openclaw-identity         configures the openclaw runner as \"full name <shortname>\""
+agentbox --help | grep -F "A Tanaab-based Claw <openclaw>"
+agentbox --help | grep -F -- "--openclaw-password         sets the openclaw runner password"
+agentbox --help | grep -F -- "[default: none]"
+AGENTBOX_OPENCLAW_PASSWORD="secret-password" agentbox --help | grep -F -- "--openclaw-password         sets the openclaw runner password"
+AGENTBOX_OPENCLAW_PASSWORD="secret-password" agentbox --help | grep -F "[default: provided]"
+if AGENTBOX_OPENCLAW_PASSWORD="secret-password" agentbox --help | grep -F "secret-password"; then exit 1; fi
+agentbox --help | grep -F -- "--openclaw-service-mode     sets openclaw gateway supervision mode"
+agentbox --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: system]"
+AGENTBOX_OPENCLAW_SERVICE_MODE=user agentbox --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: user]"
+AGENTBOX_OPENCLAW_SERVICE_MODE=user agentbox --openclaw-service-mode system --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: system]"
+if AGENTBOX_OPENCLAW_SERVICE_MODE=user agentbox --openclaw-service-mode system --help | grep -F "[default: user]"; then exit 1; fi
 
 # should show openclaw identity input precedence
-AGENTBOX_OPENCLAW_IDENTITY="Env Input Claw <envinput>" boot.sh --help | grep -F "Env Input Claw <envinput>"
-AGENTBOX_OPENCLAW_IDENTITY="Env Input Claw <envinput>" boot.sh --openclaw-identity "Cli Input Claw <cliinput>" --help | grep -F "Cli Input Claw <cliinput>"
-if AGENTBOX_OPENCLAW_IDENTITY="Env Input Claw <envinput>" boot.sh --openclaw-identity "Cli Input Claw <cliinput>" --help | grep -F "Env Input Claw <envinput>"; then exit 1; fi
+AGENTBOX_OPENCLAW_IDENTITY="Env Input Claw <envinput>" agentbox --help | grep -F "Env Input Claw <envinput>"
+AGENTBOX_OPENCLAW_IDENTITY="Env Input Claw <envinput>" agentbox --openclaw-identity "Cli Input Claw <cliinput>" --help | grep -F "Cli Input Claw <cliinput>"
+if AGENTBOX_OPENCLAW_IDENTITY="Env Input Claw <envinput>" agentbox --openclaw-identity "Cli Input Claw <cliinput>" --help | grep -F "Env Input Claw <envinput>"; then exit 1; fi
 
 # should show openclaw gateway onboarding defaults
-boot.sh --help | grep -F -- "--openclaw-auth-choice" | grep -F "sets initial openclaw model auth choice"
-boot.sh --help | grep -F -- "--openclaw-auth-choice" | grep -F "[default: skip]"
-boot.sh --help | grep -F -- "--openclaw-auth-env" | grep -F "passes one extra parent env var to openclaw auth onboarding"
-boot.sh --help | grep -F -- "--openclaw-auth-env" | grep -F "[default: none]"
-boot.sh --help | grep -F -- "--openclaw-gateway-port" | grep -F "sets openclaw gateway port"
-boot.sh --help | grep -F -- "--openclaw-gateway-port" | grep -F "[default: 18789]"
-AGENTBOX_OPENCLAW_AUTH_CHOICE=openai-api-key boot.sh --help | grep -F -- "--openclaw-auth-choice" | grep -F "[default: openai-api-key]"
-AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY boot.sh --help | grep -F -- "--openclaw-auth-env" | grep -F "[default: ENV_OPENCLAW_API_KEY]"
-AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY boot.sh --openclaw-auth-env CLI_OPENCLAW_API_KEY --help | grep -F -- "--openclaw-auth-env" | grep -F "[default: CLI_OPENCLAW_API_KEY]"
-if AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY boot.sh --openclaw-auth-env CLI_OPENCLAW_API_KEY --help | grep -F "ENV_OPENCLAW_API_KEY"; then exit 1; fi
-AGENTBOX_OPENCLAW_GATEWAY_PORT=18888 boot.sh --help | grep -F -- "--openclaw-gateway-port" | grep -F "[default: 18888]"
+agentbox --help | grep -F -- "--openclaw-auth-choice" | grep -F "sets initial openclaw model auth choice"
+agentbox --help | grep -F -- "--openclaw-auth-choice" | grep -F "[default: skip]"
+agentbox --help | grep -F -- "--openclaw-auth-env" | grep -F "passes one extra parent env var to openclaw auth onboarding"
+agentbox --help | grep -F -- "--openclaw-auth-env" | grep -F "[default: none]"
+agentbox --help | grep -F -- "--openclaw-gateway-port" | grep -F "sets openclaw gateway port"
+agentbox --help | grep -F -- "--openclaw-gateway-port" | grep -F "[default: 18789]"
+AGENTBOX_OPENCLAW_AUTH_CHOICE=openai-api-key agentbox --help | grep -F -- "--openclaw-auth-choice" | grep -F "[default: openai-api-key]"
+AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY agentbox --help | grep -F -- "--openclaw-auth-env" | grep -F "[default: ENV_OPENCLAW_API_KEY]"
+AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY agentbox --openclaw-auth-env CLI_OPENCLAW_API_KEY --help | grep -F -- "--openclaw-auth-env" | grep -F "[default: CLI_OPENCLAW_API_KEY]"
+if AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY agentbox --openclaw-auth-env CLI_OPENCLAW_API_KEY --help | grep -F "ENV_OPENCLAW_API_KEY"; then exit 1; fi
+AGENTBOX_OPENCLAW_GATEWAY_PORT=18888 agentbox --help | grep -F -- "--openclaw-gateway-port" | grep -F "[default: 18888]"
 
 # should show openclaw gateway port input precedence
-AGENTBOX_OPENCLAW_GATEWAY_PORT=18888 boot.sh --openclaw-gateway-port 19999 --help | grep -F -- "--openclaw-gateway-port" | grep -F "[default: 19999]"
-if AGENTBOX_OPENCLAW_GATEWAY_PORT=18888 boot.sh --openclaw-gateway-port 19999 --help | grep -F "[default: 18888]"; then exit 1; fi
+AGENTBOX_OPENCLAW_GATEWAY_PORT=18888 agentbox --openclaw-gateway-port 19999 --help | grep -F -- "--openclaw-gateway-port" | grep -F "[default: 19999]"
+if AGENTBOX_OPENCLAW_GATEWAY_PORT=18888 agentbox --openclaw-gateway-port 19999 --help | grep -F "[default: 18888]"; then exit 1; fi
 
 # should fail when openclaw identity is missing
 set +e
-output="$(boot.sh --openclaw-identity 2>&1)"
+output="$(agentbox --openclaw-identity 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -206,7 +206,7 @@ test "$command_status" -ne 0
 
 # should fail when openclaw identity syntax is malformed
 set +e
-output="$(boot.sh --tailscale-authkey off --brewgroup off --openclaw-identity "Missing Shortname" 2>&1)"
+output="$(agentbox --tailscale-authkey off --brewgroup off --openclaw-identity "Missing Shortname" 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -216,7 +216,7 @@ test "$command_status" -ne 0
 
 # should fail when openclaw auth choice is missing
 set +e
-output="$(boot.sh --openclaw-auth-choice 2>&1)"
+output="$(agentbox --openclaw-auth-choice 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -226,7 +226,7 @@ test "$command_status" -ne 0
 
 # should fail when openclaw auth env is missing
 set +e
-output="$(boot.sh --openclaw-auth-env 2>&1)"
+output="$(agentbox --openclaw-auth-env 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -236,7 +236,7 @@ test "$command_status" -ne 0
 
 # should fail when openclaw auth env is empty
 set +e
-output="$(boot.sh --openclaw-auth-env= 2>&1)"
+output="$(agentbox --openclaw-auth-env= 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -246,7 +246,7 @@ test "$command_status" -ne 0
 
 # should fail when custom openclaw auth env name is invalid
 set +e
-output="$(FUTURE_OPENCLAW_API_KEY=test-value boot.sh \
+output="$(FUTURE_OPENCLAW_API_KEY=test-value agentbox \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-auth-choice future-api-key \
@@ -261,7 +261,7 @@ test "$command_status" -ne 0
 
 # should fail when custom openclaw auth env is used with skip auth
 set +e
-output="$(FUTURE_OPENCLAW_API_KEY=test-value boot.sh \
+output="$(FUTURE_OPENCLAW_API_KEY=test-value agentbox \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-auth-choice skip \
@@ -276,7 +276,7 @@ test "$command_status" -ne 0
 
 # should fail when custom openclaw auth env is missing from the parent environment
 set +e
-output="$(env -u FUTURE_OPENCLAW_API_KEY boot.sh \
+output="$(env -u FUTURE_OPENCLAW_API_KEY agentbox \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-auth-choice future-api-key \
@@ -292,7 +292,7 @@ test "$command_status" -ne 0
 
 # should fail when openai api-key auth is missing the provider env
 set +e
-output="$(env -u OPENAI_API_KEY boot.sh \
+output="$(env -u OPENAI_API_KEY agentbox \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-auth-choice openai-api-key \
@@ -308,7 +308,7 @@ test "$command_status" -ne 0
 
 # should fail when removed agentbox version option is used
 set +e
-output="$(boot.sh --agentbox-version 1.2.3 2>&1)"
+output="$(agentbox --agentbox-version 1.2.3 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -318,7 +318,7 @@ test "$command_status" -ne 0
 
 # should fail when openclaw gateway port is empty
 set +e
-output="$(boot.sh --openclaw-gateway-port= 2>&1)"
+output="$(agentbox --openclaw-gateway-port= 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -328,7 +328,7 @@ test "$command_status" -ne 0
 
 # should fail when openclaw service mode is missing
 set +e
-output="$(boot.sh --openclaw-service-mode 2>&1)"
+output="$(agentbox --openclaw-service-mode 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -338,7 +338,7 @@ test "$command_status" -ne 0
 
 # should fail when openclaw service mode is empty
 set +e
-output="$(boot.sh --openclaw-service-mode= 2>&1)"
+output="$(agentbox --openclaw-service-mode= 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -348,7 +348,7 @@ test "$command_status" -ne 0
 
 # should fail when openclaw service mode is invalid
 set +e
-output="$(boot.sh --tailscale-authkey off --brewgroup off --openclaw-service-mode launch-agent 2>&1)"
+output="$(agentbox --tailscale-authkey off --brewgroup off --openclaw-service-mode launch-agent 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -357,7 +357,7 @@ test "$command_status" -ne 0
 
 # should fail when openclaw password value is empty
 set +e
-output="$(boot.sh --openclaw-password= 2>&1)"
+output="$(agentbox --openclaw-password= 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -367,7 +367,7 @@ test "$command_status" -ne 0
 
 # should fail when brewfile option values are missing
 set +e
-output="$(boot.sh --brewfile 2>&1)"
+output="$(agentbox --brewfile 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
@@ -377,12 +377,12 @@ test "$command_status" -ne 0
 
 # should fail on unknown options with usage context
 set +e
-output="$(boot.sh --not-real 2>&1)"
+output="$(agentbox --not-real 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
 printf "%s\n" "$output" | grep -F "unrecognized option"
 printf "%s\n" "$output" | grep -F "Usage:"
-printf "%s\n" "$output" | grep -F "boot.sh [options]"
+printf "%s\n" "$output" | grep -F "agentbox [options]"
 test "$command_status" -ne 0
 ```

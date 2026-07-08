@@ -1,6 +1,6 @@
 # Defaults Example
 
-This example runs the real `boot.sh` setup with default agentbox-owned settings, then verifies the
+This example runs the real `agentbox` setup with default agentbox-owned settings, then verifies the
 resulting GitHub-hosted macOS runner state. It is intended for CI by default because it mutates
 system settings, Homebrew state, SSH, launchd, OpenClaw, and Tailscale.
 
@@ -11,8 +11,8 @@ defaults.
 ## Setup
 
 ```bash
-# should have prepared boot.sh on PATH
-command -v boot.sh >/dev/null
+# should have prepared agentbox on PATH
+command -v agentbox >/dev/null
 
 # should have a workflow payload available for agentbox
 test -d "$AGENTBOX_PAYLOAD_DIR/.git"
@@ -20,8 +20,8 @@ test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 # should have a tailscale auth key from the workflow secret
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 
-# should run boot.sh successfully
-boot.sh \
+# should run agentbox successfully
+agentbox \
   --force \
   --hostname "TANAABAGENTBOX-DEF$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \

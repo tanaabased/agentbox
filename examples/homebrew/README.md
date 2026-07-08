@@ -7,17 +7,17 @@ OpenClaw.
 ## Setup
 
 ```bash
-# should have prepared boot.sh on PATH
-command -v boot.sh >/dev/null
+# should have prepared agentbox on PATH
+command -v agentbox >/dev/null
 
 # should have a workflow payload available for agentbox
 test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
-# should run boot.sh successfully with homebrew options
+# should run agentbox successfully with homebrew options
 mkdir -p "$TMPDIR"
 printf 'brew "hello"\n' > "$TMPDIR/Brewfile.extra-local"
 printf 'brew "tree"\n' > "$TMPDIR/Brewfile.extra-url"
-boot.sh \
+agentbox \
   --force \
   --hostname "TANAABAGENTBOXHOMEBREW" \
   --brewfile "$TMPDIR/Brewfile.extra-local" \

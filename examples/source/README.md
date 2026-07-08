@@ -1,21 +1,21 @@
 # Source Example
 
-This example verifies that CI runs `boot.sh` with an explicit agentbox payload directory and that
+This example verifies that CI runs `agentbox` with an explicit agentbox payload directory and that
 runtime files come from that payload. It is intended for CI by default because it mutates system
 settings, Homebrew state, SSH, OpenClaw, and launchd.
 
 ## Setup
 
 ```bash
-# should have prepared boot.sh on PATH
-command -v boot.sh >/dev/null
+# should have prepared agentbox on PATH
+command -v agentbox >/dev/null
 
 # should have a workflow payload available for agentbox
 test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 test "$AGENTBOX_PAYLOAD_DIR" = "$GITHUB_WORKSPACE"
 
-# should run boot.sh successfully with the workflow payload
-boot.sh \
+# should run agentbox successfully with the workflow payload
+agentbox \
   --force \
   --tailscale-authkey off \
   --brewgroup off \

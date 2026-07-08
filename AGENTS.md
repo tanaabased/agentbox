@@ -124,8 +124,8 @@ explicitly asked.
 - Use fixed, readable local resource names in GitHub-hosted macOS examples when the resource exists
   only on the ephemeral runner. Keep externally registered or shared resources, especially Tailscale
   hostnames, unique per scenario and run.
-- Mutating Leia examples should run `boot.sh` once unless the example is explicitly about rerun,
-  idempotency, or payload resolution behavior.
+- Mutating Leia examples should run the prepared `agentbox` entrypoint once unless the example is
+  explicitly about rerun, idempotency, or payload resolution behavior.
 - Defaults-focused examples should avoid overriding agentbox-owned default values, while still
   providing required CI inputs such as payload paths, passwords, secrets, and unique shared-resource
   names.
@@ -135,7 +135,7 @@ explicitly asked.
   as Tailscale, Homebrew, SSH, OpenClaw, users, rerun, or payload resolution.
 - When adding coverage, prefer extending the narrowest existing example that owns the behavior. Add
   a new example when the behavior needs incompatible bootstrap inputs, crosses enough domains that
-  it would blur an existing example, or intentionally needs another successful `boot.sh` run.
+  it would blur an existing example, or intentionally needs another successful `agentbox` run.
 - Keep `examples/inputs` non-mutating. It owns help text, displayed defaults, input validation, and
   option/env precedence checks. Mutating examples should prove behavior domains such as Tailscale,
   Homebrew, SSH, OpenClaw, users, rerun, or payload resolution rather than re-testing every input

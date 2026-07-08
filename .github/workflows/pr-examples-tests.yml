@@ -45,9 +45,11 @@ jobs:
           commands: |
             bun run build
             version-injector dist/boot.sh --style sh --version "${{ env.STAMPED_VERSION }}"
-      - name: Put prepared script on PATH
+      - name: Put prepared agentbox on PATH
         shell: bash
-        run: echo "$PWD/dist" >> "$GITHUB_PATH"
+        run: |
+          install -m 755 dist/boot.sh dist/agentbox
+          echo "$PWD/dist" >> "$GITHUB_PATH"
       - name: Run Leia-backed example
         shell: bash
         env:

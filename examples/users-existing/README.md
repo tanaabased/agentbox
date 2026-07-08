@@ -7,8 +7,8 @@ launchd.
 ## Setup
 
 ```bash
-# should have prepared boot.sh on PATH
-command -v boot.sh >/dev/null
+# should have prepared agentbox on PATH
+command -v agentbox >/dev/null
 
 # should have a workflow payload available for agentbox
 test -d "$AGENTBOX_PAYLOAD_DIR/.git"
@@ -29,7 +29,7 @@ test "$(dscl . -read /Users/ted Picture | cut -d " " -f 2-)" = "$GITHUB_WORKSPAC
 mkdir -p "$TMPDIR"
 rm -f "$TMPDIR/id_agentbox_users_existing" "$TMPDIR/id_agentbox_users_existing.pub"
 ssh-keygen -t ed25519 -N "" -C "agentbox-users-existing@example.test" -f "$TMPDIR/id_agentbox_users_existing" >/dev/null
-boot.sh \
+agentbox \
   --force \
   --tailscale-authkey off \
   --brewgroup "tedsbrewclub" \
