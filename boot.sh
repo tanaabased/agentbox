@@ -2062,6 +2062,7 @@ write_agentbox_health_state() {
 
   if ! sudo tee "${AGENTBOX_HEALTH_STATE_PATH}" >/dev/null <<EOHEALTHSTATE
 # Managed by agentbox.
+AGENTBOX_HEALTH_AGENTBOX_VERSION=$(shell_quote "${SCRIPT_VERSION}")
 AGENTBOX_HEALTH_EXPECTED_HOSTNAME=$(shell_quote "${AGENTBOX_HOSTNAME_VALUE}")
 AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=$(shell_quote "${TAILSCALE_HOSTNAME_VALUE}")
 AGENTBOX_HEALTH_TAILSCALE_ENABLED=${tailscale_enabled}
@@ -2098,6 +2099,90 @@ write_agentbox_health_script() {
   execute sudo chmod 755 "${AGENTBOX_OPT_DIR}/bin/health.sh"
 }
 
+plist_environment_entry() {
+  local key="$1"
+  local value="${2:-}"
+
+  if [[ -z "${value}" ]]; then
+    return 0
+  fi
+
+  printf '      <key>%s</key>\n' "$(xml_escape "${key}")"
+  printf '      <string>%s</string>\n' "$(xml_escape "${value}")"
+}
+
+openclaw_gateway_state_dir() {
+  printf "%s/.openclaw" "$(openclaw_runner_home_required)"
+}
+
+openclaw_gateway_tmp_dir() {
+  printf "%s/tmp" "$(openclaw_gateway_state_dir)"
+}
+
+openclaw_gateway_service_version() {
+  local openclaw_bin="${BREW_PREFIX_VALUE}/bin/openclaw"
+  local version_output=""
+
+  if [[ -x "${openclaw_bin}" ]]; then
+    version_output="$("${openclaw_bin}" --version 2>/dev/null || true)"
+    version_output="$(trim_whitespace "${version_output}")"
+  fi
+
+  if [[ "${version_output}" =~ ([0-9]+[.][0-9]+[.][^[:space:]]+) ]]; then
+    printf "%s" "${BASH_REMATCH[1]}"
+    return 0
+  fi
+
+  if [[ -n "${version_output}" ]]; then
+    printf "%s" "${version_output##* }"
+    return 0
+  fi
+
+  printf "unknown"
+}
+
+prepare_openclaw_gateway_runtime_dirs() {
+  local primary_group
+  local state_dir
+  local tmp_dir
+
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+  state_dir="$(openclaw_gateway_state_dir)"
+  tmp_dir="$(openclaw_gateway_tmp_dir)"
+
+  execute sudo /usr/bin/install -d -o "${OPENCLAW_USER}" -g "${primary_group}" -m 700 "${state_dir}" "${tmp_dir}"
+}
+
+openclaw_gateway_environment_xml() {
+  local home
+  local path_value
+  local tmp_dir
+  local health_command
+
+  home="$(openclaw_runner_home_required)"
+  path_value="$(openclaw_runner_path)"
+  tmp_dir="$(openclaw_gateway_tmp_dir)"
+  health_command="${AGENTBOX_OPT_DIR}/bin/health.sh --report"
+
+  printf '    <key>EnvironmentVariables</key>\n'
+  printf '    <dict>\n'
+  plist_environment_entry "HOME" "${home}"
+  plist_environment_entry "USER" "${OPENCLAW_USER}"
+  plist_environment_entry "LOGNAME" "${OPENCLAW_USER}"
+  plist_environment_entry "PATH" "${path_value}"
+  plist_environment_entry "TMPDIR" "${tmp_dir}"
+  plist_environment_entry "OPENCLAW_GATEWAY_PORT" "${OPENCLAW_GATEWAY_PORT}"
+  plist_environment_entry "OPENCLAW_LAUNCHD_LABEL" "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
+  plist_environment_entry "OPENCLAW_SERVICE_MARKER" "openclaw"
+  plist_environment_entry "OPENCLAW_SERVICE_KIND" "gateway"
+  plist_environment_entry "OPENCLAW_SERVICE_VERSION" "$(openclaw_gateway_service_version)"
+  plist_environment_entry "AGENTBOX_MANAGED" "1"
+  plist_environment_entry "AGENTBOX_SERVICE_KIND" "openclaw-gateway"
+  plist_environment_entry "AGENTBOX_VERSION" "${SCRIPT_VERSION}"
+  plist_environment_entry "AGENTBOX_HEALTH_COMMAND" "${health_command}"
+  printf '    </dict>'
+}
+
 render_agentbox_launchd_template() {
   local template_path="$1"
   local output_path="$2"
@@ -2116,12 +2201,10 @@ render_agentbox_launchd_template() {
   local openclaw_gateway_bin
   local openclaw_gateway_user
   local openclaw_gateway_home
-  local openclaw_gateway_path
   local openclaw_gateway_bind
   local openclaw_gateway_tailscale_mode
   local openclaw_gateway_port
-  local openclaw_gateway_service_marker
-  local openclaw_gateway_service_kind
+  local openclaw_gateway_environment
   local openclaw_gateway_stdout_log
   local openclaw_gateway_stderr_log
 
@@ -2143,12 +2226,14 @@ render_agentbox_launchd_template() {
   openclaw_gateway_bin="$(xml_escape "${BREW_PREFIX_VALUE}/bin/openclaw")"
   openclaw_gateway_user="$(xml_escape "${OPENCLAW_USER}")"
   openclaw_gateway_home="$(xml_escape "$(user_home_dir "${OPENCLAW_USER}" 2>/dev/null || true)")"
-  openclaw_gateway_path="$(xml_escape "${BREW_PREFIX_VALUE}/bin:${BREW_PREFIX_VALUE}/sbin:/usr/bin:/bin:/usr/sbin:/sbin")"
   openclaw_gateway_bind="$(xml_escape "${OPENCLAW_GATEWAY_BIND_VALUE}")"
   openclaw_gateway_tailscale_mode="$(xml_escape "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}")"
   openclaw_gateway_port="$(xml_escape "${OPENCLAW_GATEWAY_PORT}")"
-  openclaw_gateway_service_marker="$(xml_escape "openclaw")"
-  openclaw_gateway_service_kind="$(xml_escape "gateway")"
+  if [[ "${rendered}" == *"__AGENTBOX_OPENCLAW_GATEWAY_ENVIRONMENT__"* ]]; then
+    openclaw_gateway_environment="$(openclaw_gateway_environment_xml)"
+  else
+    openclaw_gateway_environment=""
+  fi
   openclaw_gateway_stdout_log="$(xml_escape "${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log")"
   openclaw_gateway_stderr_log="$(xml_escape "${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log")"
 
@@ -2165,12 +2250,10 @@ render_agentbox_launchd_template() {
   rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_BIN__/${openclaw_gateway_bin}}"
   rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_USER__/${openclaw_gateway_user}}"
   rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_HOME__/${openclaw_gateway_home}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_PATH__/${openclaw_gateway_path}}"
   rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_BIND__/${openclaw_gateway_bind}}"
   rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_TAILSCALE_MODE__/${openclaw_gateway_tailscale_mode}}"
   rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_PORT__/${openclaw_gateway_port}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_SERVICE_MARKER__/${openclaw_gateway_service_marker}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_SERVICE_KIND__/${openclaw_gateway_service_kind}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_ENVIRONMENT__/${openclaw_gateway_environment}}"
   rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_STDOUT_LOG__/${openclaw_gateway_stdout_log}}"
   rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_STDERR_LOG__/${openclaw_gateway_stderr_log}}"
 
@@ -3364,6 +3447,7 @@ run_agentbox_openclaw_gateway_launchd_setup() {
   execute sudo mkdir -p "${AGENTBOX_LOG_DIR}"
   execute sudo chown root:wheel "${AGENTBOX_LOG_DIR}"
   execute sudo chmod 755 "${AGENTBOX_LOG_DIR}"
+  prepare_openclaw_gateway_runtime_dirs
   prepare_openclaw_gateway_logs
   write_agentbox_openclaw_gateway_plist
 

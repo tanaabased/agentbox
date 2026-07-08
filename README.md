@@ -245,7 +245,14 @@ agentbootbox \
 
 agentbox does not use OpenClaw's macOS `--install-daemon` path. On macOS, that path installs a
 per-user LaunchAgent that depends on a logged-in user session; agentbox instead installs a system
-LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user.
+LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user. The LaunchDaemon uses a
+sparse service environment aligned with OpenClaw's launcher markers, including `HOME`, `USER`,
+`LOGNAME`, `PATH`, `TMPDIR`, `OPENCLAW_GATEWAY_PORT`, `OPENCLAW_LAUNCHD_LABEL`,
+`OPENCLAW_SERVICE_MARKER=openclaw`, `OPENCLAW_SERVICE_KIND=gateway`, and
+`OPENCLAW_SERVICE_VERSION`. agentbox also adds `AGENTBOX_MANAGED=1`,
+`AGENTBOX_SERVICE_KIND=openclaw-gateway`, `AGENTBOX_VERSION`, and
+`AGENTBOX_HEALTH_COMMAND=/opt/tanaab/agentbox/bin/health.sh --report` for local integrations that need
+to detect the managed host or inspect its health.
 
 The Homebrew prefix is made group-writable by `brewer` by default so the OpenClaw runner user or
 other trusted local users can be granted package-management access through group membership. Use
@@ -364,8 +371,9 @@ Run `boot.sh --help` for the exact current CLI and environment-variable contract
 sudo /opt/tanaab/agentbox/bin/health.sh --check
 ```
 
-Use `--report` for the same key-value report without failing on drift. When Tailscale is enabled,
-the report should include `tailscaled_launchd_loaded_ok=1` and
+Use `--report` for the same line-oriented `key=value` report without failing on drift. The report
+includes `agentbox_version`. When Tailscale is enabled, it should include
+`tailscaled_launchd_loaded_ok=1` and
 `tailscaled_homebrew_launchd_absent_ok=1`, confirming the agentbox system daemon is loaded and the
 legacy Homebrew launchd wrapper is not.
 

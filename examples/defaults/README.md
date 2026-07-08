@@ -85,6 +85,9 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_hostname=TANAABAGENTBOX-DEF$GITHUB_RUN_ID"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_tailscale_hostname=AGENTBOX-DEF$GITHUB_RUN_ID"
 
+# should report the installed agentbox version
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -E '^agentbox_version=.+$'
+
 # should report default brewgroup state
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_enabled=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_expected=brewer"
@@ -127,6 +130,25 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_launchd_loaded_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_status_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
+
+# should render the openclaw gateway LaunchDaemon OpenClaw environment
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:HOME" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:USER" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "openclaw"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:LOGNAME" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "openclaw"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:PATH" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "$(brew --prefix)/bin:$(brew --prefix)/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:TMPDIR" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw/tmp"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:OPENCLAW_GATEWAY_PORT" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "18789"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:OPENCLAW_LAUNCHD_LABEL" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "dev.tanaab.agentbox.openclaw-gateway"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:OPENCLAW_SERVICE_MARKER" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "openclaw"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:OPENCLAW_SERVICE_KIND" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "gateway"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:OPENCLAW_SERVICE_VERSION" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | tee /dev/stderr | grep -E '^.+$'
+sudo stat -f "%Su:%Sg:%Lp" /Users/openclaw/.openclaw/tmp | tee /dev/stderr | grep -Fx "openclaw:$(id -gn openclaw):700"
+
+# should render the openclaw gateway LaunchDaemon agentbox metadata
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:AGENTBOX_MANAGED" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "1"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:AGENTBOX_SERVICE_KIND" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "openclaw-gateway"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:AGENTBOX_HEALTH_COMMAND" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/opt/tanaab/agentbox/bin/health.sh --report"
+sudo /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:AGENTBOX_VERSION" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | tee /dev/stderr | grep -E '^.+$'
 
 # should reach the default openclaw gateway ready endpoint locally
 curl \

@@ -20,6 +20,7 @@ AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED="0"
 AGENTBOX_HEALTH_TRUSTED_BREWGROUP="off"
 AGENTBOX_HEALTH_BREW_PREFIX=""
 AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
+AGENTBOX_HEALTH_AGENTBOX_VERSION=""
 AGENTBOX_HEALTH_ADMIN_USER=""
 AGENTBOX_HEALTH_OPENCLAW_USER=""
 AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=""
@@ -529,6 +530,7 @@ generate_report() {
   fi
 
   print_kv timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  print_kv agentbox_version "${AGENTBOX_HEALTH_AGENTBOX_VERSION}"
   print_kv managed_macos_runner "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}"
   print_kv expected_hostname "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}"
   print_kv computer_name "${computer_name}"
