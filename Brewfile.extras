@@ -1,0 +1,4 @@
+cask "codex"
+cask "codex-app"
+cask "openclaw"
+cask "warp"

@@ -6,18 +6,25 @@ explicitly asked.
 
 ## Purpose
 
-- This repo owns the admin/bootstrap layer for a physically accessible macOS 26.x Mac: headless
-  access, macOS settings, base packages, SSH/Tailscale connectivity, launchd health, recovery, and
-  security hardening.
-- The boundary ends when the Mac is ready to run user-space agents such as OpenCLAW under
-  non-admin, non-sudo users.
-- Do not add agent runtime setup, trading credentials, app-specific services, runtime-user
-  provisioning, router port forwarding, or public WAN exposure here.
+- This repo owns the path from a physically accessible macOS 26.x Mac to a managed OpenClaw host:
+  headless access, macOS settings, base packages, SSH/Tailscale connectivity, non-sudo OpenClaw
+  runner-user setup, launchd health, recovery, security hardening, and OpenClaw gateway onboarding.
+- The boundary ends when the Mac has a working OpenClaw gateway and is ready for agent workspaces to
+  be layered on top.
+- Future global OpenClaw plugin installation belongs here when it is host-level substrate rather than
+  workspace-specific agent behavior.
+- Do not add EMORI-specific setup, per-agent dotfiles, trading credentials, app-specific
+  services, agent-specific plugin installs, router port forwarding, or public WAN exposure here.
 
 ## Source Of Truth
 
 - `boot.sh` is the shipped shell entrypoint and main bootstrap surface.
 - `Brewfile` is the source of truth for base Homebrew packages.
+- `Brewfile.extras` is an optional personal-tooling Brewfile for operator apps, not part of the
+  core host contract.
+- `bin/health.sh` is the source health script installed to `/opt/tanaab/agentbox/bin/health.sh`.
+- `launchd/*.plist.in` files are source LaunchDaemon templates rendered by `boot.sh` with
+  machine-specific paths and binary locations.
 - `README.md` is the human-facing setup, usage, and post-bootstrap surface.
 - `examples/**/README.md` files are Leia-backed executable contract specs consumed in CI.
 - `dist/` is generated publish output for Netlify hosting and release preparation.
@@ -54,12 +61,18 @@ explicitly asked.
 - When changing option names, environment variables, help text, failure wording, version output,
   debug output, planning output, or status messages, update affected README usage/configuration
   content and Leia examples in the same change.
-- Any `boot.sh` public interface change must check `README.md`, `examples/cli-contract`, and the
+- Any `boot.sh` public interface change must check `README.md`, `examples/inputs`, and the
   affected mutating examples.
 - Any machine behavior change in `boot.sh` must check README setup/after-bootstrap guidance plus
-  the affected `envvars`, `options`, or `version` Leia scenarios.
+  the affected mutating Leia scenarios.
 - Keep planned-action output aligned with actual execution order.
-- Treat the generated agentbox health script as the source of truth for machine health
+- Treat CLI help order as a readability convention, not a Leia-enforced contract. Prefer related
+  bootstrap options near each other and keep generic controls such as `--force`, `--debug`,
+  `--version`, `--help`, and `--yes` together near the bottom. Prefer alphabetical ordering for
+  README/configuration reference lists unless they intentionally mirror help output.
+- Keep `--brewfile` as an extra-Brewfile append surface. The core agentbox `Brewfile` must remain
+  first in the delegated Bootbox Brewfile list.
+- Treat `bin/health.sh` and its installed runtime copy as the source of truth for machine health
   verification. README and Leia should prefer `health.sh --check` for macOS/SSH/Tailscale state,
   while keeping repo materialization, Brewfile satisfaction, and live SSH-login proof as direct
   checks.
@@ -94,15 +107,55 @@ explicitly asked.
   assertions.
 - For health-report assertions, print and match the targeted `--report` lines before running the
   final `--check` gate so CI logs show the health mismatch that caused the failure.
+- Prefer behavior-focused Leia `# should` labels over scenario labels. Avoid repeating the example
+  name or setup style in every block; use words like `custom`, `default`, `configured`,
+  `provided`, `preexisting`, or `source` only when that distinction is meaningful inside the same
+  README.
+- Keep OpenClaw runner account creation checks focused on identity and home-directory state. Assert
+  privilege, autologin, SSH, and group membership in separate health-backed or domain-specific
+  blocks. Only test runner profile pictures when preserving an existing picture is the scenario
+  contract.
+- Keep each Leia `# should` block focused on one small observable contract. Split blocks whose
+  title needs `and`/`or`, mixes unrelated domains, or grows past roughly 12-15 command lines unless
+  the block is one coherent multiline command.
+- Treat Leia block size as a readability convention, not as an enforced ordering or lint rule.
+- Do not give setup fixture commands standalone `# should` blocks unless the fixture state itself is
+  the contract. Put `mkdir -p "$TMPDIR"` beside the first fixture that writes into `TMPDIR`.
+- Use fixed, readable local resource names in GitHub-hosted macOS examples when the resource exists
+  only on the ephemeral runner. Keep externally registered or shared resources, especially Tailscale
+  hostnames, unique per scenario and run.
+- Mutating Leia examples should run `boot.sh` once unless the example is explicitly about rerun,
+  idempotency, or source replacement behavior.
+- Defaults-focused examples should avoid overriding agentbox-owned default values, while still
+  providing required CI inputs such as source paths, passwords, secrets, and unique shared-resource
+  names.
+- Treat example placement as a small taxonomy:
+  `inputs` owns non-mutating public interface checks; `defaults` owns the baseline happy-path
+  bootstrap with default agentbox-owned settings; named domain examples own focused behavior such
+  as Tailscale, Homebrew, SSH, OpenClaw, users, rerun, or source replacement.
+- When adding coverage, prefer extending the narrowest existing example that owns the behavior. Add
+  a new example when the behavior needs incompatible bootstrap inputs, crosses enough domains that
+  it would blur an existing example, or intentionally needs another successful `boot.sh` run.
+- Keep `examples/inputs` non-mutating. It owns help text, displayed defaults, input validation, and
+  option/env precedence checks. Mutating examples should prove behavior domains such as Tailscale,
+  Homebrew, SSH, OpenClaw, users, rerun, or source replacement rather than re-testing every input
+  spelling.
 - Treat each blank-line-separated Leia block as a separate script. Do not rely on shell variables,
   functions, or working-directory changes persisting across `should` blocks.
+- Avoid braced shell variable expansions such as `${VAR}` in Leia examples when plain `$VAR` works.
+  Leia parsing has been brittle around braces; restructure commands instead of adding braces just
+  for readability.
 - Use `TMPDIR` for durable fixtures, unavoidable logs, and helper internals only.
 - Keep generated SSH public/private key fixtures in `TMPDIR`; they are real test inputs, not scratch
   assertion files.
 - When a mutating example provides authorized keys, verify localhost SSH login with the generated
   private key fixture instead of only inspecting `authorized_keys`.
-- Put repeated destructive runner cleanup in `scripts/cleanup-agentbox-runner.sh` instead of
-  duplicating cleanup blocks across README scenarios.
+- Do not add preemptive cleanup or destroy blocks to GitHub-hosted macOS examples just to reset
+  machine state; each matrix job starts on a fresh hosted VM. Prefer `--retry 0` for mutating Leia
+  examples so partial bootstrap failures are not retried on the same VM.
+- Do not add expected-failure probes to mutating bootstrap examples when the failure can occur after
+  machine state changes. Keep failure-contract checks in non-mutating CLI examples or make them fail
+  during input validation before bootstrap side effects.
 
 ## Validation Policy
 
@@ -143,7 +196,8 @@ explicitly asked.
   agentbox public interface.
 - Keep the default public source as `https://github.com/tanaabased/agentbox.git`, the fixed target
   as `~/tanaab/agentbox`, and skip-or-replace behavior controlled by `--force`.
-- Keep `--agentbox-version` aligned with GitHub tag archive installs.
+- Keep `--agentbox-version` aligned with GitHub tag archives, local git sources, and tar archive
+  URL/path installs.
 - Preserve `AGENTBOX_HOSTNAME` as the canonical hostname input and, when Tailscale is enabled, the
   current TANAAB-prefixed Tailscale hostname derivation.
 - Preserve formula-based Tailscale install and recommended setup, while allowing explicit falsey
@@ -151,6 +205,10 @@ explicitly asked.
   reintroduce the Tailscale GUI cask or Tailscale SSH mode.
 - Preserve managed sshd hardening through `/etc/ssh/sshd_config.d/agentbox.conf`; do not patch
   `/etc/ssh/sshd_config` directly.
+- Keep the OpenClaw runner user non-admin, require a user-provided or prompted password for account
+  creation/autologin, and never print, persist, generate, or debug-log that password.
+- Preserve existing OpenClaw runner profile pictures; only apply a bundled `assets/profile*.png`
+  image when the user has no configured picture.
 - Keep agentbox health checks strict for real machines. Managed macOS runner health skips must be
   recorded in the generated state file, set only from known runner environments, and kept narrowly
   scoped to unavailable virtualized/managed settings.

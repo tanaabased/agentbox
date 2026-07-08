@@ -1,0 +1,193 @@
+# Defaults Example
+
+This example runs the real `boot.sh` setup with default agentbox-owned settings, then verifies the
+resulting GitHub-hosted macOS runner state. It is intended for CI by default because it mutates
+system settings, Homebrew state, SSH, launchd, OpenClaw, and Tailscale.
+
+The example passes a unique hostname because Tailscale hostnames register outside the ephemeral VM
+and can collide across PR runs. Other OpenClaw, Homebrew, and autologin settings stay on defaults.
+
+## Setup
+
+```bash
+# should have prepared boot.sh on PATH
+command -v boot.sh >/dev/null
+
+# should have a local git checkout available as the agentbox source
+test -d "$GITHUB_WORKSPACE/.git"
+
+# should have a tailscale auth key from the workflow secret
+test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
+
+# should run boot.sh successfully
+boot.sh \
+  --force \
+  --hostname "TANAABAGENTBOX-DEF$GITHUB_RUN_ID" \
+  --agentbox-version "$GITHUB_WORKSPACE" \
+  --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
+  --openclaw-password "DefaultOpenClawPass1!"
+```
+
+## Testing
+
+```bash
+# should install homebrew
+command -v brew >/dev/null
+
+# should install base required commands
+command -v git >/dev/null
+command -v jq >/dev/null
+
+# should install tailscale
+test -x "$(brew --prefix)/bin/tailscale"
+
+# should materialize agentbox from the local workflow checkout
+test -d "$HOME/tanaab/agentbox/.git"
+test -f "$HOME/tanaab/agentbox/boot.sh"
+test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "$GITHUB_WORKSPACE"
+
+# should satisfy the agentbox brewfile
+brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
+
+# should install openclaw cli through homebrew
+test -x "$(brew --prefix)/bin/openclaw"
+
+# should install node through homebrew
+test -x "$(brew --prefix)/bin/node"
+
+# should install ripgrep through homebrew
+test -x "$(brew --prefix)/bin/rg"
+
+# should write homebrew login shell PATH entries
+grep -Fx "$(brew --prefix)/bin" /etc/paths.d/00-agentbox-homebrew
+grep -Fx "$(brew --prefix)/sbin" /etc/paths.d/00-agentbox-homebrew
+
+# should expose homebrew commands in bash login shells
+env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /bin/bash -lc 'command -v openclaw' | grep -Fx "$(brew --prefix)/bin/openclaw"
+env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /bin/bash -lc 'command -v node' | grep -Fx "$(brew --prefix)/bin/node"
+env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /bin/bash -lc 'command -v rg' | grep -Fx "$(brew --prefix)/bin/rg"
+
+# should create the default openclaw runner account
+id -u openclaw >/dev/null
+dscl . -read /Users/openclaw RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^[[:space:]]*//' | grep -Fx "A Tanaab-based Claw"
+test -d /Users/openclaw
+test "$(stat -f "%Su" /Users/openclaw)" = "openclaw"
+
+# should report the openclaw runner as non-admin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
+
+# should configure default openclaw runner autologin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_user=openclaw"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=1"
+
+# should report the expected hostname
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_hostname=TANAABAGENTBOX-DEF$GITHUB_RUN_ID"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_tailscale_hostname=AGENTBOX-DEF$GITHUB_RUN_ID"
+
+# should report default brewgroup state
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_enabled=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_expected=brewer"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_admin_user_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_openclaw_user_ok=1"
+
+# should report disabled trusted brewgroup state
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_enabled=0"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_expected=off"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_nested_ok=skipped"
+
+# should report homebrew prefix health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix=$(brew --prefix)"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_rwx_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_ok=1"
+test "$(sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup)" = "brewer"
+
+# should report homebrew command health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "homebrew_login_path_file_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_cli_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "node_cli_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ripgrep_ok=1"
+
+# should report macOS identity health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "macos_identity_ok=1"
+
+# should report openclaw runner health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user=openclaw"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_full_name=A Tanaab-based Claw"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_exists_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_home_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_ok=1"
+
+# should report default openclaw gateway health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_auth_choice=skip"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_bind=loopback"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_mode=serve"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_port=18789"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_launchd_loaded_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_status_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
+
+# should reach the default openclaw gateway ready endpoint locally
+curl \
+  --fail \
+  --silent \
+  --show-error \
+  --ipv4 \
+  --connect-timeout 10 \
+  --max-time 30 \
+  "http://127.0.0.1:18789/readyz" | tee /dev/stderr
+
+# should report tailscale health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_loaded_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_homebrew_launchd_absent_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_homebrew_user_launchd_absent_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_ok=1"
+
+# should render the tailscaled LaunchDaemon state directory
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist | grep -Fx -- "--statedir=/var/db/tanaab/agentbox/tailscale"
+sudo test -d /var/db/tanaab/agentbox/tailscale
+test "$(sudo stat -f "%Su:%Sg:%Lp" /var/db/tanaab/agentbox/tailscale)" = "root:wheel:700"
+
+# should install the tailnet magicdns resolver
+set -o pipefail
+tailnet_suffix="$(tailscale status --json --peers=false | tee /dev/stderr | jq -r '.CurrentTailnet.MagicDNSSuffix // ""' | sed 's/[.]$//')"
+test -n "$tailnet_suffix"
+sudo test -f "/etc/resolver/$tailnet_suffix"
+sudo grep -Fx "# Managed by agentbox." "/etc/resolver/$tailnet_suffix"
+sudo grep -E '^[[:space:]]*nameserver[[:space:]]+100[.]100[.]100[.]100([[:space:]]|$)' "/etc/resolver/$tailnet_suffix"
+
+# should resolve and ping the local tailscale magicdns name
+set -o pipefail
+gateway_dns_name="$(tailscale status --json --peers=false | tee /dev/stderr | jq -r '.Self.DNSName // ""' | sed 's/[.]$//')"
+test -n "$gateway_dns_name"
+dscacheutil -q host -a name "$gateway_dns_name" | tee /dev/stderr | grep -E '^[[:space:]]*ip_address:[[:space:]]+100[.]'
+tailscale ping --c 1 --timeout 10s "$gateway_dns_name"
+ping -c 1 -W 5000 "$gateway_dns_name"
+
+# should report the openclaw runner as the tailscale operator
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_operator_user=openclaw"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_operator_ok=1"
+
+# should report the openclaw gateway tailscale serve route
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_serve_route_ok=1"
+
+# should report the openclaw gateway tailscale serve metadata
+set -o pipefail
+tailscale_bin="$(brew --prefix tailscale)/bin/tailscale"
+sudo "$tailscale_bin" serve status --json | tee /dev/stderr | jq -e --arg port "18789" '
+  (.TCP["443"].HTTPS == true)
+  and any((.Web // {}) | to_entries[]?;
+    (.key | endswith(":443"))
+    and ((.value.Handlers["/"].Proxy // "")
+      | test("^https?://(127[.]0[.]0[.]1|localhost|\\[::1\\]):" + $port + "$"))
+  )
+'
+
+# should report launchd health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "health_launchd_loaded_ok=1"
+
+# should pass the overall agentbox health check
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --check
+```

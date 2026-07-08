@@ -1,5 +1,24 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+- Added `--agentbox-version` support for HTTPS tar archive URLs and local tar archives.
+- Added `--brewfile` and `AGENTBOX_BREWFILE` for optional extra Bootbox Brewfiles.
+- Added `Brewfile.extras` for optional Codex, Codex App, OpenClaw, and Warp casks.
+- Added gateway-only OpenClaw onboarding, OpenClaw gateway configuration, an agentbox-owned gateway
+  LaunchDaemon, and gateway health checks.
+- Added OpenClaw runner user creation, autologin, SSH keys, and health checks.
+- Added randomized selection from bundled OpenClaw runner profile images for newly created users.
+- Added `openclaw-cli`, `ripgrep`, and Homebrew login-shell `PATH` setup to the base bootstrap.
+- Externalized the installed health script and agentbox LaunchDaemon plist bodies into root-level
+  `bin/` and `launchd/` directories.
+- Updated Tailscale-enabled OpenClaw gateway setup to keep the gateway bound to loopback and expose
+  it through Tailscale Serve.
+- Updated Tailscale setup to set the OpenClaw runner as the Tailscale operator and verify the
+  OpenClaw gateway Serve route during bootstrap and health checks.
+- Updated the agentbox-owned `tailscaled` LaunchDaemon to use an explicit state directory under
+  `/var/db/tanaab/agentbox/tailscale`.
+- Updated repo docs to make OpenClaw gateway host setup the target `agentbox` scope.
+- Updated `boot.sh --help` option layout for readability.
+
 ## v1.0.0-beta.5 - [June 16, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.5)
 
 - Added `--brewgroup` and `AGENTBOX_BREWGROUP` for configurable Homebrew prefix group-write setup. ([#9](https://github.com/tanaabased/agentbox/pull/9))

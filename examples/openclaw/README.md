@@ -1,0 +1,103 @@
+# OpenClaw Example
+
+This example runs the real `boot.sh` setup with OpenClaw gateway options, then verifies the
+resulting GitHub-hosted macOS runner state. It is intended for CI by default because it mutates
+system settings, Homebrew state, SSH, launchd, OpenClaw, and Tailscale.
+
+## Setup
+
+```bash
+# should have prepared boot.sh on PATH
+command -v boot.sh >/dev/null
+
+# should have a local git checkout available as the agentbox source
+test -d "$GITHUB_WORKSPACE/.git"
+
+# should have a tailscale auth key from the workflow secret
+test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
+
+# should run boot.sh successfully with custom openclaw gateway options
+boot.sh \
+  --force \
+  --hostname "TANAABAGENTBOX-OC$GITHUB_RUN_ID" \
+  --agentbox-version "$GITHUB_WORKSPACE" \
+  --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
+  --openclaw-password "OpenClawGatewayPass1!" \
+  --openclaw-auth-choice skip \
+  --openclaw-gateway-port 18888
+```
+
+## Testing
+
+```bash
+# should report the expected hostname
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_hostname=TANAABAGENTBOX-OC$GITHUB_RUN_ID"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_tailscale_hostname=AGENTBOX-OC$GITHUB_RUN_ID"
+
+# should report openclaw runner health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user=openclaw"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_full_name=A Tanaab-based Claw"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_ok=1"
+
+# should report custom openclaw gateway health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_auth_choice=skip"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_bind=loopback"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_mode=serve"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_port=18888"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_launchd_loaded_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_status_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
+
+# should render the openclaw gateway LaunchDaemon arguments
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "gateway"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:3" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "18888"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:5" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "loopback"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:7" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "serve"
+
+# should report the openclaw gateway tailscale serve route
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_serve_route_ok=1"
+
+# should reach the openclaw gateway ready endpoint through tailscale magicdns over HTTPS
+skip
+# gateway_dns_name="$(tailscale status --json --peers=false | tee /dev/stderr | jq -r '.Self.DNSName // ""' | sed 's/[.]$//')"
+# test -n "$gateway_dns_name"
+# curl \
+#   --fail \
+#   --silent \
+#   --show-error \
+#   --http1.1 \
+#   --ipv4 \
+#   --connect-timeout 10 \
+#   --max-time 30 \
+#   --retry 5 \
+#   --retry-delay 2 \
+#   --retry-all-errors \
+#   --retry-max-time 90 \
+#   "https://$gateway_dns_name/readyz" | tee /dev/stderr
+
+# should reach the openclaw gateway ready endpoint through tailscale magicdns over HTTP
+gateway_dns_name="$(tailscale status --json --peers=false | tee /dev/stderr | jq -r '.Self.DNSName // ""' | sed 's/[.]$//')"
+test -n "$gateway_dns_name"
+sudo tailscale serve --bg --http=80 --yes http://127.0.0.1:18888
+curl \
+  --fail \
+  --silent \
+  --show-error \
+  --http1.1 \
+  --ipv4 \
+  --connect-timeout 10 \
+  --max-time 30 \
+  --retry 5 \
+  --retry-delay 2 \
+  --retry-all-errors \
+  --retry-max-time 90 \
+  "http://$gateway_dns_name/readyz" | tee /dev/stderr
+
+# should report tailscale health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_loaded_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_ok=1"
+
+# should pass the overall agentbox health check
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --check
+```

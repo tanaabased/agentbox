@@ -17,13 +17,21 @@ REQUIRED_CURL_VERSION="7.41.0"
 BOOTBOX_URL="https://bootbox.tanaab.sh/bootbox.sh"
 DEFAULT_AGENTBOX_HOSTNAME="TANAABAGENTBOX1"
 DEFAULT_BREWGROUP="brewer"
+DEFAULT_OPENCLAW_IDENTITY="A Tanaab-based Claw <openclaw>"
+DEFAULT_OPENCLAW_GATEWAY_PORT="18789"
+DEFAULT_OPENCLAW_AUTH_CHOICE="skip"
 AGENTBOX_OPT_DIR="/opt/tanaab/agentbox"
+AGENTBOX_PROFILE_IMAGE_PATH="${AGENTBOX_OPT_DIR}/profile.png"
 AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
 AGENTBOX_STATE_DIR="/var/db/tanaab/agentbox"
+AGENTBOX_TAILSCALED_STATE_DIR="${AGENTBOX_STATE_DIR}/tailscale"
 AGENTBOX_HEALTH_STATE_PATH="${AGENTBOX_STATE_DIR}/health.env"
 AGENTBOX_HEALTH_LABEL="dev.tanaab.agentbox.health"
 AGENTBOX_TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 AGENTBOX_TAILSCALED_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_TAILSCALED_LABEL}.plist"
+AGENTBOX_OPENCLAW_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
+AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}.plist"
+AGENTBOX_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
 HOMEBREW_TAILSCALE_SYSTEM_PLIST_PATH="/Library/LaunchDaemons/${HOMEBREW_TAILSCALE_LABEL}.plist"
 AGENTBOX_REPO_HTTPS_URL="https://github.com/tanaabased/agentbox.git"
@@ -32,6 +40,7 @@ SSHD_BIN="/usr/sbin/sshd"
 SSHD_CONFIG_PATH="/etc/ssh/sshd_config"
 SSHD_CONFIG_DIR="/etc/ssh/sshd_config.d"
 SSHD_AGENTBOX_CONFIG_PATH="${SSHD_CONFIG_DIR}/agentbox.conf"
+SSH_ACCESS_GROUP="com.apple.access_ssh"
 
 abort() {
   printf "%serror%s: %s\n" "${tty_red-}" "${tty_reset-}" "$*" >&2
@@ -132,6 +141,24 @@ array_count() {
   printf "%s" "${count}"
 }
 
+array_join() {
+  local delimiter="$1"
+  local array_name="$2"
+  local count
+  local index
+  local value
+
+  # Bash 3.2 with nounset treats empty array expansion as unbound.
+  eval "count=\${#${array_name}[@]}"
+  for ((index = 0; index < count; index++)); do
+    eval "value=\"\${${array_name}[${index}]}\""
+    if [[ "${index}" -gt 0 ]]; then
+      printf "%s" "${delimiter}"
+    fi
+    printf "%s" "${value}"
+  done
+}
+
 append_csv_to_array() {
   local array_name="$1"
   local old_ifs="${IFS}"
@@ -175,6 +202,16 @@ shell_quote() {
   printf "%q" "$1"
 }
 
+xml_escape() {
+  local value="$1"
+
+  value="${value//&/&amp;}"
+  value="${value//</&lt;}"
+  value="${value//>/&gt;}"
+  value="${value//\"/&quot;}"
+  printf "%s" "${value}"
+}
+
 # shellcheck disable=SC2292
 if [ -z "${BASH_VERSION:-}" ]; then
   abort "bash is required to interpret this script."
@@ -214,6 +251,7 @@ tty_ts="$(tty_escape '38;2;219;39;119')"
 SCRIPT_NAME="${0##*/}"
 # Keep a single top-level assignment so release automation can stamp the entrypoint in place.
 SCRIPT_VERSION="${SCRIPT_VERSION:-$(git describe --tags --always --abbrev=1 2>/dev/null || printf '%s' '0.0.0-unreleased')}"
+INVOCATION_CWD="${PWD}"
 
 DEBUG="${AGENTBOX_DEBUG:-${DEBUG:-${RUNNER_DEBUG:-}}}"
 FORCE="${AGENTBOX_FORCE:-}"
@@ -222,12 +260,25 @@ AGENTBOX_HOSTNAME_VALUE="${AGENTBOX_HOSTNAME:-${DEFAULT_AGENTBOX_HOSTNAME}}"
 BREWGROUP_INPUT="${AGENTBOX_BREWGROUP:-${DEFAULT_BREWGROUP}}"
 BREWGROUP_VALUE=""
 TRUSTED_BREWGROUP_VALUE=""
+OPENCLAW_IDENTITY_INPUT="${AGENTBOX_OPENCLAW_IDENTITY:-${DEFAULT_OPENCLAW_IDENTITY}}"
+OPENCLAW_FULL_NAME=""
+OPENCLAW_USER=""
+OPENCLAW_PASSWORD="${AGENTBOX_OPENCLAW_PASSWORD:-}"
+OPENCLAW_AUTOLOGIN_INPUT="${AGENTBOX_OPENCLAW_AUTOLOGIN:-1}"
+OPENCLAW_GATEWAY_BIND_VALUE="loopback"
+OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE=""
+OPENCLAW_GATEWAY_PORT="${AGENTBOX_OPENCLAW_GATEWAY_PORT:-${DEFAULT_OPENCLAW_GATEWAY_PORT}}"
+OPENCLAW_AUTH_CHOICE="${AGENTBOX_OPENCLAW_AUTH_CHOICE:-${DEFAULT_OPENCLAW_AUTH_CHOICE}}"
 TAILSCALE_AUTHKEY="${AGENTBOX_TAILSCALE_AUTHKEY:-}"
 ADMIN_USER=""
 AUTHORIZED_KEY_CLI_SEEN="0"
+EXTRA_BREWFILE_CLI_SEEN="0"
 declare -a PLANNED_ACTIONS=()
 declare -a AUTHORIZED_KEY_SPECS=()
 declare -a AUTHORIZED_KEY_LINES=()
+declare -a EXTRA_BREWFILE_SPECS=()
+declare -a RESOLVED_EXTRA_BREWFILES=()
+declare -a AGENTBOX_PROFILE_IMAGE_SOURCES=()
 BOOT_TMPDIR=""
 BOOTBOX_SCRIPT_PATH=""
 CORE_NEEDS_REMEDIATION="0"
@@ -239,8 +290,18 @@ OS=""
 AGENTBOX_VERSION_TAG=""
 AGENTBOX_SOURCE_KIND=""
 AGENTBOX_SOURCE_LOCAL_PATH=""
+AGENTBOX_SOURCE_ARCHIVE_URL=""
+AGENTBOX_SOURCE_ARCHIVE_PATH=""
 AGENTBOX_TARGET_PATH=""
-AGENTBOX_BREWFILE=""
+AGENTBOX_CORE_BREWFILE=""
+AGENTBOX_BIN_DIR=""
+AGENTBOX_LAUNCHD_DIR=""
+AGENTBOX_ASSETS_DIR=""
+AGENTBOX_HEALTH_SCRIPT_SOURCE=""
+AGENTBOX_HEALTH_PLIST_TEMPLATE=""
+AGENTBOX_TAILSCALED_PLIST_TEMPLATE=""
+AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE=""
+AGENTBOX_PROFILE_IMAGE_SOURCE=""
 BREW_PREFIX_VALUE=""
 TAILSCALE_HOSTNAME_VALUE=""
 
@@ -250,6 +311,14 @@ fi
 
 if [[ -n "${AGENTBOX_AUTHORIZED_KEYS:-}" ]]; then
   append_csv_to_array AUTHORIZED_KEY_SPECS "${AGENTBOX_AUTHORIZED_KEYS}"
+fi
+
+if [[ -n "${AGENTBOX_BREWFILE:-}" ]]; then
+  append_csv_to_array EXTRA_BREWFILE_SPECS "${AGENTBOX_BREWFILE}"
+fi
+
+if [[ -n "${AGENTBOX_BREWFILES:-}" ]]; then
+  append_csv_to_array EXTRA_BREWFILE_SPECS "${AGENTBOX_BREWFILES}"
 fi
 
 debug_enabled() {
@@ -292,6 +361,41 @@ brewgroup_display() {
   fi
 
   printf "%s" "${BREWGROUP_INPUT}"
+}
+
+openclaw_autologin_enabled() {
+  ! value_disabled "${OPENCLAW_AUTOLOGIN_INPUT:-1}"
+}
+
+openclaw_autologin_display() {
+  if openclaw_autologin_enabled; then
+    printf "enabled"
+  else
+    printf "disabled"
+  fi
+}
+
+openclaw_password_display() {
+  if [[ -n "${OPENCLAW_PASSWORD}" ]]; then
+    printf "provided"
+  else
+    printf "none"
+  fi
+}
+
+openclaw_gateway_port_display() {
+  printf "%s" "${OPENCLAW_GATEWAY_PORT}"
+}
+
+openclaw_auth_choice_display() {
+  printf "%s" "${OPENCLAW_AUTH_CHOICE}"
+}
+
+extra_brewfiles_display() {
+  local display
+
+  display="$(array_join "," EXTRA_BREWFILE_SPECS)"
+  printf "%s" "${display:-none}"
 }
 
 debug() {
@@ -351,6 +455,41 @@ display_home_path() {
   printf "%s" "${path}"
 }
 
+expand_home_path() {
+  local path="$1"
+
+  if [[ "${path}" == "~" ]]; then
+    printf "%s" "${HOME}"
+    return 0
+  fi
+
+  if [[ "${path}" == \~/* ]]; then
+    printf "%s/%s" "${HOME}" "${path#\~/}"
+    return 0
+  fi
+
+  printf "%s" "${path}"
+}
+
+http_url_value() {
+  [[ "${1:-}" == http://* || "${1:-}" == https://* ]]
+}
+
+tar_archive_path_value() {
+  case "${1:-}" in
+    *.tar | *.tar.gz | *.tgz)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+brewfile_source_url_value() {
+  [[ "${1:-}" =~ ^[[:alpha:]][[:alnum:].+-]*:// ]]
+}
+
 find_git_repo_root() {
   local path="$1"
   local parent
@@ -391,12 +530,111 @@ resolve_local_repo_source_path() {
   printf "%s" "${repo_root}"
 }
 
+resolve_local_archive_source_path() {
+  local source_path
+  local source_dir
+  local source_name
+
+  source_path="$(expand_home_path "$1")"
+  if [[ ! -f "${source_path}" ]] || ! tar_archive_path_value "${source_path}"; then
+    return 1
+  fi
+
+  source_dir="$(cd "$(dirname "${source_path}")" 2>/dev/null && pwd -P)" || return 1
+  source_name="$(basename "${source_path}")"
+  printf "%s/%s" "${source_dir}" "${source_name}"
+}
+
+resolve_extra_brewfile_source_path() {
+  local brewfile
+  local invocation_path
+  local target_path
+
+  brewfile="$(expand_home_path "$1")"
+
+  if [[ "${brewfile}" == /* ]]; then
+    if [[ -f "${brewfile}" ]]; then
+      printf "%s" "${brewfile}"
+      return 0
+    fi
+
+    return 1
+  fi
+
+  invocation_path="${INVOCATION_CWD}/${brewfile}"
+  if [[ -f "${invocation_path}" ]]; then
+    printf "%s" "${invocation_path}"
+    return 0
+  fi
+
+  target_path="${AGENTBOX_TARGET_PATH}/${brewfile}"
+  if [[ -f "${target_path}" ]]; then
+    printf "%s" "${target_path}"
+    return 0
+  fi
+
+  return 1
+}
+
 hostname_valid() {
   [[ "${1:-}" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]
 }
 
 brewgroup_valid() {
   [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,63}$ ]]
+}
+
+openclaw_short_name_valid() {
+  [[ "${1:-}" =~ ^[a-z][a-z0-9_-]{0,31}$ ]]
+}
+
+openclaw_gateway_port_valid() {
+  local port="${1:-}"
+
+  [[ "${port}" =~ ^[0-9]+$ ]] || return 1
+  (( 10#${port} >= 1 && 10#${port} <= 65535 ))
+}
+
+derive_openclaw_gateway_tailscale_mode() {
+  if tailscale_setup_disabled; then
+    OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE="off"
+  else
+    OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE="serve"
+  fi
+}
+
+parse_openclaw_identity_input() {
+  local identity
+  local identity_regex='^(.+)[[:space:]]<([^<>[:space:]]+)>$'
+  local full_name
+  local short_name
+
+  identity="$(trim_whitespace "${OPENCLAW_IDENTITY_INPUT}")"
+  if [[ -z "${identity}" ]]; then
+    abort "OpenClaw identity must not be empty."
+  fi
+
+  if [[ ! "${identity}" =~ ${identity_regex} ]]; then
+    abort "OpenClaw identity ${tty_ts}${identity}${tty_reset} must use ${tty_bold}Full Name <shortname>${tty_reset} syntax."
+  fi
+
+  full_name="$(trim_whitespace "${BASH_REMATCH[1]}")"
+  short_name="$(trim_whitespace "${BASH_REMATCH[2]}")"
+
+  if [[ -z "${full_name}" ]]; then
+    abort "OpenClaw identity full name must not be empty."
+  fi
+
+  if ! openclaw_short_name_valid "${short_name}"; then
+    abort "OpenClaw short username ${tty_ts}${short_name}${tty_reset} must start with a lowercase letter and contain only lowercase letters, digits, underscore, or dash."
+  fi
+
+  if [[ "${short_name}" == "root" ]]; then
+    abort "OpenClaw short username must not be ${tty_ts}root${tty_reset}."
+  fi
+
+  OPENCLAW_FULL_NAME="${full_name}"
+  OPENCLAW_USER="${short_name}"
 }
 
 parse_brewgroup_input() {
@@ -442,11 +680,40 @@ derive_tailscale_hostname() {
   esac
 }
 
+select_openclaw_profile_image_source() {
+  local count
+  local index
+
+  count="$(array_count AGENTBOX_PROFILE_IMAGE_SOURCES)"
+  if [[ "${count}" -lt 1 ]]; then
+    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime assets ${tty_ts}assets/profile*.png${tty_reset}."
+  fi
+
+  index=$((RANDOM % count))
+  eval "AGENTBOX_PROFILE_IMAGE_SOURCE=\"\${AGENTBOX_PROFILE_IMAGE_SOURCES[${index}]}\""
+}
+
+usage_option() {
+  local option="$1"
+  local description="$2"
+  local default="${3:-}"
+
+  if [[ "$#" -ge 3 ]]; then
+    printf "  %-27s %s %s\n" "${option}" "${description}" "${tty_dim}[default: ${default}]${tty_reset}"
+  else
+    printf "  %-27s %s\n" "${option}" "${description}"
+  fi
+}
+
 usage() {
   local debug_display="off"
   local force_display="off"
   local tailscale_authkey_display_value="none"
   local brewgroup_display_value="none"
+  local openclaw_password_display_value="none"
+  local openclaw_gateway_port_display_value="${DEFAULT_OPENCLAW_GATEWAY_PORT}"
+  local openclaw_auth_choice_display_value="${DEFAULT_OPENCLAW_AUTH_CHOICE}"
+  local extra_brewfiles_display_value="none"
   local authorized_keys_display="none"
 
   if debug_enabled; then
@@ -459,6 +726,10 @@ usage() {
 
   tailscale_authkey_display_value="$(tailscale_authkey_display)"
   brewgroup_display_value="$(brewgroup_display)"
+  openclaw_password_display_value="$(openclaw_password_display)"
+  openclaw_gateway_port_display_value="$(openclaw_gateway_port_display)"
+  openclaw_auth_choice_display_value="$(openclaw_auth_choice_display)"
+  extra_brewfiles_display_value="$(extra_brewfiles_display)"
   if array_has_values AUTHORIZED_KEY_SPECS; then
     authorized_keys_display="$(array_count AUTHORIZED_KEY_SPECS) provided"
   fi
@@ -467,26 +738,42 @@ usage() {
 Usage: ${tty_dim}[NONINTERACTIVE=1] [CI=1] [AGENTBOX_*...]${tty_reset} ${tty_bold}${SCRIPT_NAME}${tty_reset} ${tty_dim}[options]${tty_reset}
 
 ${tty_tp}Options:${tty_reset}
-  --agentbox-version  installs a tagged release, accepts 1.2.3 or v1.2.3-beta.1 ${tty_dim}[default: $(agentbox_version_display)]${tty_reset}
-  --authorized-key    adds an SSH public key or public-key file path ${tty_dim}[default: ${authorized_keys_display}]${tty_reset}
-  --tailscale-authkey uses a Tailscale auth key to join; falsey disables setup ${tty_dim}[default: ${tailscale_authkey_display_value}]${tty_reset}
-  --brewgroup         manages Homebrew prefix group write access; accepts group[:trusted-group]; falsey disables setup ${tty_dim}[default: ${brewgroup_display_value}]${tty_reset}
-  --hostname          sets the system hostname and Tailscale name source ${tty_dim}[default: ${AGENTBOX_HOSTNAME_VALUE}]${tty_reset}
-  --version           shows version of this script
-  --debug             shows debug messages ${tty_dim}[default: ${debug_display}]${tty_reset}
-  --force             forces supported replacement operations ${tty_dim}[default: ${force_display}]${tty_reset}
-  -h, --help          displays this help message
-  -y, --yes           runs with all defaults and no prompts, sets NONINTERACTIVE=1
+EOS
+
+  usage_option "--agentbox-version" "installs a tagged release, local git repo, or tar archive URL/path" "$(agentbox_version_display)"
+  usage_option "--brewfile" "adds an extra Brewfile from a local path or URL" "${extra_brewfiles_display_value}"
+  usage_option "--hostname" "sets the system hostname and Tailscale name source" "${AGENTBOX_HOSTNAME_VALUE}"
+  usage_option "--authorized-key" "adds an SSH public key or public-key file path" "${authorized_keys_display}"
+  usage_option "--tailscale-authkey" "uses a Tailscale auth key to join; falsey disables setup" "${tailscale_authkey_display_value}"
+  usage_option "--brewgroup" "manages Homebrew prefix group write access; accepts group[:trusted-group]; falsey disables setup" "${brewgroup_display_value}"
+  usage_option "--openclaw-identity" "configures the OpenClaw runner as \"Full Name <shortname>\"" "${OPENCLAW_IDENTITY_INPUT}"
+  usage_option "--openclaw-password" "sets the OpenClaw runner password for user creation or autologin" "${openclaw_password_display_value}"
+  usage_option "--openclaw-auth-choice" "sets initial OpenClaw model auth choice" "${openclaw_auth_choice_display_value}"
+  usage_option "--openclaw-gateway-port" "sets OpenClaw gateway port" "${openclaw_gateway_port_display_value}"
+  usage_option "--skip-openclaw-autologin" "skips default OpenClaw runner autologin"
+  usage_option "--version" "shows version of this script"
+  usage_option "--debug" "shows debug messages" "${debug_display}"
+  usage_option "--force" "forces supported replacement operations" "${force_display}"
+  usage_option "-h, --help" "displays this help message"
+  usage_option "-y, --yes" "runs with all defaults and no prompts, sets NONINTERACTIVE=1"
+
+  cat <<EOS
 
 ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_VERSION               same as --agentbox-version
+  AGENTBOX_BREWFILE              same as --brewfile
+  AGENTBOX_HOSTNAME              same as --hostname
   AGENTBOX_AUTHORIZED_KEY        same as --authorized-key
   AGENTBOX_TAILSCALE_AUTHKEY     same as --tailscale-authkey
   AGENTBOX_BREWGROUP             same as --brewgroup
-  AGENTBOX_HOSTNAME              same as --hostname
+  AGENTBOX_OPENCLAW_IDENTITY     same as --openclaw-identity
+  AGENTBOX_OPENCLAW_PASSWORD     same as --openclaw-password
+  AGENTBOX_OPENCLAW_AUTOLOGIN    falsey disables OpenClaw runner autologin
+  AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice
+  AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port
   AGENTBOX_FORCE                 same as --force
-  AGENTBOX_DEBUG                 same as --debug
   NONINTERACTIVE                 same as --yes
+  AGENTBOX_DEBUG                 same as --debug
   CI                             runs in CI mode and disables prompts
 EOS
   if [[ "${1:-0}" != "noexit" ]]; then
@@ -524,9 +811,58 @@ reset_authorized_key_specs_for_cli() {
   fi
 }
 
+reset_extra_brewfile_specs_for_cli() {
+  if [[ "${EXTRA_BREWFILE_CLI_SEEN}" == "0" ]]; then
+    EXTRA_BREWFILE_SPECS=()
+    EXTRA_BREWFILE_CLI_SEEN="1"
+  fi
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --agentbox-version)
+        require_next_option_value "--agentbox-version" "$#"
+        AGENTBOX_VERSION_VALUE="$2"
+        shift 2
+        ;;
+      --agentbox-version=*)
+        require_inline_option_value "--agentbox-version" "${1#*=}"
+        AGENTBOX_VERSION_VALUE="${1#*=}"
+        shift
+        ;;
+      --brewfile)
+        require_next_option_value "--brewfile" "$#"
+        reset_extra_brewfile_specs_for_cli
+        append_array_value EXTRA_BREWFILE_SPECS "$2"
+        shift 2
+        ;;
+      --brewfile=*)
+        reset_extra_brewfile_specs_for_cli
+        append_array_value EXTRA_BREWFILE_SPECS "${1#*=}"
+        shift
+        ;;
+      --brewfiles)
+        require_next_option_value "--brewfiles" "$#"
+        reset_extra_brewfile_specs_for_cli
+        append_csv_to_array EXTRA_BREWFILE_SPECS "$2"
+        shift 2
+        ;;
+      --brewfiles=*)
+        reset_extra_brewfile_specs_for_cli
+        append_csv_to_array EXTRA_BREWFILE_SPECS "${1#*=}"
+        shift
+        ;;
+      --hostname)
+        require_next_option_value "--hostname" "$#"
+        AGENTBOX_HOSTNAME_VALUE="$2"
+        shift 2
+        ;;
+      --hostname=*)
+        require_inline_option_value "--hostname" "${1#*=}"
+        AGENTBOX_HOSTNAME_VALUE="${1#*=}"
+        shift
+        ;;
       --authorized-key)
         require_next_option_value "--authorized-key" "$#"
         reset_authorized_key_specs_for_cli
@@ -551,16 +887,6 @@ parse_args() {
         append_csv_to_array AUTHORIZED_KEY_SPECS "${1#*=}"
         shift
         ;;
-      --agentbox-version)
-        require_next_option_value "--agentbox-version" "$#"
-        AGENTBOX_VERSION_VALUE="$2"
-        shift 2
-        ;;
-      --agentbox-version=*)
-        require_inline_option_value "--agentbox-version" "${1#*=}"
-        AGENTBOX_VERSION_VALUE="${1#*=}"
-        shift
-        ;;
       --tailscale-authkey)
         require_next_option_value "--tailscale-authkey" "$#"
         TAILSCALE_AUTHKEY="$2"
@@ -581,33 +907,67 @@ parse_args() {
         BREWGROUP_INPUT="${1#*=}"
         shift
         ;;
-      --hostname)
-        require_next_option_value "--hostname" "$#"
-        AGENTBOX_HOSTNAME_VALUE="$2"
+      --openclaw-identity)
+        require_next_option_value "--openclaw-identity" "$#"
+        OPENCLAW_IDENTITY_INPUT="$2"
         shift 2
         ;;
-      --hostname=*)
-        require_inline_option_value "--hostname" "${1#*=}"
-        AGENTBOX_HOSTNAME_VALUE="${1#*=}"
+      --openclaw-identity=*)
+        require_inline_option_value "--openclaw-identity" "${1#*=}"
+        OPENCLAW_IDENTITY_INPUT="${1#*=}"
         shift
         ;;
-      --debug)
-        DEBUG="1"
+      --openclaw-password)
+        require_next_option_value "--openclaw-password" "$#"
+        OPENCLAW_PASSWORD="$2"
+        shift 2
+        ;;
+      --openclaw-password=*)
+        require_inline_option_value "--openclaw-password" "${1#*=}"
+        OPENCLAW_PASSWORD="${1#*=}"
+        shift
+        ;;
+      --openclaw-auth-choice)
+        require_next_option_value "--openclaw-auth-choice" "$#"
+        OPENCLAW_AUTH_CHOICE="$2"
+        shift 2
+        ;;
+      --openclaw-auth-choice=*)
+        require_inline_option_value "--openclaw-auth-choice" "${1#*=}"
+        OPENCLAW_AUTH_CHOICE="${1#*=}"
+        shift
+        ;;
+      --openclaw-gateway-port)
+        require_next_option_value "--openclaw-gateway-port" "$#"
+        OPENCLAW_GATEWAY_PORT="$2"
+        shift 2
+        ;;
+      --openclaw-gateway-port=*)
+        require_inline_option_value "--openclaw-gateway-port" "${1#*=}"
+        OPENCLAW_GATEWAY_PORT="${1#*=}"
+        shift
+        ;;
+      --skip-openclaw-autologin)
+        OPENCLAW_AUTOLOGIN_INPUT="0"
         shift
         ;;
       --force)
         FORCE="1"
         shift
         ;;
-      -h | --help)
-        usage
+      -y | --yes)
+        NONINTERACTIVE="1"
+        shift
+        ;;
+      --debug)
+        DEBUG="1"
+        shift
         ;;
       --version)
         show_version
         ;;
-      -y | --yes)
-        NONINTERACTIVE="1"
-        shift
+      -h | --help)
+        usage
         ;;
       *)
         usage "noexit"
@@ -701,7 +1061,7 @@ agentbox_target_display() {
 }
 
 agentbox_brewfile_display() {
-  display_home_path "${AGENTBOX_BREWFILE}"
+  display_home_path "${AGENTBOX_CORE_BREWFILE}"
 }
 
 prepare_agentbox_source() {
@@ -709,12 +1069,22 @@ prepare_agentbox_source() {
   AGENTBOX_VERSION_TAG=""
   AGENTBOX_SOURCE_KIND=""
   AGENTBOX_SOURCE_LOCAL_PATH=""
+  AGENTBOX_SOURCE_ARCHIVE_URL=""
+  AGENTBOX_SOURCE_ARCHIVE_PATH=""
 
   if [[ -z "${AGENTBOX_VERSION_VALUE}" || "${AGENTBOX_VERSION_VALUE}" == "latest" ]]; then
     AGENTBOX_SOURCE_KIND="default"
   elif is_semver_value "${AGENTBOX_VERSION_VALUE}"; then
     AGENTBOX_SOURCE_KIND="version"
     AGENTBOX_VERSION_TAG="$(normalize_release_tag "${AGENTBOX_VERSION_VALUE}")"
+  elif http_url_value "${AGENTBOX_VERSION_VALUE}"; then
+    AGENTBOX_SOURCE_KIND="archive_url"
+    AGENTBOX_SOURCE_ARCHIVE_URL="${AGENTBOX_VERSION_VALUE}"
+  elif tar_archive_path_value "${AGENTBOX_VERSION_VALUE}"; then
+    AGENTBOX_SOURCE_KIND="archive_file"
+    if ! AGENTBOX_SOURCE_ARCHIVE_PATH="$(resolve_local_archive_source_path "${AGENTBOX_VERSION_VALUE}")"; then
+      abort "local agentbox archive ${tty_ts}${AGENTBOX_VERSION_VALUE}${tty_reset} must resolve to an existing .tar, .tar.gz, or .tgz file."
+    fi
   else
     AGENTBOX_SOURCE_KIND="local"
 
@@ -733,6 +1103,12 @@ agentbox_source_display() {
     version)
       printf "%s" "${AGENTBOX_VERSION_TAG}"
       ;;
+    archive_url)
+      printf "%s" "${AGENTBOX_SOURCE_ARCHIVE_URL}"
+      ;;
+    archive_file)
+      display_home_path "${AGENTBOX_SOURCE_ARCHIVE_PATH}"
+      ;;
     local)
       display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}"
       ;;
@@ -746,6 +1122,36 @@ repo_archive_url() {
   local tag="$1"
 
   printf "%s/%s.tar.gz" "${AGENTBOX_REPO_ARCHIVE_BASE_URL}" "${tag}"
+}
+
+extract_agentbox_archive() {
+  local archive_path="$1"
+  local extract_dir="$2"
+  local payload_root=""
+  local entry
+  local entry_count="0"
+
+  execute mkdir -p "${extract_dir}" "${AGENTBOX_TARGET_PATH}"
+  execute tar -xf "${archive_path}" -C "${extract_dir}"
+
+  if [[ -f "${extract_dir}/Brewfile" ]]; then
+    payload_root="${extract_dir}"
+  else
+    for entry in "${extract_dir}"/* "${extract_dir}"/.[!.]* "${extract_dir}"/..?*; do
+      if [[ ! -e "${entry}" ]]; then
+        continue
+      fi
+
+      entry_count=$((entry_count + 1))
+      payload_root="${entry}"
+    done
+
+    if [[ "${entry_count}" != "1" || ! -d "${payload_root}" || ! -f "${payload_root}/Brewfile" ]]; then
+      abort "agentbox archive must contain a Brewfile at archive root or inside one top-level directory."
+    fi
+  fi
+
+  execute cp -R "${payload_root}/." "${AGENTBOX_TARGET_PATH}"
 }
 
 repo_prepare_target() {
@@ -772,9 +1178,9 @@ warn_agentbox_fetch_skipped() {
   target_display="$(agentbox_target_display)"
 
   if [[ "${AGENTBOX_SOURCE_KIND}" == "default" ]] && agentbox_target_git_repo; then
-    warn "${tty_tp}skipping${tty_reset} agentbox fetch because ${tty_ts}${target_display}${tty_reset} already exists and ${tty_bold}--force${tty_reset} is not set; using the existing checkout. To update it manually, run: ${tty_bold}git -C ${target_display} pull --ff-only${tty_reset}"
+    warn "${tty_tp}skipping${tty_reset} agentbox fetch because ${tty_ts}${target_display}${tty_reset} already exists and ${tty_bold}--force${tty_reset} is not set; using the existing checkout. to update it manually, run: ${tty_bold}git -C ${target_display} pull --ff-only${tty_reset}"
   else
-    warn "${tty_tp}skipping${tty_reset} agentbox fetch because ${tty_ts}${target_display}${tty_reset} already exists and ${tty_bold}--force${tty_reset} is not set; using the existing directory. Re-run with ${tty_bold}--force${tty_reset} to replace it."
+    warn "${tty_tp}skipping${tty_reset} agentbox fetch because ${tty_ts}${target_display}${tty_reset} already exists and ${tty_bold}--force${tty_reset} is not set; using the existing directory. re-run with ${tty_bold}--force${tty_reset} to replace it."
   fi
 }
 
@@ -791,9 +1197,16 @@ fetch_agentbox_source() {
     archive_url="$(repo_archive_url "${AGENTBOX_VERSION_TAG}")"
     archive_path="${BOOT_TMPDIR}/agentbox-${AGENTBOX_VERSION_TAG}.tar.gz"
     log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} release ${tty_ts}${AGENTBOX_VERSION_TAG}${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
-    execute mkdir -p "${AGENTBOX_TARGET_PATH}"
     execute "${CURL}" -fsSL "${archive_url}" -o "${archive_path}"
-    execute tar -xzf "${archive_path}" -C "${AGENTBOX_TARGET_PATH}" --strip-components=1
+    extract_agentbox_archive "${archive_path}" "${BOOT_TMPDIR}/agentbox-source"
+  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_url" ]]; then
+    archive_path="${BOOT_TMPDIR}/agentbox-archive.tar.gz"
+    log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}${AGENTBOX_SOURCE_ARCHIVE_URL}${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
+    execute "${CURL}" -fsSL "${AGENTBOX_SOURCE_ARCHIVE_URL}" -o "${archive_path}"
+    extract_agentbox_archive "${archive_path}" "${BOOT_TMPDIR}/agentbox-source"
+  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_file" ]]; then
+    log "${tty_tp}extracting${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_ARCHIVE_PATH}")${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
+    extract_agentbox_archive "${AGENTBOX_SOURCE_ARCHIVE_PATH}" "${BOOT_TMPDIR}/agentbox-source"
   elif [[ "${AGENTBOX_SOURCE_KIND}" == "local" ]]; then
     log "${tty_tp}cloning${tty_reset} ${tty_ts}agentbox${tty_reset} from local git repo ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}")${tty_reset} to ${tty_ts}$(agentbox_target_display)${tty_reset}"
     execute git clone "${AGENTBOX_SOURCE_LOCAL_PATH}" "${AGENTBOX_TARGET_PATH}"
@@ -803,17 +1216,80 @@ fetch_agentbox_source() {
   fi
 }
 
-discover_agentbox_payload() {
-  AGENTBOX_BREWFILE="${AGENTBOX_TARGET_PATH}/Brewfile"
+resolve_extra_brewfiles() {
+  local brewfile
+  local resolved_brewfile
 
-  if [[ ! -f "${AGENTBOX_BREWFILE}" ]]; then
+  RESOLVED_EXTRA_BREWFILES=()
+
+  if ! array_has_values EXTRA_BREWFILE_SPECS; then
+    return 0
+  fi
+
+  for brewfile in "${EXTRA_BREWFILE_SPECS[@]}"; do
+    if brewfile_source_url_value "${brewfile}"; then
+      RESOLVED_EXTRA_BREWFILES+=("${brewfile}")
+      continue
+    fi
+
+    if ! resolved_brewfile="$(resolve_extra_brewfile_source_path "${brewfile}")"; then
+      abort "extra Brewfile ${tty_ts}${brewfile}${tty_reset} must be a URL or resolve to a local file relative to ${tty_ts}$(display_home_path "${INVOCATION_CWD}")${tty_reset} or ${tty_ts}$(agentbox_target_display)${tty_reset}."
+    fi
+
+    RESOLVED_EXTRA_BREWFILES+=("${resolved_brewfile}")
+  done
+}
+
+discover_agentbox_payload() {
+  local profile_image_source
+
+  AGENTBOX_CORE_BREWFILE="${AGENTBOX_TARGET_PATH}/Brewfile"
+  AGENTBOX_BIN_DIR="${AGENTBOX_TARGET_PATH}/bin"
+  AGENTBOX_LAUNCHD_DIR="${AGENTBOX_TARGET_PATH}/launchd"
+  AGENTBOX_ASSETS_DIR="${AGENTBOX_TARGET_PATH}/assets"
+  AGENTBOX_HEALTH_SCRIPT_SOURCE="${AGENTBOX_BIN_DIR}/health.sh"
+  AGENTBOX_HEALTH_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.health.plist.in"
+  AGENTBOX_TAILSCALED_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.tailscaled.plist.in"
+  AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.openclaw-gateway.plist.in"
+  AGENTBOX_PROFILE_IMAGE_SOURCES=()
+  AGENTBOX_PROFILE_IMAGE_SOURCE=""
+
+  if [[ ! -f "${AGENTBOX_CORE_BREWFILE}" ]]; then
     abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required Brewfile ${tty_ts}$(agentbox_brewfile_display)${tty_reset}."
   fi
+
+  if [[ ! -f "${AGENTBOX_HEALTH_SCRIPT_SOURCE}" ]]; then
+    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_HEALTH_SCRIPT_SOURCE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
+  fi
+
+  if [[ ! -f "${AGENTBOX_HEALTH_PLIST_TEMPLATE}" ]]; then
+    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_HEALTH_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
+  fi
+
+  if [[ ! -f "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}" ]]; then
+    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
+  fi
+
+  if [[ ! -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE}" ]]; then
+    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or archive that includes bin/ and launchd/."
+  fi
+
+  for profile_image_source in "${AGENTBOX_ASSETS_DIR}"/profile*.png; do
+    if [[ -f "${profile_image_source}" ]]; then
+      AGENTBOX_PROFILE_IMAGE_SOURCES+=("${profile_image_source}")
+    fi
+  done
+
+  if ! array_has_values AGENTBOX_PROFILE_IMAGE_SOURCES; then
+    abort "agentbox checkout at ${tty_ts}$(agentbox_target_display)${tty_reset} is missing required runtime assets ${tty_ts}assets/profile*.png${tty_reset}; use a current agentbox checkout or archive that includes bundled profile images."
+  fi
+
+  select_openclaw_profile_image_source
 }
 
 warn_if_xcode_clt_missing() {
   if ! xcode-select -p >/dev/null 2>&1; then
-    warn "Xcode Command Line Tools may need to be installed before developer tools work correctly."
+    warn "xcode command line tools may need to be installed before developer tools work correctly."
   fi
 }
 
@@ -865,7 +1341,7 @@ ensure_pmset_setting() {
   if [[ "${optional}" == "1" ]]; then
     debug "${tty_tp}running${tty_reset}" sudo pmset -a "${key}" "${desired}"
     if ! sudo pmset -a "${key}" "${desired}"; then
-      warn "could not set pmset ${key}=${desired} on this Mac; continuing."
+      warn "could not set pmset ${key}=${desired} on this mac; continuing."
     fi
     return 0
   fi
@@ -896,12 +1372,19 @@ firewall_global_enabled() {
   sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -qi "enabled"
 }
 
-firewall_stealth_enabled() {
-  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode 2>/dev/null | grep -qi "enabled"
+warn_if_tailscale_firewall_enabled() {
+  if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" != "serve" ]]; then
+    return 0
+  fi
+
+  if firewall_global_enabled; then
+    warn "macOS Application Firewall is enabled; this can prevent tailscale serve HTTPS from reaching the openclaw gateway over the tailnet."
+    warn "agentbox recommends disabling macOS Application Firewall for tailnet gateway access and relying on tailscale ACLs, no WAN port forwarding, ssh hardening, and loopback gateway binding."
+  fi
 }
 
 run_agentbox_macos_settings() {
-  log "${tty_tp}applying${tty_reset} headless macOS power, time, recovery, and firewall settings"
+  log "${tty_tp}applying${tty_reset} headless macOS power, time, and recovery settings"
 
   ensure_pmset_setting sleep 0
   ensure_pmset_setting disksleep 0
@@ -910,18 +1393,7 @@ run_agentbox_macos_settings() {
   ensure_pmset_setting autorestart 1
   ensure_systemsetup_enabled -getusingnetworktime -setusingnetworktime "network time"
   ensure_systemsetup_enabled -getrestartfreeze -setrestartfreeze "restart after freeze"
-
-  if firewall_global_enabled; then
-    log "${tty_tp}skipping${tty_reset} firewall global state; already enabled"
-  else
-    execute sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
-  fi
-
-  if firewall_stealth_enabled; then
-    log "${tty_tp}skipping${tty_reset} firewall stealth mode; already enabled"
-  else
-    execute sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode on
-  fi
+  warn_if_tailscale_firewall_enabled
 }
 
 user_home_dir() {
@@ -930,20 +1402,281 @@ user_home_dir() {
   dscl . -read "/Users/${user}" NFSHomeDirectory 2>/dev/null | awk '/NFSHomeDirectory:/ {print $2; exit}'
 }
 
-expand_user_path() {
-  local path="$1"
+user_primary_group() {
+  local user="$1"
 
-  case "${path}" in
-    \~)
-      printf "%s" "${HOME}"
-      ;;
-    \~/*)
-      printf "%s/%s" "${HOME}" "${path#"~/"}"
-      ;;
-    *)
-      printf "%s" "${path}"
-      ;;
-  esac
+  id -gn "${user}" 2>/dev/null || printf "staff"
+}
+
+user_exists() {
+  dscl . -read "/Users/$1" >/dev/null 2>&1
+}
+
+group_exists() {
+  dscl . -read "/Groups/$1" >/dev/null 2>&1
+}
+
+group_has_user() {
+  local group="$1"
+  local user="$2"
+
+  dscl . -read "/Groups/${group}" GroupMembership 2>/dev/null | awk -v expected="${user}" '
+    $1 == "GroupMembership:" {
+      for (i = 2; i <= NF; i++) {
+        if ($i == expected) {
+          found = 1
+        }
+      }
+      next
+    }
+    $1 == expected {
+      found = 1
+    }
+    END {
+      exit(found ? 0 : 1)
+    }
+  '
+}
+
+user_is_admin() {
+  group_has_user admin "$1"
+}
+
+validate_openclaw_user_non_admin() {
+  if [[ "${OPENCLAW_USER}" == "root" ]]; then
+    abort "OpenClaw runner user must not be ${tty_ts}root${tty_reset}."
+  fi
+
+  if [[ -n "${ADMIN_USER}" && "${OPENCLAW_USER}" == "${ADMIN_USER}" ]]; then
+    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must be separate from the invoking sudo user."
+  fi
+
+  if user_is_admin "${OPENCLAW_USER}"; then
+    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must not be an admin or sudo-capable user."
+  fi
+}
+
+validate_existing_openclaw_user() {
+  if ! user_exists "${OPENCLAW_USER}"; then
+    return 0
+  fi
+
+  validate_openclaw_user_non_admin
+}
+
+autologin_user_value() {
+  sudo defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true
+}
+
+openclaw_autologin_configured() {
+  [[ "$(autologin_user_value)" == "${OPENCLAW_USER}" ]]
+}
+
+openclaw_password_required() {
+  if ! user_exists "${OPENCLAW_USER}"; then
+    return 0
+  fi
+
+  if openclaw_autologin_enabled && ! openclaw_autologin_configured; then
+    return 0
+  fi
+
+  return 1
+}
+
+abort_missing_openclaw_password() {
+  local reason="$1"
+
+  abort_multi "$(cat <<EOABORT
+OpenClaw runner password is required to ${reason}.
+set ${tty_bold}AGENTBOX_OPENCLAW_PASSWORD${tty_reset}, pass ${tty_bold}--openclaw-password${tty_reset}, or rerun interactively so agentbox can prompt without echoing the password.
+use ${tty_bold}--skip-openclaw-autologin${tty_reset} only when autologin should be disabled; creating a new runner user still requires a password.
+EOABORT
+)"
+}
+
+prompt_for_openclaw_password() {
+  local reason="$1"
+  local password=""
+  local confirm=""
+
+  if [[ -n "${OPENCLAW_PASSWORD}" ]]; then
+    return 0
+  fi
+
+  if [[ -n "${NONINTERACTIVE-}" || -n "${CI-}" ]]; then
+    abort_missing_openclaw_password "${reason}"
+  fi
+
+  printf "enter password for OpenClaw runner %s to %s: " "${tty_ts}${OPENCLAW_USER}${tty_reset}" "${reason}" >&2
+  IFS= read -r -s password
+  printf "\n" >&2
+  printf "confirm password for OpenClaw runner %s: " "${tty_ts}${OPENCLAW_USER}${tty_reset}" >&2
+  IFS= read -r -s confirm
+  printf "\n" >&2
+
+  if [[ -z "${password}" ]]; then
+    abort "OpenClaw runner password must not be empty."
+  fi
+
+  if [[ "${password}" != "${confirm}" ]]; then
+    abort "OpenClaw runner password confirmation did not match."
+  fi
+
+  OPENCLAW_PASSWORD="${password}"
+}
+
+ensure_openclaw_password_available() {
+  local reason="$1"
+
+  if [[ -n "${OPENCLAW_PASSWORD}" ]]; then
+    return 0
+  fi
+
+  prompt_for_openclaw_password "${reason}"
+}
+
+write_openclaw_profile_image() {
+  debug raw AGENTBOX_PROFILE_IMAGE_SOURCE="$(display_home_path "${AGENTBOX_PROFILE_IMAGE_SOURCE}")"
+  execute sudo mkdir -p "${AGENTBOX_OPT_DIR}"
+  execute sudo cp "${AGENTBOX_PROFILE_IMAGE_SOURCE}" "${AGENTBOX_PROFILE_IMAGE_PATH}"
+  execute sudo chown root:wheel "${AGENTBOX_PROFILE_IMAGE_PATH}"
+  execute sudo chmod 644 "${AGENTBOX_PROFILE_IMAGE_PATH}"
+}
+
+openclaw_user_has_picture() {
+  dscl . -read "/Users/${OPENCLAW_USER}" Picture >/dev/null 2>&1 ||
+    dscl . -read "/Users/${OPENCLAW_USER}" JPEGPhoto >/dev/null 2>&1
+}
+
+ensure_openclaw_user_picture() {
+  if openclaw_user_has_picture; then
+    log "${tty_tp}preserving${tty_reset} existing profile picture for openclaw runner ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+    return 0
+  fi
+
+  write_openclaw_profile_image
+  log "${tty_tp}setting${tty_reset} profile picture for openclaw runner ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+  execute sudo dscl . -create "/Users/${OPENCLAW_USER}" Picture "${AGENTBOX_PROFILE_IMAGE_PATH}"
+}
+
+ensure_openclaw_user_home_ownership() {
+  local home="$1"
+  local recursive="${2:-0}"
+  local primary_group
+  local owner
+  local group
+  local mode
+
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+  owner="$(stat -f "%Su" "${home}" 2>/dev/null || true)"
+  group="$(stat -f "%Sg" "${home}" 2>/dev/null || true)"
+
+  if [[ "${owner}" != "${OPENCLAW_USER}" || "${group}" != "${primary_group}" ]]; then
+    if [[ "${recursive}" == "1" ]]; then
+      execute sudo chown -R "${OPENCLAW_USER}:${primary_group}" "${home}"
+    else
+      execute sudo chown "${OPENCLAW_USER}:${primary_group}" "${home}"
+    fi
+  fi
+
+  mode="$(stat -f "%Lp" "${home}" 2>/dev/null || true)"
+  if [[ -n "${mode}" ]] && (( (8#${mode} & 8#022) != 0 )); then
+    execute sudo chmod go-w "${home}"
+  fi
+}
+
+ensure_openclaw_user_home() {
+  local home
+  local expected_home
+  local created_home="0"
+
+  home="$(user_home_dir "${OPENCLAW_USER}")"
+  expected_home="/Users/${OPENCLAW_USER}"
+
+  if [[ -z "${home}" ]]; then
+    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} does not have a configured home directory."
+  fi
+
+  if [[ ! -d "${home}" ]]; then
+    if [[ "${home}" != "${expected_home}" ]]; then
+      abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} has missing home directory ${tty_ts}${home}${tty_reset}; create it manually or set the account home to ${tty_ts}${expected_home}${tty_reset} and rerun."
+    fi
+
+    log "${tty_tp}creating${tty_reset} openclaw runner home directory ${tty_ts}${home}${tty_reset}"
+    debug "${tty_tp}running${tty_reset}" sudo /usr/sbin/createhomedir -c -u "${OPENCLAW_USER}"
+    if ! sudo /usr/sbin/createhomedir -c -u "${OPENCLAW_USER}"; then
+      abort "failed to create OpenClaw runner home directory ${tty_ts}${home}${tty_reset}."
+    fi
+    created_home="1"
+  fi
+
+  if [[ ! -d "${home}" ]]; then
+    log "${tty_tp}creating${tty_reset} openclaw runner home directory ${tty_ts}${home}${tty_reset} after createhomedir did not materialize it"
+    execute sudo mkdir -p "${home}"
+    created_home="1"
+  fi
+
+  ensure_openclaw_user_home_ownership "${home}" "${created_home}"
+
+  if [[ ! -d "${home}" ]]; then
+    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must have a usable home directory."
+  fi
+}
+
+create_openclaw_user() {
+  ensure_openclaw_password_available "create the OpenClaw runner user"
+  write_openclaw_profile_image
+
+  log "${tty_tp}creating${tty_reset} openclaw runner user ${tty_ts}${OPENCLAW_FULL_NAME} <${OPENCLAW_USER}>${tty_reset}"
+  debug "${tty_tp}running${tty_reset}" sudo sysadminctl -addUser "${OPENCLAW_USER}" -fullName "${OPENCLAW_FULL_NAME}" -shell /bin/zsh -home "/Users/${OPENCLAW_USER}" -password "****" -picture "${AGENTBOX_PROFILE_IMAGE_PATH}"
+  if ! sudo sysadminctl -addUser "${OPENCLAW_USER}" -fullName "${OPENCLAW_FULL_NAME}" -shell /bin/zsh -home "/Users/${OPENCLAW_USER}" -password "${OPENCLAW_PASSWORD}" -picture "${AGENTBOX_PROFILE_IMAGE_PATH}"; then
+    if user_exists "${OPENCLAW_USER}"; then
+      warn "sysadminctl returned a nonzero status after creating openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset}; continuing with account verification."
+    else
+      abort "failed to create OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+    fi
+  fi
+}
+
+ensure_openclaw_autologin() {
+  if ! openclaw_autologin_enabled; then
+    log "${tty_tp}skipping${tty_reset} openclaw runner autologin because it is disabled"
+    return 0
+  fi
+
+  if openclaw_autologin_configured; then
+    log "${tty_tp}skipping${tty_reset} openclaw runner autologin; ${tty_ts}${OPENCLAW_USER}${tty_reset} is already configured"
+    return 0
+  fi
+
+  ensure_openclaw_password_available "configure OpenClaw runner autologin"
+
+  log "${tty_tp}configuring${tty_reset} openclaw runner autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+  debug "${tty_tp}running${tty_reset}" sudo sysadminctl -autologin set -userName "${OPENCLAW_USER}" -password "****"
+  if ! sudo sysadminctl -autologin set -userName "${OPENCLAW_USER}" -password "${OPENCLAW_PASSWORD}"; then
+    abort "failed to configure OpenClaw runner autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}; rerun with ${tty_bold}--skip-openclaw-autologin${tty_reset} if this Mac should not use GUI autologin."
+  fi
+
+  if ! openclaw_autologin_configured; then
+    abort "OpenClaw runner autologin did not become active for ${tty_ts}${OPENCLAW_USER}${tty_reset}; rerun with ${tty_bold}--skip-openclaw-autologin${tty_reset} if this Mac should not use GUI autologin."
+  fi
+}
+
+run_agentbox_openclaw_user_setup() {
+  check_sudo_access "before OpenClaw runner user setup"
+
+  if user_exists "${OPENCLAW_USER}"; then
+    log "${tty_tp}reusing${tty_reset} existing openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+  else
+    create_openclaw_user
+  fi
+
+  validate_existing_openclaw_user
+  ensure_openclaw_user_home
+  ensure_openclaw_user_picture
+  ensure_openclaw_autologin
+  OPENCLAW_PASSWORD=""
 }
 
 private_key_material_detected() {
@@ -1054,12 +1787,12 @@ resolve_authorized_key_spec() {
   fi
 
   if [[ "${value}" == file:* ]]; then
-    path="$(expand_user_path "${value#file:}")"
+    path="$(expand_home_path "${value#file:}")"
     resolve_authorized_key_file "${value}" "${path}"
     return 0
   fi
 
-  path="$(expand_user_path "${value}")"
+  path="$(expand_home_path "${value}")"
   if [[ -f "${path}" ]]; then
     resolve_authorized_key_file "${value}" "${path}"
     return 0
@@ -1099,7 +1832,7 @@ install_authorized_keys_for_user() {
 
   home="$(user_home_dir "${user}")"
   if [[ -z "${home}" ]]; then
-    abort "could not determine home directory for admin user ${tty_ts}${user}${tty_reset}."
+    abort "could not determine home directory for user ${tty_ts}${user}${tty_reset}."
   fi
 
   authorized_keys="${home}/.ssh/authorized_keys"
@@ -1126,11 +1859,37 @@ install_authorized_keys_for_user() {
 
   execute sudo chown "${user}:staff" "${authorized_keys}"
   execute sudo chmod 600 "${authorized_keys}"
-  log "${tty_tp}installed${tty_reset} ${installed_count} new SSH authorized key entries for ${tty_ts}${user}${tty_reset}"
+  log "${tty_tp}installed${tty_reset} ${installed_count} new ssh authorized key entries for ${tty_ts}${user}${tty_reset}"
 }
 
 remote_login_enabled() {
   sudo systemsetup -getremotelogin 2>/dev/null | grep -Fq "Remote Login: On"
+}
+
+ensure_remote_login_access_user() {
+  local user="$1"
+
+  if ! group_exists "${SSH_ACCESS_GROUP}"; then
+    log "${tty_tp}skipping${tty_reset} macOS Remote Login access group update; ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset} does not exist"
+    return 0
+  fi
+
+  if group_has_user "${SSH_ACCESS_GROUP}" "${user}"; then
+    log "${tty_tp}skipping${tty_reset} macOS Remote Login access; ${tty_ts}${user}${tty_reset} is already a direct member of ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset}"
+    return 0
+  fi
+
+  log "${tty_tp}adding${tty_reset} ${tty_ts}${user}${tty_reset} to macOS Remote Login access group ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset}"
+  execute sudo dseditgroup -o edit -a "${user}" -t user "${SSH_ACCESS_GROUP}"
+
+  if ! group_has_user "${SSH_ACCESS_GROUP}" "${user}"; then
+    abort "user ${tty_ts}${user}${tty_reset} is still not a direct member of macOS Remote Login access group ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset} after remediation."
+  fi
+}
+
+ensure_remote_login_access_users() {
+  ensure_remote_login_access_user "${ADMIN_USER}"
+  ensure_remote_login_access_user "${OPENCLAW_USER}"
 }
 
 sshd_config_drop_in_supported() {
@@ -1150,19 +1909,51 @@ restore_agentbox_sshd_config() {
 }
 
 sshd_effective_config_hardened() {
-  local user="$1"
+  local allowed_users="$1"
   local config
+  local user
+  local -a users=()
 
-  config="$(sudo "${SSHD_BIN}" -T 2>/dev/null)" || return 1
-  printf "%s\n" "${config}" | grep -Fxq "passwordauthentication no" || return 1
-  printf "%s\n" "${config}" | grep -Fxq "kbdinteractiveauthentication no" || return 1
-  printf "%s\n" "${config}" | grep -Fxq "permitrootlogin no" || return 1
-  printf "%s\n" "${config}" | grep -Fxq "pubkeyauthentication yes" || return 1
-  printf "%s\n" "${config}" | grep -Fxq "allowusers ${user}" || return 1
+  config="$(sudo "${SSHD_BIN}" -T 2>/dev/null)" || {
+    debug "${tty_tp}missing${tty_reset}" sshd effective config output
+    return 1
+  }
+
+  if ! printf "%s\n" "${config}" | grep -Fxq "passwordauthentication no"; then
+    debug "${tty_tp}missing${tty_reset}" sshd effective config line: "passwordauthentication no"
+    return 1
+  fi
+
+  if ! printf "%s\n" "${config}" | grep -Fxq "kbdinteractiveauthentication no"; then
+    debug "${tty_tp}missing${tty_reset}" sshd effective config line: "kbdinteractiveauthentication no"
+    return 1
+  fi
+
+  if ! printf "%s\n" "${config}" | grep -Fxq "permitrootlogin no"; then
+    debug "${tty_tp}missing${tty_reset}" sshd effective config line: "permitrootlogin no"
+    return 1
+  fi
+
+  if ! printf "%s\n" "${config}" | grep -Fxq "pubkeyauthentication yes"; then
+    debug "${tty_tp}missing${tty_reset}" sshd effective config line: "pubkeyauthentication yes"
+    return 1
+  fi
+
+  IFS=' ' read -r -a users <<< "${allowed_users}"
+  for user in "${users[@]}"; do
+    if [[ -z "${user}" ]]; then
+      continue
+    fi
+
+    if ! printf "%s\n" "${config}" | grep -Fxq "allowusers ${user}"; then
+      debug "${tty_tp}missing${tty_reset}" sshd effective config line: "allowusers ${user}"
+      return 1
+    fi
+  done
 }
 
-harden_sshd_for_user() {
-  local user="$1"
+harden_sshd_for_users() {
+  local allowed_users="$1"
   local backup_path=""
 
   if [[ ! -x "${SSHD_BIN}" ]]; then
@@ -1178,7 +1969,7 @@ harden_sshd_for_user() {
     execute sudo cp "${SSHD_AGENTBOX_CONFIG_PATH}" "${backup_path}"
   fi
 
-  log "${tty_tp}hardening${tty_reset} SSH for key-only access by ${tty_ts}${user}${tty_reset}"
+  log "${tty_tp}hardening${tty_reset} ssh for key-only access by ${tty_ts}${allowed_users}${tty_reset}"
   execute sudo mkdir -p "${SSHD_CONFIG_DIR}"
   if ! sudo tee "${SSHD_AGENTBOX_CONFIG_PATH}" >/dev/null <<EOSSHD
 # Managed by agentbox.
@@ -1187,7 +1978,7 @@ KbdInteractiveAuthentication no
 ChallengeResponseAuthentication no
 PermitRootLogin no
 PubkeyAuthentication yes
-AllowUsers ${user}
+AllowUsers ${allowed_users}
 EOSSHD
   then
     abort "failed to write agentbox sshd config."
@@ -1196,28 +1987,38 @@ EOSSHD
   execute sudo chown root:wheel "${SSHD_AGENTBOX_CONFIG_PATH}"
   execute sudo chmod 644 "${SSHD_AGENTBOX_CONFIG_PATH}"
 
-  if ! sudo "${SSHD_BIN}" -t || ! sshd_effective_config_hardened "${user}"; then
+  if ! sudo "${SSHD_BIN}" -t; then
     restore_agentbox_sshd_config "${backup_path}"
-    abort "agentbox sshd hardening config failed validation or did not become effective; changes were rolled back."
+    abort "agentbox sshd hardening config failed syntax validation; changes were rolled back."
+  fi
+
+  if ! sshd_effective_config_hardened "${allowed_users}"; then
+    restore_agentbox_sshd_config "${backup_path}"
+    abort "agentbox sshd hardening config did not become effective; changes were rolled back."
   fi
 
   execute sudo launchctl kickstart -k system/com.openssh.sshd
 }
 
 run_agentbox_ssh_setup() {
+  local ssh_allowed_users="${ADMIN_USER} ${OPENCLAW_USER}"
+
   if remote_login_enabled; then
-    log "${tty_tp}skipping${tty_reset} classic SSH enablement; Remote Login is already on"
+    log "${tty_tp}skipping${tty_reset} classic ssh enablement; Remote Login is already on"
   else
-    log "${tty_tp}enabling${tty_reset} classic SSH for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
+    log "${tty_tp}enabling${tty_reset} classic ssh for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
     execute sudo systemsetup -setremotelogin on
   fi
 
+  ensure_remote_login_access_users
+
   if array_has_values AUTHORIZED_KEY_LINES; then
     install_authorized_keys_for_user "${ADMIN_USER}"
-    harden_sshd_for_user "${ADMIN_USER}"
+    install_authorized_keys_for_user "${OPENCLAW_USER}"
+    harden_sshd_for_users "${ssh_allowed_users}"
   else
-    log "${tty_tp}skipping${tty_reset} SSH authorized key install because no keys were provided"
-    warn "classic SSH is enabled, but key-based access and password-login hardening were not configured by this bootstrap run."
+    log "${tty_tp}skipping${tty_reset} ssh authorized key install because no keys were provided"
+    warn "classic ssh is enabled, but key-based access and password-login hardening were not configured by this bootstrap run."
   fi
 }
 
@@ -1228,7 +2029,9 @@ write_agentbox_health_state() {
   local trusted_brewgroup_enabled_value="0"
   local trusted_brewgroup_value="off"
   local ssh_hardening_expected="0"
+  local openclaw_autologin_expected="0"
   local managed_macos_runner="0"
+  local ssh_allowed_users="${ADMIN_USER} ${OPENCLAW_USER}"
 
   if tailscale_setup_disabled; then
     tailscale_enabled="0"
@@ -1246,6 +2049,10 @@ write_agentbox_health_state() {
     ssh_hardening_expected="1"
   fi
 
+  if openclaw_autologin_enabled; then
+    openclaw_autologin_expected="1"
+  fi
+
   if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
     managed_macos_runner="1"
   fi
@@ -1260,8 +2067,18 @@ AGENTBOX_HEALTH_BREWGROUP=$(shell_quote "${brewgroup_value}")
 AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED=${trusted_brewgroup_enabled_value}
 AGENTBOX_HEALTH_TRUSTED_BREWGROUP=$(shell_quote "${trusted_brewgroup_value}")
 AGENTBOX_HEALTH_BREW_PREFIX=$(shell_quote "${BREW_PREFIX_VALUE}")
+AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE=$(shell_quote "${AGENTBOX_HOMEBREW_PATHS_FILE}")
 AGENTBOX_HEALTH_ADMIN_USER=$(shell_quote "${ADMIN_USER}")
+AGENTBOX_HEALTH_OPENCLAW_USER=$(shell_quote "${OPENCLAW_USER}")
+AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=$(shell_quote "${OPENCLAW_FULL_NAME}")
+AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED=${openclaw_autologin_expected}
+AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL=$(shell_quote "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}")
+AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=$(shell_quote "${OPENCLAW_GATEWAY_BIND_VALUE}")
+AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE=$(shell_quote "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}")
+AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT=$(shell_quote "${OPENCLAW_GATEWAY_PORT}")
+AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE=$(shell_quote "${OPENCLAW_AUTH_CHOICE}")
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED=${ssh_hardening_expected}
+AGENTBOX_HEALTH_SSH_ALLOWED_USERS=$(shell_quote "${ssh_allowed_users}")
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER=${managed_macos_runner}
 EOHEALTHSTATE
   then
@@ -1273,521 +2090,100 @@ EOHEALTHSTATE
 }
 
 write_agentbox_health_script() {
-  if ! sudo tee "${AGENTBOX_OPT_DIR}/bin/health.sh" >/dev/null <<'EOHEALTH'
-#!/usr/bin/env bash
-set -euo pipefail
-
-STATE_FILE="/var/db/tanaab/agentbox/health.env"
-LOG_FILE="/var/log/tanaab/agentbox/health.log"
-HEALTH_LABEL="dev.tanaab.agentbox.health"
-TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
-HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
-SSHD_BIN="/usr/sbin/sshd"
-SOCKETFILTERFW="/usr/libexec/ApplicationFirewall/socketfilterfw"
-
-AGENTBOX_HEALTH_EXPECTED_HOSTNAME=""
-AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME=""
-AGENTBOX_HEALTH_TAILSCALE_ENABLED="0"
-AGENTBOX_HEALTH_BREWGROUP_ENABLED="0"
-AGENTBOX_HEALTH_BREWGROUP="off"
-AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED="0"
-AGENTBOX_HEALTH_TRUSTED_BREWGROUP="off"
-AGENTBOX_HEALTH_BREW_PREFIX=""
-AGENTBOX_HEALTH_ADMIN_USER=""
-AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
-AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
-STATE_LOADED="0"
-
-if [[ -r "${STATE_FILE}" ]]; then
-  # shellcheck source=/dev/null
-  . "${STATE_FILE}"
-  STATE_LOADED="1"
-fi
-
-print_kv() {
-  local key="$1"
-  local value="${2:-}"
-
-  value="${value//$'\n'/ }"
-  printf '%s=%s\n' "${key}" "${value}"
-}
-
-pmset_setting_value() {
-  local key="$1"
-
-  pmset -g custom 2>/dev/null | awk -v key="${key}" '$1 == key { value = $2 } END { print value }'
-}
-
-systemsetup_toggle_value() {
-  local getter="$1"
-
-  systemsetup "${getter}" 2>/dev/null | awk -F': ' 'NF { value = $NF } END { print (tolower(value) == "on" ? "1" : "0") }'
-}
-
-firewall_global_value() {
-  if "${SOCKETFILTERFW}" --getglobalstate 2>/dev/null | grep -qi "enabled"; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-firewall_stealth_value() {
-  if "${SOCKETFILTERFW}" --getstealthmode 2>/dev/null | grep -qi "enabled"; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-remote_login_value() {
-  if systemsetup -getremotelogin 2>/dev/null | grep -Fq "Remote Login: On"; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-sshd_hardened_value() {
-  local user="$1"
-  local config
-
-  if [[ -z "${user}" || ! -x "${SSHD_BIN}" ]]; then
-    printf '0'
-    return 0
-  fi
-
-  config="$("${SSHD_BIN}" -T 2>/dev/null)" || {
-    printf '0'
-    return 0
-  }
-
-  printf "%s\n" "${config}" | grep -Fxq "passwordauthentication no" || {
-    printf '0'
-    return 0
-  }
-  printf "%s\n" "${config}" | grep -Fxq "kbdinteractiveauthentication no" || {
-    printf '0'
-    return 0
-  }
-  printf "%s\n" "${config}" | grep -Fxq "permitrootlogin no" || {
-    printf '0'
-    return 0
-  }
-  printf "%s\n" "${config}" | grep -Fxq "pubkeyauthentication yes" || {
-    printf '0'
-    return 0
-  }
-  printf "%s\n" "${config}" | grep -Fxq "allowusers ${user}" || {
-    printf '0'
-    return 0
-  }
-
-  printf '1'
-}
-
-path_group_rwx_value() {
-  local path="$1"
-  local mode
-
-  mode="$(stat -f "%Lp" "${path}" 2>/dev/null || true)"
-  if [[ "${mode}" =~ ^[0-7]+$ ]] && (( (8#${mode} & 8#070) == 8#070 )); then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-group_user_member_value() {
-  local group="$1"
-  local user="$2"
-
-  if [[ -z "${group}" || -z "${user}" ]]; then
-    printf '0'
-    return 0
-  fi
-
-  if dscl . -read "/Groups/${group}" GroupMembership 2>/dev/null | awk -v expected="${user}" '
-    $1 == "GroupMembership:" {
-      for (i = 2; i <= NF; i++) {
-        if ($i == expected) {
-          found = 1
-        }
-      }
-      next
-    }
-    $1 == expected {
-      found = 1
-    }
-    END {
-      exit(found ? 0 : 1)
-    }
-  '; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-nested_group_value() {
-  local parent_group="$1"
-  local child_group="$2"
-  local child_group_guid
-
-  child_group_guid="$(dscl . -read "/Groups/${child_group}" GeneratedUID 2>/dev/null | awk '$1 == "GeneratedUID:" { print $2; exit }')"
-  if [[ -z "${child_group_guid}" ]]; then
-    printf '0'
-    return 0
-  fi
-
-  if dscl . -read "/Groups/${parent_group}" NestedGroups 2>/dev/null | awk -v expected="${child_group_guid}" '
-    $1 == "NestedGroups:" {
-      for (i = 2; i <= NF; i++) {
-        if ($i == expected) {
-          found = 1
-        }
-      }
-      next
-    }
-    $1 == expected {
-      found = 1
-    }
-    END {
-      exit(found ? 0 : 1)
-    }
-  '; then
-    printf '1'
-  else
-    printf '0'
-  fi
-}
-
-root_disk_available_kb() {
-  df -Pk / 2>/dev/null | awk 'NR == 2 { print $4; found = 1 } END { if (!found) print "unknown" }'
-}
-
-gatekeeper_status() {
-  if command -v spctl >/dev/null 2>&1; then
-    spctl --status 2>/dev/null || true
-  else
-    printf 'unavailable'
-  fi
-}
-
-filevault_status() {
-  if command -v fdesetup >/dev/null 2>&1; then
-    fdesetup status 2>/dev/null || true
-  else
-    printf 'unavailable'
-  fi
-}
-
-print_brewgroup() {
-  if [[ "${STATE_LOADED}" != "1" ]]; then
-    printf 'off\n'
-    return 1
-  fi
-
-  if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" && -n "${AGENTBOX_HEALTH_BREWGROUP}" ]]; then
-    printf '%s\n' "${AGENTBOX_HEALTH_BREWGROUP}"
-    return 0
-  fi
-
-  printf 'off\n'
-}
-
-generate_report() {
-  local failures="0"
-  local admin_uid=""
-  local computer_name=""
-  local host_name=""
-  local local_host_name=""
-  local sleep_value=""
-  local disksleep_value=""
-  local displaysleep_value=""
-  local autorestart_value=""
-  local autorestart_ok="skipped"
-  local power_ok="0"
-  local network_time_ok=""
-  local restart_freeze_ok=""
-  local firewall_global_ok=""
-  local firewall_stealth_ok=""
-  local remote_login_ok=""
-  local ssh_hardening_ok="skipped"
-  local brew_prefix_group=""
-  local brew_prefix_group_ok="skipped"
-  local brew_prefix_group_rwx_ok="skipped"
-  local brew_prefix_ok="skipped"
-  local brewgroup_admin_user_ok="skipped"
-  local trusted_brewgroup_nested_ok="skipped"
-  local health_launchd_loaded_ok="0"
-  local tailscaled_launchd_loaded_ok="skipped"
-  local tailscaled_homebrew_launchd_absent_ok="skipped"
-  local tailscaled_homebrew_user_launchd_absent_ok="skipped"
-  local tailscale_backend_state=""
-  local tailscale_hostname=""
-  local tailscale_ip=""
-  local tailscale_ok="skipped"
-  local tailscale_status_json=""
-
-  mark_required() {
-    local key="$1"
-    local value="$2"
-
-    print_kv "${key}" "${value}"
-    if [[ "${value}" != "1" ]]; then
-      failures=$((failures + 1))
-    fi
-  }
-
-  computer_name="$(scutil --get ComputerName 2>/dev/null || true)"
-  host_name="$(scutil --get HostName 2>/dev/null || true)"
-  local_host_name="$(scutil --get LocalHostName 2>/dev/null || true)"
-  sleep_value="$(pmset_setting_value sleep)"
-  disksleep_value="$(pmset_setting_value disksleep)"
-  displaysleep_value="$(pmset_setting_value displaysleep)"
-  autorestart_value="$(pmset_setting_value autorestart)"
-  network_time_ok="$(systemsetup_toggle_value -getusingnetworktime)"
-  restart_freeze_ok="$(systemsetup_toggle_value -getrestartfreeze)"
-  firewall_global_ok="$(firewall_global_value)"
-  firewall_stealth_ok="$(firewall_stealth_value)"
-  remote_login_ok="$(remote_login_value)"
-  admin_uid="$(id -u "${AGENTBOX_HEALTH_ADMIN_USER}" 2>/dev/null || true)"
-
-  if [[ -z "${autorestart_value}" && "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}" == "1" ]]; then
-    autorestart_ok="skipped"
-  elif [[ "${autorestart_value}" == "1" ]]; then
-    autorestart_ok="1"
-  else
-    autorestart_ok="0"
-  fi
-
-  if [[ "${sleep_value}" == "0" &&
-    "${disksleep_value}" == "0" &&
-    "${displaysleep_value}" == "0" &&
-    "${autorestart_ok}" != "0" ]]; then
-    power_ok="1"
-  fi
-
-  if launchctl print "system/${HEALTH_LABEL}" >/dev/null 2>&1; then
-    health_launchd_loaded_ok="1"
-  fi
-
-  print_kv timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  print_kv managed_macos_runner "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}"
-  print_kv expected_hostname "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}"
-  print_kv computer_name "${computer_name}"
-  print_kv host_name "${host_name}"
-  print_kv local_host_name "${local_host_name}"
-
-  if [[ -n "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" &&
-    "${computer_name}" == "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" &&
-    "${host_name}" == "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" &&
-    "${local_host_name}" == "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}" ]]; then
-    mark_required macos_identity_ok 1
-  else
-    mark_required macos_identity_ok 0
-  fi
-
-  print_kv sleep "${sleep_value}"
-  print_kv disksleep "${disksleep_value}"
-  print_kv displaysleep "${displaysleep_value}"
-  print_kv autorestart "${autorestart_value}"
-  print_kv autorestart_ok "${autorestart_ok}"
-  mark_required headless_power_ok "${power_ok}"
-  mark_required network_time_ok "${network_time_ok}"
-  mark_required restart_freeze_ok "${restart_freeze_ok}"
-  mark_required firewall_global_ok "${firewall_global_ok}"
-  if [[ "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}" == "1" && "${firewall_stealth_ok}" != "1" ]]; then
-    print_kv firewall_stealth_ok "${firewall_stealth_ok}"
-  else
-    mark_required firewall_stealth_ok "${firewall_stealth_ok}"
-  fi
-  mark_required remote_login_ok "${remote_login_ok}"
-
-  print_kv ssh_hardening_expected "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}"
-  print_kv admin_user "${AGENTBOX_HEALTH_ADMIN_USER}"
-  if [[ "${AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED}" == "1" ]]; then
-    ssh_hardening_ok="$(sshd_hardened_value "${AGENTBOX_HEALTH_ADMIN_USER}")"
-    mark_required ssh_hardening_ok "${ssh_hardening_ok}"
-  else
-    print_kv ssh_hardening_ok "${ssh_hardening_ok}"
-  fi
-
-  print_kv brewgroup_enabled "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}"
-  print_kv brewgroup_expected "${AGENTBOX_HEALTH_BREWGROUP}"
-  if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" ]]; then
-    brewgroup_admin_user_ok="$(group_user_member_value "${AGENTBOX_HEALTH_BREWGROUP}" "${AGENTBOX_HEALTH_ADMIN_USER}")"
-    mark_required brewgroup_admin_user_ok "${brewgroup_admin_user_ok}"
-  else
-    print_kv brewgroup_admin_user_ok "${brewgroup_admin_user_ok}"
-  fi
-  print_kv trusted_brewgroup_enabled "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED}"
-  print_kv trusted_brewgroup_expected "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP}"
-  if [[ "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED}" == "1" ]]; then
-    trusted_brewgroup_nested_ok="$(nested_group_value "${AGENTBOX_HEALTH_BREWGROUP}" "${AGENTBOX_HEALTH_TRUSTED_BREWGROUP}")"
-    mark_required trusted_brewgroup_nested_ok "${trusted_brewgroup_nested_ok}"
-  else
-    print_kv trusted_brewgroup_nested_ok "${trusted_brewgroup_nested_ok}"
-  fi
-  print_kv brew_prefix "${AGENTBOX_HEALTH_BREW_PREFIX}"
-  if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" ]]; then
-    brew_prefix_group_ok="0"
-    brew_prefix_group_rwx_ok="0"
-    brew_prefix_ok="0"
-
-    if [[ -d "${AGENTBOX_HEALTH_BREW_PREFIX}" ]]; then
-      brew_prefix_group="$(stat -f "%Sg" "${AGENTBOX_HEALTH_BREW_PREFIX}" 2>/dev/null || true)"
-      brew_prefix_group_rwx_ok="$(path_group_rwx_value "${AGENTBOX_HEALTH_BREW_PREFIX}")"
-      if [[ "${brew_prefix_group}" == "${AGENTBOX_HEALTH_BREWGROUP}" ]]; then
-        brew_prefix_group_ok="1"
-      fi
-    fi
-
-    if [[ "${brew_prefix_group_ok}" == "1" && "${brew_prefix_group_rwx_ok}" == "1" ]]; then
-      brew_prefix_ok="1"
-    fi
-
-    print_kv brew_prefix_group "${brew_prefix_group}"
-    mark_required brew_prefix_group_ok "${brew_prefix_group_ok}"
-    mark_required brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
-    mark_required brew_prefix_ok "${brew_prefix_ok}"
-  else
-    print_kv brew_prefix_group "${brew_prefix_group}"
-    print_kv brew_prefix_group_ok "${brew_prefix_group_ok}"
-    print_kv brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
-    print_kv brew_prefix_ok "${brew_prefix_ok}"
-  fi
-
-  print_kv tailscale_expected "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}"
-  print_kv expected_tailscale_hostname "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}"
-  if [[ "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}" == "1" ]]; then
-    tailscaled_launchd_loaded_ok="0"
-    tailscaled_homebrew_launchd_absent_ok="1"
-    tailscaled_homebrew_user_launchd_absent_ok="1"
-
-    if launchctl print "system/${TAILSCALED_LABEL}" >/dev/null 2>&1; then
-      tailscaled_launchd_loaded_ok="1"
-    fi
-
-    if launchctl print "system/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
-      tailscaled_homebrew_launchd_absent_ok="0"
-    fi
-
-    if [[ -n "${admin_uid}" ]] && launchctl print "gui/${admin_uid}/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
-      tailscaled_homebrew_user_launchd_absent_ok="0"
-    fi
-
-    if command -v tailscale >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-      tailscale_status_json="$(tailscale status --json 2>/dev/null || true)"
-      if [[ -n "${tailscale_status_json}" ]]; then
-        tailscale_backend_state="$(printf "%s" "${tailscale_status_json}" | jq -r '.BackendState // ""' 2>/dev/null || true)"
-        tailscale_hostname="$(printf "%s" "${tailscale_status_json}" | jq -r '.Self.HostName // ""' 2>/dev/null || true)"
-        tailscale_ip="$(printf "%s" "${tailscale_status_json}" | jq -r '(.Self.TailscaleIPs // []) | .[0] // ""' 2>/dev/null || true)"
-      fi
-    fi
-
-    print_kv tailscale_backend_state "${tailscale_backend_state}"
-    print_kv tailscale_hostname "${tailscale_hostname}"
-    print_kv tailscale_ip "${tailscale_ip}"
-
-    if [[ "${tailscale_backend_state}" == "Running" &&
-      -n "${tailscale_ip}" &&
-      -n "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}" &&
-      "${tailscale_hostname}" == "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}" ]]; then
-      tailscale_ok="1"
-    else
-      tailscale_ok="0"
-    fi
-    mark_required tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
-    mark_required tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
-    mark_required tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
-    mark_required tailscale_ok "${tailscale_ok}"
-  else
-    print_kv tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
-    print_kv tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
-    print_kv tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
-    print_kv tailscale_ok "${tailscale_ok}"
-  fi
-
-  mark_required health_launchd_loaded_ok "${health_launchd_loaded_ok}"
-  print_kv root_disk_available_kb "$(root_disk_available_kb)"
-  print_kv uptime "$(uptime)"
-  print_kv gatekeeper_status "$(gatekeeper_status)"
-  print_kv filevault_status "$(filevault_status)"
-
-  if [[ "${failures}" -eq 0 ]]; then
-    print_kv agentbox_ok 1
-    return 0
-  fi
-
-  print_kv agentbox_ok 0
-  return 1
-}
-
-case "${1:-}" in
-  "")
-    {
-      generate_report || true
-      printf '%s\n' '---'
-    } >> "${LOG_FILE}"
-    ;;
-  --report)
-    generate_report || true
-    ;;
-  --check)
-    generate_report
-    ;;
-  --brewgroup)
-    print_brewgroup
-    ;;
-  *)
-    printf 'Usage: health.sh [--report|--check|--brewgroup]\n' >&2
-    exit 2
-    ;;
-esac
-EOHEALTH
-  then
-    abort "failed to write agentbox health script."
-  fi
-
+  execute sudo cp "${AGENTBOX_HEALTH_SCRIPT_SOURCE}" "${AGENTBOX_OPT_DIR}/bin/health.sh"
   execute sudo chown root:wheel "${AGENTBOX_OPT_DIR}/bin/health.sh"
   execute sudo chmod 755 "${AGENTBOX_OPT_DIR}/bin/health.sh"
 }
 
-write_agentbox_health_plist() {
-  if ! sudo tee "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist" >/dev/null <<EOPLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>Label</key>
-    <string>${AGENTBOX_HEALTH_LABEL}</string>
+render_agentbox_launchd_template() {
+  local template_path="$1"
+  local output_path="$2"
+  local tailscaled_bin="${3:-}"
+  local rendered
+  local health_label
+  local health_script_path
+  local health_stdout_log
+  local health_stderr_log
+  local tailscaled_label
+  local tailscaled_stdout_log
+  local tailscaled_stderr_log
+  local tailscaled_statedir
+  local tailscaled_statedir_argument
+  local openclaw_gateway_label
+  local openclaw_gateway_bin
+  local openclaw_gateway_user
+  local openclaw_gateway_home
+  local openclaw_gateway_path
+  local openclaw_gateway_bind
+  local openclaw_gateway_tailscale_mode
+  local openclaw_gateway_port
+  local openclaw_gateway_service_marker
+  local openclaw_gateway_service_kind
+  local openclaw_gateway_stdout_log
+  local openclaw_gateway_stderr_log
 
-    <key>ProgramArguments</key>
-    <array>
-      <string>${AGENTBOX_OPT_DIR}/bin/health.sh</string>
-    </array>
-
-    <key>StartInterval</key>
-    <integer>300</integer>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>StandardOutPath</key>
-    <string>${AGENTBOX_LOG_DIR}/health.stdout.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>${AGENTBOX_LOG_DIR}/health.stderr.log</string>
-  </dict>
-</plist>
-EOPLIST
-  then
-    abort "failed to write agentbox health LaunchDaemon."
+  if ! rendered="$(cat "${template_path}")"; then
+    abort "failed to read agentbox launchd template ${tty_ts}$(display_home_path "${template_path}")${tty_reset}."
   fi
 
+  health_label="$(xml_escape "${AGENTBOX_HEALTH_LABEL}")"
+  health_script_path="$(xml_escape "${AGENTBOX_OPT_DIR}/bin/health.sh")"
+  health_stdout_log="$(xml_escape "${AGENTBOX_LOG_DIR}/health.stdout.log")"
+  health_stderr_log="$(xml_escape "${AGENTBOX_LOG_DIR}/health.stderr.log")"
+  tailscaled_label="$(xml_escape "${AGENTBOX_TAILSCALED_LABEL}")"
+  tailscaled_bin="$(xml_escape "${tailscaled_bin}")"
+  tailscaled_stdout_log="$(xml_escape "${AGENTBOX_LOG_DIR}/tailscaled.stdout.log")"
+  tailscaled_stderr_log="$(xml_escape "${AGENTBOX_LOG_DIR}/tailscaled.stderr.log")"
+  tailscaled_statedir="${AGENTBOX_TAILSCALED_STATE_DIR}"
+  tailscaled_statedir_argument="      <string>$(xml_escape "--statedir=${tailscaled_statedir}")</string>"
+  openclaw_gateway_label="$(xml_escape "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}")"
+  openclaw_gateway_bin="$(xml_escape "${BREW_PREFIX_VALUE}/bin/openclaw")"
+  openclaw_gateway_user="$(xml_escape "${OPENCLAW_USER}")"
+  openclaw_gateway_home="$(xml_escape "$(user_home_dir "${OPENCLAW_USER}" 2>/dev/null || true)")"
+  openclaw_gateway_path="$(xml_escape "${BREW_PREFIX_VALUE}/bin:${BREW_PREFIX_VALUE}/sbin:/usr/bin:/bin:/usr/sbin:/sbin")"
+  openclaw_gateway_bind="$(xml_escape "${OPENCLAW_GATEWAY_BIND_VALUE}")"
+  openclaw_gateway_tailscale_mode="$(xml_escape "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}")"
+  openclaw_gateway_port="$(xml_escape "${OPENCLAW_GATEWAY_PORT}")"
+  openclaw_gateway_service_marker="$(xml_escape "openclaw")"
+  openclaw_gateway_service_kind="$(xml_escape "gateway")"
+  openclaw_gateway_stdout_log="$(xml_escape "${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log")"
+  openclaw_gateway_stderr_log="$(xml_escape "${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log")"
+
+  rendered="${rendered//__AGENTBOX_HEALTH_LABEL__/${health_label}}"
+  rendered="${rendered//__AGENTBOX_HEALTH_SCRIPT_PATH__/${health_script_path}}"
+  rendered="${rendered//__AGENTBOX_HEALTH_STDOUT_LOG__/${health_stdout_log}}"
+  rendered="${rendered//__AGENTBOX_HEALTH_STDERR_LOG__/${health_stderr_log}}"
+  rendered="${rendered//__AGENTBOX_TAILSCALED_LABEL__/${tailscaled_label}}"
+  rendered="${rendered//__AGENTBOX_TAILSCALED_BIN__/${tailscaled_bin}}"
+  rendered="${rendered//__AGENTBOX_TAILSCALED_STATEDIR_ARGUMENT__/${tailscaled_statedir_argument}}"
+  rendered="${rendered//__AGENTBOX_TAILSCALED_STDOUT_LOG__/${tailscaled_stdout_log}}"
+  rendered="${rendered//__AGENTBOX_TAILSCALED_STDERR_LOG__/${tailscaled_stderr_log}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_LABEL__/${openclaw_gateway_label}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_BIN__/${openclaw_gateway_bin}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_USER__/${openclaw_gateway_user}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_HOME__/${openclaw_gateway_home}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_PATH__/${openclaw_gateway_path}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_BIND__/${openclaw_gateway_bind}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_TAILSCALE_MODE__/${openclaw_gateway_tailscale_mode}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_PORT__/${openclaw_gateway_port}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_SERVICE_MARKER__/${openclaw_gateway_service_marker}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_SERVICE_KIND__/${openclaw_gateway_service_kind}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_STDOUT_LOG__/${openclaw_gateway_stdout_log}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_STDERR_LOG__/${openclaw_gateway_stderr_log}}"
+
+  if [[ "${rendered}" == *"__AGENTBOX_"* ]]; then
+    abort "agentbox launchd template ${tty_ts}$(display_home_path "${template_path}")${tty_reset} contains unresolved placeholders."
+  fi
+
+  if ! printf "%s\n" "${rendered}" | sudo tee "${output_path}" >/dev/null; then
+    abort "failed to write agentbox LaunchDaemon ${tty_ts}${output_path}${tty_reset}."
+  fi
+
+  execute sudo /usr/bin/plutil -lint "${output_path}"
+}
+
+write_agentbox_health_plist() {
+  render_agentbox_launchd_template "${AGENTBOX_HEALTH_PLIST_TEMPLATE}" "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist"
   execute sudo chown root:wheel "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist"
   execute sudo chmod 644 "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist"
 }
@@ -1938,8 +2334,35 @@ EOABORT
   fi
 }
 
-validate_inputs() {
+validate_inputs_before_sudo() {
   TAILSCALE_AUTHKEY="$(trim_whitespace "${TAILSCALE_AUTHKEY}")"
+  OPENCLAW_IDENTITY_INPUT="$(trim_whitespace "${OPENCLAW_IDENTITY_INPUT}")"
+  OPENCLAW_GATEWAY_PORT="$(trim_whitespace "${OPENCLAW_GATEWAY_PORT}")"
+  OPENCLAW_AUTH_CHOICE="$(trim_whitespace "${OPENCLAW_AUTH_CHOICE}")"
+
+  parse_openclaw_identity_input
+
+  if [[ -z "${OPENCLAW_AUTH_CHOICE}" ]]; then
+    abort "OpenClaw auth choice must not be empty."
+  fi
+
+  if [[ "${OPENCLAW_AUTH_CHOICE}" =~ [[:space:]] ]]; then
+    abort "OpenClaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} must not contain whitespace."
+  fi
+
+  if ! openclaw_gateway_port_valid "${OPENCLAW_GATEWAY_PORT}"; then
+    abort "OpenClaw gateway port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset} must be an integer from 1 to 65535."
+  fi
+
+  derive_openclaw_gateway_tailscale_mode
+
+  if ! hostname_valid "${AGENTBOX_HOSTNAME_VALUE}"; then
+    abort "hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} must be DNS-safe."
+  fi
+}
+
+validate_inputs() {
+  validate_inputs_before_sudo
   BREWGROUP_INPUT="$(trim_whitespace "${BREWGROUP_INPUT}")"
   ADMIN_USER="$(id -un 2>/dev/null || true)"
 
@@ -1952,9 +2375,12 @@ validate_inputs() {
   fi
 
   resolve_authorized_key_specs
+  validate_existing_openclaw_user
 
-  if ! hostname_valid "${AGENTBOX_HOSTNAME_VALUE}"; then
-    abort "hostname ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset} must be DNS-safe."
+  if [[ -n "${NONINTERACTIVE-}" || -n "${CI-}" ]]; then
+    if openclaw_password_required && [[ -z "${OPENCLAW_PASSWORD}" ]]; then
+      abort_missing_openclaw_password "prepare the OpenClaw runner user"
+    fi
   fi
 
   parse_brewgroup_input
@@ -1972,7 +2398,7 @@ validate_inputs() {
       abort "trusted brewgroup ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} must be different from brewgroup ${tty_ts}${BREWGROUP_VALUE}${tty_reset}."
     fi
 
-    if ! brewgroup_exists "${TRUSTED_BREWGROUP_VALUE}"; then
+    if ! group_exists "${TRUSTED_BREWGROUP_VALUE}"; then
       abort "trusted brewgroup ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} must already exist before it can be nested into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}."
     fi
   fi
@@ -2054,6 +2480,8 @@ bootbox_run() {
   local mode="$1"
   local env_name
   local -a unset_env_names=(
+    BOOTBOX_BREWFILE
+    BOOTBOX_BREWFILES
     TANAAB_BREWFILE
     TANAAB_BREWFILES
     TANAAB_DOTPKG
@@ -2062,6 +2490,8 @@ bootbox_run() {
     TANAAB_SSH_KEYS
     TANAAB_FORCE
     TANAAB_DEBUG
+    BOOTBOX_QUIET
+    TANAAB_QUIET
     TANAAB_ARCH
     TANAAB_OS
     TANAAB_TARGET
@@ -2092,6 +2522,9 @@ bootbox_run() {
     bootbox_command+=("TANAAB_FORCE=${FORCE}")
     bootbox_display_command+=("AGENTBOX_FORCE=${FORCE}")
   fi
+
+  bootbox_command+=("BOOTBOX_QUIET=1")
+  bootbox_display_command+=("BOOTBOX_QUIET=1")
 
   bootbox_command+=("NONINTERACTIVE=1")
   bootbox_display_command+=("NONINTERACTIVE=1")
@@ -2130,6 +2563,10 @@ plan_agentbox_fetch() {
 
   if [[ "${AGENTBOX_SOURCE_KIND}" == "version" ]]; then
     plan_action "${tty_tp}extract${tty_reset} ${tty_ts}agentbox${tty_reset} release ${tty_ts}${AGENTBOX_VERSION_TAG}${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
+  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_url" ]]; then
+    plan_action "${tty_tp}extract${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}${AGENTBOX_SOURCE_ARCHIVE_URL}${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
+  elif [[ "${AGENTBOX_SOURCE_KIND}" == "archive_file" ]]; then
+    plan_action "${tty_tp}extract${tty_reset} ${tty_ts}agentbox${tty_reset} archive ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_ARCHIVE_PATH}")${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
   elif [[ "${AGENTBOX_SOURCE_KIND}" == "local" ]]; then
     plan_action "${tty_tp}clone${tty_reset} ${tty_ts}agentbox${tty_reset} from local git repo ${tty_ts}$(display_home_path "${AGENTBOX_SOURCE_LOCAL_PATH}")${tty_reset} to ${tty_ts}${target_display}${tty_reset}"
   else
@@ -2145,27 +2582,47 @@ plan_wrapper_execution() {
 
   plan_agentbox_fetch
   plan_action "${tty_tp}ensure${tty_reset} macOS ComputerName, HostName, and LocalHostName are ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
-  plan_action "${tty_tp}ensure${tty_reset} headless power, time, recovery, and firewall settings"
-  plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile"
-  if brewgroup_setup_disabled; then
-    plan_action "${tty_tp}skip${tty_reset} Homebrew brewgroup setup because the brewgroup input is disabled"
+  plan_action "${tty_tp}ensure${tty_reset} headless power, time, and recovery settings"
+  if array_has_values EXTRA_BREWFILE_SPECS; then
+    plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile plus extra Brewfiles: ${tty_ts}$(array_join ", " EXTRA_BREWFILE_SPECS)${tty_reset}"
   else
-    plan_action "${tty_tp}ensure${tty_reset} Homebrew prefix group write access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
-    plan_action "${tty_tp}add${tty_reset} invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} to Homebrew brewgroup ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    plan_action "${tty_tp}run${tty_reset} ${tty_ts}bootbox${tty_reset} against the ${tty_ts}agentbox${tty_reset} Brewfile"
+  fi
+  plan_action "${tty_tp}ensure${tty_reset} homebrew commands are available to login shells through ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset}"
+  if user_exists "${OPENCLAW_USER}"; then
+    plan_action "${tty_tp}reuse${tty_reset} non-admin openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+  else
+    plan_action "${tty_tp}create${tty_reset} non-admin openclaw runner user ${tty_ts}${OPENCLAW_FULL_NAME} <${OPENCLAW_USER}>${tty_reset}"
+  fi
+  if openclaw_autologin_enabled; then
+    plan_action "${tty_tp}ensure${tty_reset} openclaw runner autologin is configured for ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+  else
+    plan_action "${tty_tp}skip${tty_reset} openclaw runner autologin because ${tty_bold}--skip-openclaw-autologin${tty_reset} is set or ${tty_bold}AGENTBOX_OPENCLAW_AUTOLOGIN${tty_reset} is falsey"
+  fi
+  if brewgroup_setup_disabled; then
+    plan_action "${tty_tp}skip${tty_reset} homebrew brewgroup setup because the brewgroup input is disabled"
+  else
+    plan_action "${tty_tp}ensure${tty_reset} homebrew prefix group write access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    plan_action "${tty_tp}add${tty_reset} invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} to homebrew brewgroup ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    plan_action "${tty_tp}add${tty_reset} openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} to homebrew brewgroup ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
     if trusted_brewgroup_enabled; then
-      plan_action "${tty_tp}nest${tty_reset} trusted Homebrew group ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+      plan_action "${tty_tp}nest${tty_reset} trusted homebrew group ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
     fi
   fi
-  plan_action "${tty_tp}ensure${tty_reset} classic SSH is enabled for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
+  plan_action "${tty_tp}ensure${tty_reset} classic ssh is enabled for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
+  plan_action "${tty_tp}ensure${tty_reset} macOS Remote Login access includes invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} and openclaw runner ${tty_ts}${OPENCLAW_USER}${tty_reset} when ${tty_ts}${SSH_ACCESS_GROUP}${tty_reset} exists"
   if array_has_values AUTHORIZED_KEY_LINES; then
-    plan_action "${tty_tp}install${tty_reset} ${tty_ts}$(array_count AUTHORIZED_KEY_LINES)${tty_reset} authorized key entries for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
-    plan_action "${tty_tp}harden${tty_reset} SSH to key-only access for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset}"
+    plan_action "${tty_tp}install${tty_reset} ${tty_ts}$(array_count AUTHORIZED_KEY_LINES)${tty_reset} authorized key entries for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} and openclaw runner ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+    plan_action "${tty_tp}harden${tty_reset} ssh to key-only access for invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} and openclaw runner ${tty_ts}${OPENCLAW_USER}${tty_reset}"
   fi
   if tailscale_setup_disabled; then
-    plan_action "${tty_tp}skip${tty_reset} Tailscale setup because the auth-key input is disabled"
+    plan_action "${tty_tp}skip${tty_reset} tailscale setup because the auth-key input is disabled"
   else
-    plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system LaunchDaemon and Tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}"
+    plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, and scoped magicdns resolver"
   fi
+  plan_action "${tty_tp}onboard${tty_reset} openclaw gateway config for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  plan_action "${tty_tp}install or refresh${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
+  plan_action "${tty_tp}verify${tty_reset} openclaw gateway readiness and configured tailscale exposure"
   plan_action "${tty_tp}install or refresh${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
   plan_action "${tty_tp}print${tty_reset} a nonfatal post-bootstrap health summary"
 }
@@ -2203,12 +2660,64 @@ ensure_bootbox_core_requirements() {
 }
 
 run_bootbox_for_agentbox_brewfile() {
-  bootbox_run_or_abort agentbox "bootbox failed while applying agentbox Brewfile ${tty_ts}$(agentbox_brewfile_display)${tty_reset}." \
-    --brewfile "${AGENTBOX_BREWFILE}"
+  local extra_brewfile
+  local -a bootbox_args=(--brewfile "${AGENTBOX_CORE_BREWFILE}")
+
+  if array_has_values RESOLVED_EXTRA_BREWFILES; then
+    for extra_brewfile in "${RESOLVED_EXTRA_BREWFILES[@]}"; do
+      bootbox_args+=(--brewfile "${extra_brewfile}")
+    done
+  fi
+
+  bootbox_run_or_abort agentbox "bootbox failed while applying agentbox Brewfiles." "${bootbox_args[@]}"
 }
 
-brewgroup_exists() {
-  dscl . -read "/Groups/$1" >/dev/null 2>&1
+resolve_brew_prefix() {
+  require_command brew
+
+  BREW_PREFIX_VALUE="$(brew --prefix 2>/dev/null || true)"
+  if [[ -z "${BREW_PREFIX_VALUE}" || ! -d "${BREW_PREFIX_VALUE}" ]]; then
+    abort "could not resolve an existing Homebrew prefix with ${tty_ts}brew --prefix${tty_reset}."
+  fi
+}
+
+homebrew_login_paths_content() {
+  printf '%s/bin\n%s/sbin\n' "${BREW_PREFIX_VALUE}" "${BREW_PREFIX_VALUE}"
+}
+
+homebrew_login_paths_ok() {
+  local actual
+  local expected
+
+  if [[ -z "${BREW_PREFIX_VALUE}" || ! -f "${AGENTBOX_HOMEBREW_PATHS_FILE}" ]]; then
+    return 1
+  fi
+
+  expected="$(homebrew_login_paths_content)"
+  actual="$(cat "${AGENTBOX_HOMEBREW_PATHS_FILE}" 2>/dev/null || true)"
+  [[ "${actual}" == "${expected}" ]]
+}
+
+run_agentbox_homebrew_login_path_setup() {
+  check_sudo_access "before Homebrew login-shell PATH setup"
+  resolve_brew_prefix
+
+  if homebrew_login_paths_ok; then
+    log "${tty_tp}skipping${tty_reset} homebrew login-shell PATH setup; ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset} already matches ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset}"
+    return 0
+  fi
+
+  log "${tty_tp}writing${tty_reset} homebrew login-shell PATH entries to ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset}"
+  execute sudo mkdir -p "$(dirname "${AGENTBOX_HOMEBREW_PATHS_FILE}")"
+  if ! homebrew_login_paths_content | sudo tee "${AGENTBOX_HOMEBREW_PATHS_FILE}" >/dev/null; then
+    abort "failed to write Homebrew login-shell PATH file ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset}."
+  fi
+  execute sudo chown root:wheel "${AGENTBOX_HOMEBREW_PATHS_FILE}"
+  execute sudo chmod 644 "${AGENTBOX_HOMEBREW_PATHS_FILE}"
+
+  if ! homebrew_login_paths_ok; then
+    abort "Homebrew login-shell PATH file ${tty_ts}${AGENTBOX_HOMEBREW_PATHS_FILE}${tty_reset} does not match ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} after remediation."
+  fi
 }
 
 group_generated_uid() {
@@ -2246,22 +2755,11 @@ brewgroup_has_trusted_group() {
 }
 
 brewgroup_has_admin_user() {
-  dscl . -read "/Groups/${BREWGROUP_VALUE}" GroupMembership 2>/dev/null | awk -v expected="${ADMIN_USER}" '
-    $1 == "GroupMembership:" {
-      for (i = 2; i <= NF; i++) {
-        if ($i == expected) {
-          found = 1
-        }
-      }
-      next
-    }
-    $1 == expected {
-      found = 1
-    }
-    END {
-      exit(found ? 0 : 1)
-    }
-  '
+  group_has_user "${BREWGROUP_VALUE}" "${ADMIN_USER}"
+}
+
+brewgroup_has_openclaw_user() {
+  group_has_user "${BREWGROUP_VALUE}" "${OPENCLAW_USER}"
 }
 
 next_available_group_id() {
@@ -2281,8 +2779,8 @@ next_available_group_id() {
 ensure_brewgroup_exists() {
   local gid
 
-  if brewgroup_exists "${BREWGROUP_VALUE}"; then
-    log "${tty_tp}skipping${tty_reset} Homebrew group creation; ${tty_ts}${BREWGROUP_VALUE}${tty_reset} already exists"
+  if group_exists "${BREWGROUP_VALUE}"; then
+    log "${tty_tp}skipping${tty_reset} homebrew group creation; ${tty_ts}${BREWGROUP_VALUE}${tty_reset} already exists"
     return 0
   fi
 
@@ -2291,7 +2789,7 @@ ensure_brewgroup_exists() {
     abort "could not find an available local group id for Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}."
   fi
 
-  log "${tty_tp}creating${tty_reset} Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  log "${tty_tp}creating${tty_reset} homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
   execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}"
   execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" PrimaryGroupID "${gid}"
   execute sudo dscl . -create "/Groups/${BREWGROUP_VALUE}" Password "*"
@@ -2300,15 +2798,29 @@ ensure_brewgroup_exists() {
 
 ensure_brewgroup_admin_user() {
   if brewgroup_has_admin_user; then
-    log "${tty_tp}skipping${tty_reset} Homebrew group membership; invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} is already a direct member of ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    log "${tty_tp}skipping${tty_reset} homebrew group membership; invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} is already a direct member of ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
     return 0
   fi
 
-  log "${tty_tp}adding${tty_reset} invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} to Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  log "${tty_tp}adding${tty_reset} invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} to homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
   execute sudo dseditgroup -o edit -a "${ADMIN_USER}" -t user "${BREWGROUP_VALUE}"
 
   if ! brewgroup_has_admin_user; then
     abort "invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} is still not a direct member of Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
+  fi
+}
+
+ensure_brewgroup_openclaw_user() {
+  if brewgroup_has_openclaw_user; then
+    log "${tty_tp}skipping${tty_reset} homebrew group membership; openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} is already a direct member of ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    return 0
+  fi
+
+  log "${tty_tp}adding${tty_reset} openclaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} to homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  execute sudo dseditgroup -o edit -a "${OPENCLAW_USER}" -t user "${BREWGROUP_VALUE}"
+
+  if ! brewgroup_has_openclaw_user; then
+    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} is still not a direct member of Homebrew group ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
   fi
 }
 
@@ -2318,11 +2830,11 @@ ensure_trusted_brewgroup_nested() {
   fi
 
   if brewgroup_has_trusted_group; then
-    log "${tty_tp}skipping${tty_reset} trusted Homebrew group nesting; ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} is already nested into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    log "${tty_tp}skipping${tty_reset} trusted homebrew group nesting; ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} is already nested into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
     return 0
   fi
 
-  log "${tty_tp}nesting${tty_reset} trusted Homebrew group ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  log "${tty_tp}nesting${tty_reset} trusted homebrew group ${tty_ts}${TRUSTED_BREWGROUP_VALUE}${tty_reset} into ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
   execute sudo dseditgroup -o edit -a "${TRUSTED_BREWGROUP_VALUE}" -t group "${BREWGROUP_VALUE}"
 
   if ! brewgroup_has_trusted_group; then
@@ -2351,29 +2863,24 @@ brew_prefix_permissions_ok() {
 
 run_agentbox_brewgroup_setup() {
   if brewgroup_setup_disabled; then
-    BREW_PREFIX_VALUE=""
-    log "${tty_tp}skipping${tty_reset} Homebrew brewgroup setup because the brewgroup input is disabled"
+    log "${tty_tp}skipping${tty_reset} homebrew brewgroup setup because the brewgroup input is disabled"
     return 0
   fi
 
   check_sudo_access "before Homebrew brewgroup setup"
-  require_command brew
-
-  BREW_PREFIX_VALUE="$(brew --prefix 2>/dev/null || true)"
-  if [[ -z "${BREW_PREFIX_VALUE}" || ! -d "${BREW_PREFIX_VALUE}" ]]; then
-    abort "could not resolve an existing Homebrew prefix with ${tty_ts}brew --prefix${tty_reset}."
-  fi
+  resolve_brew_prefix
 
   ensure_brewgroup_exists
   ensure_brewgroup_admin_user
+  ensure_brewgroup_openclaw_user
   ensure_trusted_brewgroup_nested
 
   if brew_prefix_permissions_ok; then
-    log "${tty_tp}skipping${tty_reset} Homebrew prefix permissions; ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} is already group-writable by ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+    log "${tty_tp}skipping${tty_reset} homebrew prefix permissions; ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} is already group-writable by ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
     return 0
   fi
 
-  log "${tty_tp}setting${tty_reset} Homebrew prefix ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} group write access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  log "${tty_tp}setting${tty_reset} homebrew prefix ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} group write access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
   execute sudo find -x "${BREW_PREFIX_VALUE}" -exec chgrp -h "${BREWGROUP_VALUE}" {} +
   execute sudo find -x "${BREW_PREFIX_VALUE}" ! -type l -exec chmod g+rwX {} +
 
@@ -2431,6 +2938,72 @@ tailscale_status_has_identity() {
   [[ "${has_identity}" == "1" ]]
 }
 
+tailscale_magicdns_suffix_value() {
+  local status_json="$1"
+
+  json_value "${status_json}" '.CurrentTailnet.MagicDNSSuffix // empty' | sed 's/[.]$//'
+}
+
+tailscale_magicdns_suffix_valid() {
+  local suffix="$1"
+
+  [[ -n "${suffix}" &&
+    "${suffix}" != *..* &&
+    "${suffix}" =~ ^[A-Za-z0-9][-A-Za-z0-9.]*[A-Za-z0-9]$ ]]
+}
+
+configure_tailscale_magicdns_resolver() {
+  local status_json="$1"
+  local suffix=""
+  local resolver_path=""
+
+  suffix="$(tailscale_magicdns_suffix_value "${status_json}" || true)"
+  if [[ -z "${suffix}" ]]; then
+    warn "tailscale status did not report a magicdns suffix; skipping macOS scoped resolver setup."
+    return 0
+  fi
+
+  if ! tailscale_magicdns_suffix_valid "${suffix}"; then
+    warn "tailscale magicdns suffix ${suffix} is not valid for a macOS resolver file; skipping scoped resolver setup."
+    return 0
+  fi
+
+  resolver_path="/etc/resolver/${suffix}"
+  if sudo test -f "${resolver_path}"; then
+    if sudo grep -Fxq "# Managed by agentbox." "${resolver_path}" &&
+      sudo grep -Eq '^[[:space:]]*nameserver[[:space:]]+100[.]100[.]100[.]100([[:space:]]|$)' "${resolver_path}"; then
+      log "${tty_tp}skipping${tty_reset} macOS scoped resolver for ${tty_ts}${suffix}${tty_reset}; already configured"
+      return 0
+    fi
+
+    if ! sudo grep -Fxq "# Managed by agentbox." "${resolver_path}"; then
+      if sudo grep -Eq '^[[:space:]]*nameserver[[:space:]]+100[.]100[.]100[.]100([[:space:]]|$)' "${resolver_path}"; then
+        log "${tty_tp}skipping${tty_reset} macOS scoped resolver for ${tty_ts}${suffix}${tty_reset}; already points to tailscale dns"
+      else
+        warn "macOS resolver ${resolver_path} already exists and is not managed by agentbox; leaving it unchanged."
+      fi
+      return 0
+    fi
+  fi
+
+  log "${tty_tp}configuring${tty_reset} macOS scoped resolver ${tty_ts}${resolver_path}${tty_reset} for tailscale magicdns"
+  execute sudo mkdir -p /etc/resolver
+  if ! sudo tee "${resolver_path}" >/dev/null <<EORESOLVER
+# Managed by agentbox.
+nameserver 100.100.100.100
+EORESOLVER
+  then
+    abort "failed to write macOS scoped resolver ${tty_ts}${resolver_path}${tty_reset}."
+  fi
+  execute sudo chown root:wheel "${resolver_path}"
+  execute sudo chmod 644 "${resolver_path}"
+}
+
+configure_tailscale_operator_user() {
+  log "${tty_tp}configuring${tty_reset} tailscale operator user ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+  execute sudo tailscale set "--operator=${OPENCLAW_USER}"
+}
+
 tailscaled_bin_path() {
   local formula_prefix=""
   local command_path=""
@@ -2448,6 +3021,13 @@ tailscaled_bin_path() {
   fi
 
   return 1
+}
+
+prepare_tailscaled_statedir() {
+  log "${tty_tp}configuring${tty_reset} tailscaled state directory ${tty_ts}${AGENTBOX_TAILSCALED_STATE_DIR}${tty_reset}"
+  execute sudo mkdir -p "${AGENTBOX_TAILSCALED_STATE_DIR}"
+  execute sudo chown root:wheel "${AGENTBOX_TAILSCALED_STATE_DIR}"
+  execute sudo chmod 700 "${AGENTBOX_TAILSCALED_STATE_DIR}"
 }
 
 remove_homebrew_tailscale_launchd_services() {
@@ -2475,41 +3055,7 @@ remove_homebrew_tailscale_launchd_services() {
 write_agentbox_tailscaled_plist() {
   local tailscaled_bin="$1"
 
-  if ! sudo tee "${AGENTBOX_TAILSCALED_PLIST_PATH}" >/dev/null <<EOPLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>Label</key>
-    <string>${AGENTBOX_TAILSCALED_LABEL}</string>
-
-    <key>ProgramArguments</key>
-    <array>
-      <string>${tailscaled_bin}</string>
-    </array>
-
-    <key>UserName</key>
-    <string>root</string>
-
-    <key>KeepAlive</key>
-    <true/>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>StandardOutPath</key>
-    <string>${AGENTBOX_LOG_DIR}/tailscaled.stdout.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>${AGENTBOX_LOG_DIR}/tailscaled.stderr.log</string>
-  </dict>
-</plist>
-EOPLIST
-  then
-    abort "failed to write agentbox tailscaled LaunchDaemon."
-  fi
-
+  render_agentbox_launchd_template "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}" "${AGENTBOX_TAILSCALED_PLIST_PATH}" "${tailscaled_bin}"
   execute sudo chown root:wheel "${AGENTBOX_TAILSCALED_PLIST_PATH}"
   execute sudo chmod 644 "${AGENTBOX_TAILSCALED_PLIST_PATH}"
 }
@@ -2540,17 +3086,18 @@ run_agentbox_tailscaled_launchd_setup() {
   local tailscaled_bin=""
 
   tailscaled_bin="$(tailscaled_bin_path)" || {
-    abort "tailscaled binary was not found after installing the agentbox Brewfile."
+    abort "tailscaled binary was not found after installing the agentbox Brewfiles."
   }
 
   execute sudo mkdir -p "${AGENTBOX_LOG_DIR}"
   execute sudo chown root:wheel "${AGENTBOX_LOG_DIR}"
   execute sudo chmod 755 "${AGENTBOX_LOG_DIR}"
   remove_homebrew_tailscale_launchd_services
+  prepare_tailscaled_statedir
   write_agentbox_tailscaled_plist "${tailscaled_bin}"
 
   if agentbox_tailscaled_launchd_loaded; then
-    log "${tty_tp}skipping${tty_reset} ${tty_ts}tailscaled${tty_reset} restart; agentbox system LaunchDaemon is already loaded"
+    log "${tty_tp}skipping${tty_reset} ${tty_ts}tailscaled${tty_reset} restart; agentbox system launchd daemon is already loaded"
     verify_agentbox_tailscaled_launchd_setup
     return 0
   fi
@@ -2579,7 +3126,7 @@ run_agentbox_tailscale_setup() {
   )
 
   if tailscale_setup_disabled; then
-    log "${tty_tp}skipping${tty_reset} Tailscale setup because the auth-key input is disabled"
+    log "${tty_tp}skipping${tty_reset} tailscale setup because the auth-key input is disabled"
     return 0
   fi
 
@@ -2598,21 +3145,25 @@ run_agentbox_tailscale_setup() {
     tailnet_name="$(json_value "${status_json}" '.CurrentTailnet.Name // .CurrentTailnet.MagicDNSSuffix // empty' || true)"
 
     if [[ -n "${tailnet_name}" ]]; then
-      log "${tty_tp}detected${tty_reset} Tailscale tailnet ${tty_ts}${tailnet_name}${tty_reset}"
+      log "${tty_tp}detected${tty_reset} tailscale tailnet ${tty_ts}${tailnet_name}${tty_reset}"
     fi
 
     if [[ "${current_hostname}" == "${TAILSCALE_HOSTNAME_VALUE}" ]]; then
       if [[ "${backend_state}" == "Running" ]]; then
-        log "${tty_tp}skipping${tty_reset} Tailscale join; already joined as ${tty_ts}${current_hostname}${tty_reset}"
+        log "${tty_tp}skipping${tty_reset} tailscale join; already joined as ${tty_ts}${current_hostname}${tty_reset}"
       else
-        warn "Tailscale is already joined as ${current_hostname}, but backend state is ${backend_state:-unknown}; skipping reauth."
+        warn "tailscale is already joined as ${current_hostname}, but backend state is ${backend_state:-unknown}; skipping reauth."
       fi
 
+      configure_tailscale_operator_user
+      configure_tailscale_magicdns_resolver "${status_json}"
       show_tailscale_status_summary
       return 0
     fi
 
-    warn "Tailscale is already joined as ${current_hostname}; expected ${TAILSCALE_HOSTNAME_VALUE}. skipping reauth for this run."
+    warn "tailscale is already joined as ${current_hostname}; expected ${TAILSCALE_HOSTNAME_VALUE}. skipping reauth for this run."
+    configure_tailscale_operator_user
+    configure_tailscale_magicdns_resolver "${status_json}"
     show_tailscale_status_summary
     return 0
   fi
@@ -2627,7 +3178,277 @@ run_agentbox_tailscale_setup() {
     abort "agentbox Tailscale setup failed."
   fi
 
+  configure_tailscale_operator_user
+  status_json="$(capture_tailscale_status_json || true)"
+  if [[ -n "${status_json}" ]]; then
+    configure_tailscale_magicdns_resolver "${status_json}"
+  else
+    warn "could not read tailscale status after join; skipping macOS scoped resolver setup."
+  fi
   show_tailscale_status_summary
+}
+
+openclaw_runner_home_required() {
+  local home
+
+  home="$(user_home_dir "${OPENCLAW_USER}")"
+  if [[ -z "${home}" || ! -d "${home}" ]]; then
+    abort "OpenClaw runner user ${tty_ts}${OPENCLAW_USER}${tty_reset} must have a usable home directory before gateway onboarding."
+  fi
+
+  printf "%s" "${home}"
+}
+
+openclaw_runner_path() {
+  printf "%s/bin:%s/sbin:/usr/bin:/bin:/usr/sbin:/sbin" "${BREW_PREFIX_VALUE}" "${BREW_PREFIX_VALUE}"
+}
+
+openclaw_bin_path() {
+  local openclaw_bin
+
+  if [[ -z "${BREW_PREFIX_VALUE}" ]]; then
+    resolve_brew_prefix
+  fi
+
+  openclaw_bin="${BREW_PREFIX_VALUE}/bin/openclaw"
+  if [[ ! -x "${openclaw_bin}" ]]; then
+    abort "OpenClaw CLI was not found at ${tty_ts}${openclaw_bin}${tty_reset} after installing the agentbox Brewfile."
+  fi
+
+  printf "%s" "${openclaw_bin}"
+}
+
+run_as_openclaw_runner() {
+  local home
+  local path_value
+
+  home="$(openclaw_runner_home_required)"
+  path_value="$(openclaw_runner_path)"
+
+  debug "${tty_tp}running${tty_reset}" sudo -u "${OPENCLAW_USER}" env "HOME=${home}" "USER=${OPENCLAW_USER}" "LOGNAME=${OPENCLAW_USER}" "PATH=${path_value}" "$@"
+  sudo -u "${OPENCLAW_USER}" env \
+    "HOME=${home}" \
+    "USER=${OPENCLAW_USER}" \
+    "LOGNAME=${OPENCLAW_USER}" \
+    "PATH=${path_value}" \
+    "$@"
+}
+
+execute_as_openclaw_runner() {
+  if ! run_as_openclaw_runner "$@"; then
+    abort "$(printf "failed during OpenClaw runner command: %s" "$(shell_join "$@")")"
+  fi
+}
+
+run_openclaw_gateway_onboarding() {
+  local openclaw_bin="$1"
+
+  log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} with loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  execute_as_openclaw_runner "${openclaw_bin}" onboard \
+    --non-interactive \
+    --accept-risk \
+    --mode local \
+    --flow quickstart \
+    --auth-choice "${OPENCLAW_AUTH_CHOICE}" \
+    --gateway-port "${OPENCLAW_GATEWAY_PORT}" \
+    --gateway-bind "${OPENCLAW_GATEWAY_BIND_VALUE}" \
+    --tailscale "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" \
+    --gateway-auth token \
+    --skip-bootstrap \
+    --skip-skills \
+    --skip-ui \
+    --skip-hooks \
+    --no-install-daemon \
+    --skip-health \
+    --suppress-gateway-token-output \
+    --json
+}
+
+write_agentbox_openclaw_gateway_plist() {
+  openclaw_runner_home_required >/dev/null
+  render_agentbox_launchd_template "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE}" "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
+  execute sudo chown root:wheel "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
+  execute sudo chmod 644 "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
+}
+
+prepare_openclaw_gateway_log_file() {
+  local path="$1"
+
+  execute sudo /usr/bin/install -o "${OPENCLAW_USER}" -m 600 /dev/null "${path}"
+  execute sudo chown "${OPENCLAW_USER}" "${path}"
+  execute sudo chmod 600 "${path}"
+}
+
+prepare_openclaw_gateway_logs() {
+  prepare_openclaw_gateway_log_file "${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
+  prepare_openclaw_gateway_log_file "${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
+}
+
+agentbox_openclaw_gateway_launchd_loaded() {
+  sudo launchctl print "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" >/dev/null 2>&1
+}
+
+verify_agentbox_openclaw_gateway_launchd_setup() {
+  if ! agentbox_openclaw_gateway_launchd_loaded; then
+    abort "agentbox OpenClaw gateway LaunchDaemon is not loaded in the system launchd domain."
+  fi
+}
+
+run_agentbox_openclaw_gateway_launchd_setup() {
+  execute sudo mkdir -p "${AGENTBOX_LOG_DIR}"
+  execute sudo chown root:wheel "${AGENTBOX_LOG_DIR}"
+  execute sudo chmod 755 "${AGENTBOX_LOG_DIR}"
+  prepare_openclaw_gateway_logs
+  write_agentbox_openclaw_gateway_plist
+
+  sudo launchctl bootout system "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}" >/dev/null 2>&1 || true
+  execute sudo launchctl enable "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
+  execute sudo launchctl bootstrap system "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
+  verify_agentbox_openclaw_gateway_launchd_setup
+}
+
+openclaw_gateway_status_ready() {
+  local openclaw_bin="$1"
+
+  run_as_openclaw_runner "${openclaw_bin}" gateway status --require-rpc --timeout 10000 >/dev/null 2>&1
+}
+
+openclaw_gateway_tailscale_serve_route_ready() {
+  local status=""
+  local tailscale_bin="${BREW_PREFIX_VALUE}/bin/tailscale"
+
+  if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" != "serve" ]]; then
+    return 0
+  fi
+
+  if [[ ! -x "${tailscale_bin}" ]] || ! command -v jq >/dev/null 2>&1; then
+    return 1
+  fi
+
+  status="$(sudo "${tailscale_bin}" serve status --json 2>/dev/null || true)"
+  if [[ -z "${status}" ]]; then
+    return 1
+  fi
+
+  printf "%s" "${status}" | jq -e --arg port "${OPENCLAW_GATEWAY_PORT}" '
+    any((.Web // {}) | to_entries[]?;
+      (.key | endswith(":443"))
+      and ((.value.Handlers["/"].Proxy // "")
+        | test("^https?://(127[.]0[.]0[.]1|localhost|\\[::1\\]):" + $port + "$"))
+    )
+  ' >/dev/null 2>&1
+}
+
+print_diagnostic_block() {
+  local title="$1"
+  local content="${2:-}"
+
+  if [[ -z "${content}" ]]; then
+    return 0
+  fi
+
+  warn "${title}"
+  printf "%s\n" "${content}" >&2
+}
+
+print_openclaw_gateway_log_tail() {
+  local label="$1"
+  local path="$2"
+  local output=""
+
+  if ! sudo test -e "${path}"; then
+    warn "${label} log is missing: ${path}"
+    return 0
+  fi
+
+  if ! sudo test -s "${path}"; then
+    warn "${label} log is empty: ${path}"
+    return 0
+  fi
+
+  output="$(sudo tail -n 80 "${path}" 2>&1 || true)"
+  print_diagnostic_block "last 80 lines from ${label} log at ${path}:" "${output}"
+}
+
+print_openclaw_gateway_failure_diagnostics() {
+  local status_output="$1"
+  local launchd_output=""
+  local serve_output=""
+  local tailscale_bin="${BREW_PREFIX_VALUE}/bin/tailscale"
+
+  print_diagnostic_block "openclaw gateway status output:" "${status_output}"
+
+  if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" == "serve" && -x "${tailscale_bin}" ]]; then
+    serve_output="$(sudo "${tailscale_bin}" serve status --json 2>&1 || true)"
+    print_diagnostic_block "tailscale serve status:" "${serve_output}"
+  fi
+
+  launchd_output="$(sudo launchctl print "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" 2>&1 || true)"
+  print_diagnostic_block "agentbox openclaw gateway launchd daemon state:" "${launchd_output}"
+
+  print_openclaw_gateway_log_tail "openclaw gateway stderr" "${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
+  print_openclaw_gateway_log_tail "openclaw gateway stdout" "${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
+}
+
+wait_for_openclaw_gateway_status() {
+  local openclaw_bin="$1"
+  local attempts="0"
+  local output=""
+
+  while [[ "${attempts}" -lt 30 ]]; do
+    attempts=$((attempts + 1))
+
+    if openclaw_gateway_status_ready "${openclaw_bin}"; then
+      log "${tty_tp}verified${tty_reset} openclaw gateway status for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+      return 0
+    fi
+
+    sleep 2
+  done
+
+  output="$(run_as_openclaw_runner "${openclaw_bin}" gateway status --require-rpc --timeout 10000 2>&1 || true)"
+  debug "${tty_tp}openclaw gateway status output${tty_reset}" "${output}"
+  print_openclaw_gateway_failure_diagnostics "${output}"
+  abort "OpenClaw gateway status did not become ready for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}; inspect ${tty_ts}${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log${tty_reset}."
+}
+
+wait_for_openclaw_gateway_tailscale_serve_route() {
+  local openclaw_bin="$1"
+  local attempts="0"
+  local output=""
+
+  if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" != "serve" ]]; then
+    return 0
+  fi
+
+  while [[ "${attempts}" -lt 30 ]]; do
+    attempts=$((attempts + 1))
+
+    if openclaw_gateway_tailscale_serve_route_ready; then
+      log "${tty_tp}verified${tty_reset} openclaw gateway tailscale serve route for port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+      return 0
+    fi
+
+    sleep 2
+  done
+
+  output="$(run_as_openclaw_runner "${openclaw_bin}" gateway status --require-rpc --timeout 10000 2>&1 || true)"
+  debug "${tty_tp}openclaw gateway status output${tty_reset}" "${output}"
+  print_openclaw_gateway_failure_diagnostics "${output}"
+  abort "OpenClaw gateway Tailscale Serve route did not become ready for port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}; inspect ${tty_ts}${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log${tty_reset}."
+}
+
+run_agentbox_openclaw_gateway_setup() {
+  local openclaw_bin
+
+  check_sudo_access "before OpenClaw gateway setup"
+  resolve_brew_prefix
+  openclaw_bin="$(openclaw_bin_path)"
+  run_openclaw_gateway_onboarding "${openclaw_bin}"
+  log "${tty_tp}installing${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
+  run_agentbox_openclaw_gateway_launchd_setup
+  wait_for_openclaw_gateway_status "${openclaw_bin}"
+  wait_for_openclaw_gateway_tailscale_serve_route "${openclaw_bin}"
 }
 
 main() {
@@ -2635,8 +3456,9 @@ main() {
   parse_args "$@"
   validate_platform
   apply_noninteractive_mode
-  check_sudo_access
   prepare_agentbox_source
+  validate_inputs_before_sudo
+  check_sudo_access
   validate_inputs
   warn_if_xcode_clt_missing
 
@@ -2648,8 +3470,16 @@ main() {
   debug raw AGENTBOX_VERSION="$(agentbox_version_display)"
   debug raw AGENTBOX_SOURCE="$(agentbox_source_display)"
   debug raw AGENTBOX_TARGET="$(agentbox_target_display)"
+  debug raw AGENTBOX_EXTRA_BREWFILES="$(extra_brewfiles_display)"
   debug raw AGENTBOX_HOSTNAME="${AGENTBOX_HOSTNAME_VALUE}"
   debug raw AGENTBOX_BREWGROUP="$(brewgroup_display)"
+  debug raw AGENTBOX_OPENCLAW_IDENTITY="${OPENCLAW_FULL_NAME} <${OPENCLAW_USER}>"
+  debug raw AGENTBOX_OPENCLAW_PASSWORD="$(openclaw_password_display)"
+  debug raw AGENTBOX_OPENCLAW_AUTOLOGIN="$(openclaw_autologin_display)"
+  debug raw AGENTBOX_OPENCLAW_AUTH_CHOICE="${OPENCLAW_AUTH_CHOICE}"
+  debug raw OPENCLAW_GATEWAY_BIND="${OPENCLAW_GATEWAY_BIND_VALUE}"
+  debug raw OPENCLAW_GATEWAY_TAILSCALE_MODE="${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}"
+  debug raw AGENTBOX_OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT}"
   debug raw INVOKING_ADMIN_USER="${ADMIN_USER}"
   debug raw AGENTBOX_AUTHORIZED_KEY_COUNT="$(array_count AUTHORIZED_KEY_LINES)"
   if tailscale_setup_disabled; then
@@ -2678,13 +3508,18 @@ main() {
   ensure_bootbox_core_requirements
   fetch_agentbox_source
   discover_agentbox_payload
-  debug raw AGENTBOX_BREWFILE="$(agentbox_brewfile_display)"
+  resolve_extra_brewfiles
+  debug raw AGENTBOX_CORE_BREWFILE="$(agentbox_brewfile_display)"
+  debug raw AGENTBOX_RESOLVED_EXTRA_BREWFILES="$(array_join "," RESOLVED_EXTRA_BREWFILES)"
   run_agentbox_hostname_setup
   run_agentbox_macos_settings
   run_bootbox_for_agentbox_brewfile
+  run_agentbox_homebrew_login_path_setup
+  run_agentbox_openclaw_user_setup
   run_agentbox_brewgroup_setup
   run_agentbox_ssh_setup
   run_agentbox_tailscale_setup
+  run_agentbox_openclaw_gateway_setup
   run_agentbox_launchd_health_setup
   run_agentbox_post_bootstrap_summary
 }
