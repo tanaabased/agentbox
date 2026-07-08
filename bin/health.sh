@@ -20,9 +20,11 @@ AGENTBOX_HEALTH_TRUSTED_BREWGROUP_ENABLED="0"
 AGENTBOX_HEALTH_TRUSTED_BREWGROUP="off"
 AGENTBOX_HEALTH_BREW_PREFIX=""
 AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
+AGENTBOX_HEALTH_AGENTBOX_VERSION=""
 AGENTBOX_HEALTH_ADMIN_USER=""
 AGENTBOX_HEALTH_OPENCLAW_USER=""
 AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=""
+AGENTBOX_HEALTH_OPENCLAW_SERVICE_MODE="system"
 AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED="0"
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL=""
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=""
@@ -363,6 +365,26 @@ openclaw_gateway_tailscale_serve_route_ok_value() {
   fi
 }
 
+tailscale_magicdns_enabled_value() {
+  local status_json="$1"
+
+  if printf "%s" "${status_json}" | jq -e '.CurrentTailnet.MagicDNSEnabled == true' >/dev/null 2>&1; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+tailscale_https_certificates_enabled_value() {
+  local status_json="$1"
+
+  if printf "%s" "${status_json}" | jq -e '((.CertDomains // []) | length) > 0' >/dev/null 2>&1; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
 print_brewgroup() {
   if [[ "${STATE_LOADED}" != "1" ]]; then
     printf 'off\n'
@@ -421,8 +443,9 @@ generate_report() {
   local node_cli_ok="0"
   local openclaw_cli_path=""
   local openclaw_cli_ok="0"
+  local openclaw_service_mode="${AGENTBOX_HEALTH_OPENCLAW_SERVICE_MODE:-system}"
   local openclaw_gateway_label="${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL:-${OPENCLAW_GATEWAY_LABEL}}"
-  local openclaw_gateway_launchd_loaded_ok="0"
+  local openclaw_gateway_launchd_loaded_ok="skipped"
   local openclaw_gateway_status_ok="0"
   local openclaw_gateway_tailscale_serve_route_ok="skipped"
   local openclaw_gateway_ok="0"
@@ -435,7 +458,9 @@ generate_report() {
   local tailscaled_homebrew_user_launchd_absent_ok="skipped"
   local tailscale_backend_state=""
   local tailscale_hostname=""
+  local tailscale_https_certificates_enabled="skipped"
   local tailscale_ip=""
+  local tailscale_magicdns_enabled="skipped"
   local tailscale_firewall_warning="skipped"
   local tailscale_operator_ok="skipped"
   local tailscale_operator_user=""
@@ -507,6 +532,7 @@ generate_report() {
   fi
 
   print_kv timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  print_kv agentbox_version "${AGENTBOX_HEALTH_AGENTBOX_VERSION}"
   print_kv managed_macos_runner "${AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER}"
   print_kv expected_hostname "${AGENTBOX_HEALTH_EXPECTED_HOSTNAME}"
   print_kv computer_name "${computer_name}"
@@ -665,18 +691,30 @@ generate_report() {
   mark_required ripgrep_ok "${ripgrep_ok}"
 
   print_kv openclaw_auth_choice "${AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE}"
+  print_kv openclaw_service_mode "${openclaw_service_mode}"
   print_kv openclaw_gateway_label "${openclaw_gateway_label}"
   print_kv openclaw_gateway_bind "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND}"
   print_kv openclaw_gateway_tailscale_mode "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE}"
   print_kv openclaw_gateway_port "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT}"
-  if launchctl print "system/${openclaw_gateway_label}" >/dev/null 2>&1; then
-    openclaw_gateway_launchd_loaded_ok="1"
+  if [[ "${openclaw_service_mode}" == "system" ]]; then
+    openclaw_gateway_launchd_loaded_ok="0"
+    if launchctl print "system/${openclaw_gateway_label}" >/dev/null 2>&1; then
+      openclaw_gateway_launchd_loaded_ok="1"
+    fi
   fi
   openclaw_gateway_status_ok="$(openclaw_gateway_status_ok_value)"
-  if [[ "${openclaw_gateway_launchd_loaded_ok}" == "1" && "${openclaw_gateway_status_ok}" == "1" ]]; then
+  if [[ "${openclaw_service_mode}" == "system" &&
+    "${openclaw_gateway_launchd_loaded_ok}" == "1" &&
+    "${openclaw_gateway_status_ok}" == "1" ]]; then
+    openclaw_gateway_ok="1"
+  elif [[ "${openclaw_service_mode}" == "user" && "${openclaw_gateway_status_ok}" == "1" ]]; then
     openclaw_gateway_ok="1"
   fi
-  mark_required openclaw_gateway_launchd_loaded_ok "${openclaw_gateway_launchd_loaded_ok}"
+  if [[ "${openclaw_service_mode}" == "system" ]]; then
+    mark_required openclaw_gateway_launchd_loaded_ok "${openclaw_gateway_launchd_loaded_ok}"
+  else
+    print_kv openclaw_gateway_launchd_loaded_ok "${openclaw_gateway_launchd_loaded_ok}"
+  fi
   mark_required openclaw_gateway_status_ok "${openclaw_gateway_status_ok}"
   mark_required openclaw_gateway_ok "${openclaw_gateway_ok}"
 
@@ -705,6 +743,8 @@ generate_report() {
         tailscale_backend_state="$(printf "%s" "${tailscale_status_json}" | jq -r '.BackendState // ""' 2>/dev/null || true)"
         tailscale_hostname="$(printf "%s" "${tailscale_status_json}" | jq -r '.Self.HostName // ""' 2>/dev/null || true)"
         tailscale_ip="$(printf "%s" "${tailscale_status_json}" | jq -r '(.Self.TailscaleIPs // []) | .[0] // ""' 2>/dev/null || true)"
+        tailscale_magicdns_enabled="$(tailscale_magicdns_enabled_value "${tailscale_status_json}")"
+        tailscale_https_certificates_enabled="$(tailscale_https_certificates_enabled_value "${tailscale_status_json}")"
       fi
       tailscale_operator_user="$(tailscale debug prefs 2>/dev/null | jq -r '.OperatorUser // ""' 2>/dev/null || true)"
     fi
@@ -729,10 +769,15 @@ generate_report() {
       tailscale_operator_ok="0"
     fi
     if [[ "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE}" == "serve" ]]; then
+      mark_required tailscale_magicdns_enabled "${tailscale_magicdns_enabled}"
+      mark_required tailscale_https_certificates_enabled "${tailscale_https_certificates_enabled}"
       openclaw_gateway_tailscale_serve_route_ok="$(
         openclaw_gateway_tailscale_serve_route_ok_value "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT}"
       )"
       mark_required openclaw_gateway_tailscale_serve_route_ok "${openclaw_gateway_tailscale_serve_route_ok}"
+    else
+      print_kv tailscale_magicdns_enabled "${tailscale_magicdns_enabled}"
+      print_kv tailscale_https_certificates_enabled "${tailscale_https_certificates_enabled}"
     fi
     mark_required tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
     mark_required tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
@@ -743,6 +788,8 @@ generate_report() {
     print_kv tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
     print_kv tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
     print_kv tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
+    print_kv tailscale_magicdns_enabled "${tailscale_magicdns_enabled}"
+    print_kv tailscale_https_certificates_enabled "${tailscale_https_certificates_enabled}"
     print_kv tailscale_operator_user "${tailscale_operator_user}"
     print_kv tailscale_operator_ok "${tailscale_operator_ok}"
     print_kv tailscale_ok "${tailscale_ok}"

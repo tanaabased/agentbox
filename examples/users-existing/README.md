@@ -10,8 +10,8 @@ launchd.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should seed a non-admin runner with a missing home
 sudo sysadminctl \
@@ -31,11 +31,9 @@ rm -f "$TMPDIR/id_agentbox_users_existing" "$TMPDIR/id_agentbox_users_existing.p
 ssh-keygen -t ed25519 -N "" -C "agentbox-users-existing@example.test" -f "$TMPDIR/id_agentbox_users_existing" >/dev/null
 boot.sh \
   --force \
-  --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey off \
   --brewgroup "tedsbrewclub" \
   --openclaw-identity "Ted Existing Claw <ted>" \
-  --skip-openclaw-autologin \
   --authorized-key "file:$TMPDIR/id_agentbox_users_existing.pub" \
   --hostname "TANAABAGENTBOXUSERSEXISTING"
 ```
@@ -54,7 +52,8 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 # should preserve the openclaw runner profile picture
 test "$(dscl . -read /Users/ted Picture | cut -d " " -f 2-)" = "$GITHUB_WORKSPACE/assets/agentbox-dark.png"
 
-# should keep openclaw runner autologin skipped
+# should use system openclaw service mode
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=system"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
 

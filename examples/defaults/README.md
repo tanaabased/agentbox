@@ -5,7 +5,8 @@ resulting GitHub-hosted macOS runner state. It is intended for CI by default bec
 system settings, Homebrew state, SSH, launchd, OpenClaw, and Tailscale.
 
 The example passes a unique hostname because Tailscale hostnames register outside the ephemeral VM
-and can collide across PR runs. Other OpenClaw, Homebrew, and autologin settings stay on defaults.
+and can collide across PR runs. Other OpenClaw, Homebrew, and service-mode settings stay on
+defaults.
 
 ## Setup
 
@@ -13,8 +14,8 @@ and can collide across PR runs. Other OpenClaw, Homebrew, and autologin settings
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should have a tailscale auth key from the workflow secret
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
@@ -23,7 +24,6 @@ test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 boot.sh \
   --force \
   --hostname "TANAABAGENTBOX-DEF$GITHUB_RUN_ID" \
-  --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --openclaw-password "DefaultOpenClawPass1!"
 ```
@@ -41,13 +41,12 @@ command -v jq >/dev/null
 # should install tailscale
 test -x "$(brew --prefix)/bin/tailscale"
 
-# should materialize agentbox from the local workflow checkout
-test -d "$HOME/tanaab/agentbox/.git"
-test -f "$HOME/tanaab/agentbox/boot.sh"
-test "$(git -C "$HOME/tanaab/agentbox" config --get remote.origin.url)" = "$GITHUB_WORKSPACE"
+# should use the workflow payload
+test "$AGENTBOX_PAYLOAD_DIR" = "$GITHUB_WORKSPACE"
+test -f "$AGENTBOX_PAYLOAD_DIR/boot.sh"
 
 # should satisfy the agentbox brewfile
-brew bundle check --file "$HOME/tanaab/agentbox/Brewfile" --no-upgrade
+brew bundle check --file "$AGENTBOX_PAYLOAD_DIR/Brewfile" --no-upgrade
 
 # should install openclaw cli through homebrew
 test -x "$(brew --prefix)/bin/openclaw"
@@ -76,14 +75,18 @@ test "$(stat -f "%Su" /Users/openclaw)" = "openclaw"
 # should report the openclaw runner as non-admin
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
 
-# should configure default openclaw runner autologin
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_user=openclaw"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=1"
+# should use default system openclaw service mode
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=system"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
+sudo test ! -e /Users/openclaw/Library/LaunchAgents/ai.openclaw.gateway.plist
 
 # should report the expected hostname
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_hostname=TANAABAGENTBOX-DEF$GITHUB_RUN_ID"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "expected_tailscale_hostname=AGENTBOX-DEF$GITHUB_RUN_ID"
+
+# should report the installed agentbox version
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -E '^agentbox_version=.+$'
 
 # should report default brewgroup state
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_enabled=1"
@@ -109,7 +112,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "node_cli_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ripgrep_ok=1"
 
-# should report macOS identity health
+# should report macos identity health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "macos_identity_ok=1"
 
 # should report openclaw runner health
@@ -121,12 +124,43 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 
 # should report default openclaw gateway health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_auth_choice=skip"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=system"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_bind=loopback"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_mode=serve"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_port=18789"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_launchd_loaded_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_status_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
+
+# should render the managed openclaw gateway service environment
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:0" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/bin/sh"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:2" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env"
+sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -E '^.+$'
+sudo stat -f "%Su:%Sg:%Lp" /Users/openclaw/.openclaw/service-env | tee /dev/stderr | grep -Fx "openclaw:$(id -gn openclaw):700"
+sudo stat -f "%Su:%Sg:%Lp" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env | tee /dev/stderr | grep -Fx "openclaw:$(id -gn openclaw):600"
+sudo stat -f "%Su:%Sg:%Lp" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh | tee /dev/stderr | grep -Fx "openclaw:$(id -gn openclaw):700"
+sudo grep -F "generated by agentbox. do not edit" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export HOME='/Users/openclaw'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export USER='openclaw'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export LOGNAME='openclaw'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export PATH='$(brew --prefix)/bin:$(brew --prefix)/sbin:/usr/bin:/bin:/usr/sbin:/sbin'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export TMPDIR='/Users/openclaw/.openclaw/tmp'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export NODE_EXTRA_CA_CERTS='/etc/ssl/cert.pem'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export NODE_USE_SYSTEM_CA='1'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export OPENCLAW_STATE_DIR='/Users/openclaw/.openclaw'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export OPENCLAW_GATEWAY_PORT='18789'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export OPENCLAW_LAUNCHD_LABEL='dev.tanaab.agentbox.openclaw-gateway'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export OPENCLAW_SERVICE_MARKER='openclaw'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export OPENCLAW_SERVICE_KIND='gateway'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -E "^export OPENCLAW_SERVICE_VERSION='[^']+'$" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo stat -f "%Su:%Sg:%Lp" /Users/openclaw/.openclaw/tmp | tee /dev/stderr | grep -Fx "openclaw:$(id -gn openclaw):700"
+
+# should render the managed openclaw gateway agentbox metadata
+sudo grep -F "export AGENTBOX_MANAGED='1'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export AGENTBOX_SERVICE_KIND='openclaw-gateway'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export AGENTBOX_HEALTH_COMMAND='/opt/tanaab/agentbox/bin/health.sh --report'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -E "^export AGENTBOX_VERSION='[^']+'$" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
 
 # should reach the default openclaw gateway ready endpoint locally
 curl \
@@ -144,7 +178,8 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ta
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_homebrew_user_launchd_absent_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_ok=1"
 
-# should render the tailscaled LaunchDaemon state directory
+# should render the tailscaled launchd daemon state directory
+sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist | grep -E '^.+$'
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist | grep -Fx -- "--statedir=/var/db/tanaab/agentbox/tailscale"
 sudo test -d /var/db/tanaab/agentbox/tailscale
 test "$(sudo stat -f "%Su:%Sg:%Lp" /var/db/tanaab/agentbox/tailscale)" = "root:wheel:700"
@@ -169,6 +204,10 @@ ping -c 1 -W 5000 "$gateway_dns_name"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_operator_user=openclaw"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_operator_ok=1"
 
+# should report tailscale serve prerequisites
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_magicdns_enabled=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_https_certificates_enabled=1"
+
 # should report the openclaw gateway tailscale serve route
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_serve_route_ok=1"
 
@@ -186,6 +225,7 @@ sudo "$tailscale_bin" serve status --json | tee /dev/stderr | jq -e --arg port "
 
 # should report launchd health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "health_launchd_loaded_ok=1"
+sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist | grep -E '^.+$'
 
 # should pass the overall agentbox health check
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"

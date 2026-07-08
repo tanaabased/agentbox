@@ -51,7 +51,9 @@ jobs:
       - name: Run Leia-backed example
         shell: bash
         env:
+          AGENTBOX_PAYLOAD_DIR: ${{ github.workspace }}
           AGENTBOX_TAILSCALE_AUTHKEY: ${{ secrets.TANAAB_HOLONET_LOGIN }}
+          OPENAI_API_KEY: ${{ secrets.TANAAB_ALTERNATE_MALE_KEY }}
           TMPDIR: ${{ github.workspace }}/examples/${{ matrix.example }}/.tmp
         run: |
           brew update

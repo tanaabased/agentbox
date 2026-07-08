@@ -10,21 +10,27 @@ system settings, Homebrew state, SSH, launchd, OpenClaw, and Tailscale.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should have a tailscale auth key from the workflow secret
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 
+# should have an openai api key from the workflow secret
+test -n "$OPENAI_API_KEY"
+
 # should run boot.sh successfully with custom openclaw gateway options
-boot.sh \
+set -o pipefail
+OPENAI_API_KEY="$OPENAI_API_KEY" boot.sh \
+  --debug \
   --force \
   --hostname "TANAABAGENTBOX-OC$GITHUB_RUN_ID" \
-  --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
   --openclaw-password "OpenClawGatewayPass1!" \
-  --openclaw-auth-choice skip \
-  --openclaw-gateway-port 18888
+  --openclaw-auth-choice openai-api-key \
+  --openclaw-auth-env OPENAI_API_KEY \
+  --openclaw-gateway-port 18888 \
+  2>&1 | tee "$TMPDIR/openclaw.log"
 ```
 
 ## Testing
@@ -40,7 +46,8 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_ok=1"
 
 # should report custom openclaw gateway health
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_auth_choice=skip"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_auth_choice=openai-api-key"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=system"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_bind=loopback"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_mode=serve"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_port=18888"
@@ -48,16 +55,42 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_status_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
 
-# should render the openclaw gateway LaunchDaemon arguments
-sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "gateway"
-sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:3" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "18888"
-sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:5" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "loopback"
-sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:7" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "serve"
+# should not print the openai api key
+! grep -F -- "$OPENAI_API_KEY" "$TMPDIR/openclaw.log"
 
-# should report the openclaw gateway tailscale serve route
+# should run openclaw onboarding non-interactively in CI
+grep -F -- "--non-interactive" "$TMPDIR/openclaw.log"
+grep -F -- "--accept-risk" "$TMPDIR/openclaw.log"
+grep -F -- "--json" "$TMPDIR/openclaw.log"
+
+# should render the openclaw gateway launchd daemon arguments
+sudo /usr/libexec/PlistBuddy -c "Print :WorkingDirectory" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw"
+sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -E '^.+$'
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:0" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/bin/sh"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:2" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:4" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "gateway"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:6" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "18888"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:8" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "loopback"
+sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:10" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "serve"
+
+# should render the managed openclaw gateway service environment
+sudo stat -f "%Su" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env | grep -Fx "openclaw"
+sudo stat -f "%Lp" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env | grep -Fx "600"
+sudo stat -f "%Lp" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh | grep -Fx "700"
+sudo grep -F "generated by agentbox. do not edit" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export OPENCLAW_STATE_DIR='/Users/openclaw/.openclaw'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export NODE_EXTRA_CA_CERTS='/etc/ssl/cert.pem'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export NODE_USE_SYSTEM_CA='1'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export AGENTBOX_HEALTH_COMMAND='/opt/tanaab/agentbox/bin/health.sh --report'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+! sudo grep -F "OPENAI_API_KEY" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+
+# should report the openclaw gateway tailscale serve prerequisites and route
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_magicdns_enabled=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_https_certificates_enabled=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_serve_route_ok=1"
 
-# should reach the openclaw gateway ready endpoint through tailscale magicdns over HTTPS
+# should reach the openclaw gateway ready endpoint through tailscale magicdns over https
 skip
 # gateway_dns_name="$(tailscale status --json --peers=false | tee /dev/stderr | jq -r '.Self.DNSName // ""' | sed 's/[.]$//')"
 # test -n "$gateway_dns_name"
@@ -75,7 +108,7 @@ skip
 #   --retry-max-time 90 \
 #   "https://$gateway_dns_name/readyz" | tee /dev/stderr
 
-# should reach the openclaw gateway ready endpoint through tailscale magicdns over HTTP
+# should reach the openclaw gateway ready endpoint through tailscale magicdns over http
 gateway_dns_name="$(tailscale status --json --peers=false | tee /dev/stderr | jq -r '.Self.DNSName // ""' | sed 's/[.]$//')"
 test -n "$gateway_dns_name"
 sudo tailscale serve --bg --http=80 --yes http://127.0.0.1:18888

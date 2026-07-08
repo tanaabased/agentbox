@@ -10,8 +10,8 @@ users, Homebrew state, launchd, and OpenClaw.
 # should have prepared boot.sh on PATH
 command -v boot.sh >/dev/null
 
-# should have a local git checkout available as the agentbox source
-test -d "$GITHUB_WORKSPACE/.git"
+# should have a workflow payload available for agentbox
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should run boot.sh successfully with authorized keys
 mkdir -p "$TMPDIR"
@@ -22,13 +22,11 @@ ssh-keygen -t ed25519 -N "" -C "agentbox-ssh-raw@example.test" -f "$TMPDIR/id_ag
 boot.sh \
   --force \
   --hostname "TANAABAGENTBOXSSH" \
-  --agentbox-version "$GITHUB_WORKSPACE" \
   --tailscale-authkey off \
   --brewgroup off \
   --openclaw-identity "Sam SSH Claw <sam>" \
   --openclaw-password "SamSSHClawPass1!" \
   --openclaw-auth-choice skip \
-  --skip-openclaw-autologin \
   --authorized-key "file:$TMPDIR/id_agentbox_ssh_file.pub" \
   --authorized-key "$(cat "$TMPDIR/id_agentbox_ssh_raw.pub")"
 ```

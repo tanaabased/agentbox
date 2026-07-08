@@ -7,7 +7,10 @@
     <string>__AGENTBOX_OPENCLAW_GATEWAY_LABEL__</string>
 
     <key>Comment</key>
-    <string>OpenClaw Gateway managed by agentbox</string>
+    <string>agentbox __AGENTBOX_VERSION__ managed openclaw gateway</string>
+
+    <key>AgentboxVersion</key>
+    <string>__AGENTBOX_VERSION__</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -26,6 +29,9 @@
 
     <key>ProgramArguments</key>
     <array>
+      <string>/bin/sh</string>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_ENV_WRAPPER__</string>
+      <string>__AGENTBOX_OPENCLAW_GATEWAY_ENV_FILE__</string>
       <string>__AGENTBOX_OPENCLAW_GATEWAY_BIN__</string>
       <string>gateway</string>
       <string>--port</string>
@@ -40,7 +46,7 @@
     <string>__AGENTBOX_OPENCLAW_GATEWAY_USER__</string>
 
     <key>WorkingDirectory</key>
-    <string>__AGENTBOX_OPENCLAW_GATEWAY_HOME__</string>
+    <string>__AGENTBOX_OPENCLAW_GATEWAY_WORKING_DIRECTORY__</string>
 
     <key>StandardInPath</key>
     <string>/dev/null</string>
@@ -50,23 +56,5 @@
 
     <key>StandardErrorPath</key>
     <string>__AGENTBOX_OPENCLAW_GATEWAY_STDERR_LOG__</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-      <key>HOME</key>
-      <string>__AGENTBOX_OPENCLAW_GATEWAY_HOME__</string>
-      <key>USER</key>
-      <string>__AGENTBOX_OPENCLAW_GATEWAY_USER__</string>
-      <key>LOGNAME</key>
-      <string>__AGENTBOX_OPENCLAW_GATEWAY_USER__</string>
-      <key>PATH</key>
-      <string>__AGENTBOX_OPENCLAW_GATEWAY_PATH__</string>
-      <key>OPENCLAW_GATEWAY_PORT</key>
-      <string>__AGENTBOX_OPENCLAW_GATEWAY_PORT__</string>
-      <key>OPENCLAW_SERVICE_MARKER</key>
-      <string>__AGENTBOX_OPENCLAW_GATEWAY_SERVICE_MARKER__</string>
-      <key>OPENCLAW_SERVICE_KIND</key>
-      <string>__AGENTBOX_OPENCLAW_GATEWAY_SERVICE_KIND__</string>
-    </dict>
   </dict>
 </plist>

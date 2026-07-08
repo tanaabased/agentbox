@@ -125,20 +125,20 @@ explicitly asked.
   only on the ephemeral runner. Keep externally registered or shared resources, especially Tailscale
   hostnames, unique per scenario and run.
 - Mutating Leia examples should run `boot.sh` once unless the example is explicitly about rerun,
-  idempotency, or source replacement behavior.
+  idempotency, or payload resolution behavior.
 - Defaults-focused examples should avoid overriding agentbox-owned default values, while still
-  providing required CI inputs such as source paths, passwords, secrets, and unique shared-resource
+  providing required CI inputs such as payload paths, passwords, secrets, and unique shared-resource
   names.
 - Treat example placement as a small taxonomy:
   `inputs` owns non-mutating public interface checks; `defaults` owns the baseline happy-path
   bootstrap with default agentbox-owned settings; named domain examples own focused behavior such
-  as Tailscale, Homebrew, SSH, OpenClaw, users, rerun, or source replacement.
+  as Tailscale, Homebrew, SSH, OpenClaw, users, rerun, or payload resolution.
 - When adding coverage, prefer extending the narrowest existing example that owns the behavior. Add
   a new example when the behavior needs incompatible bootstrap inputs, crosses enough domains that
   it would blur an existing example, or intentionally needs another successful `boot.sh` run.
 - Keep `examples/inputs` non-mutating. It owns help text, displayed defaults, input validation, and
   option/env precedence checks. Mutating examples should prove behavior domains such as Tailscale,
-  Homebrew, SSH, OpenClaw, users, rerun, or source replacement rather than re-testing every input
+  Homebrew, SSH, OpenClaw, users, rerun, or payload resolution rather than re-testing every input
   spelling.
 - Treat each blank-line-separated Leia block as a separate script. Do not rely on shell variables,
   functions, or working-directory changes persisting across `should` blocks.
@@ -194,10 +194,9 @@ explicitly asked.
   gate.
 - Preserve the public `AGENTBOX_*` namespace and do not leak upstream Bootbox names into the
   agentbox public interface.
-- Keep the default public source as `https://github.com/tanaabased/agentbox.git`, the fixed target
-  as `~/tanaab/agentbox`, and skip-or-replace behavior controlled by `--force`.
-- Keep `--agentbox-version` aligned with GitHub tag archives, local git sources, and tar archive
-  URL/path installs.
+- Keep agentbox payload resolution aligned with the running `boot.sh`: use an explicit hidden
+  payload directory for CI/development, source-relative payloads for source checkouts, and matching
+  release tag archives for hosted release scripts. Do not fall back to cloning the default branch.
 - Preserve `AGENTBOX_HOSTNAME` as the canonical hostname input and, when Tailscale is enabled, the
   current TANAAB-prefixed Tailscale hostname derivation.
 - Preserve formula-based Tailscale install and recommended setup, while allowing explicit falsey
