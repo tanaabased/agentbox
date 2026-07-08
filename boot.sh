@@ -2491,11 +2491,11 @@ exec "$@"
 EOSERVICEENVWRAPPER
 }
 
-render_agentbox_launchd_template() {
+agentbox_launchd_template_content() {
   local template_path="$1"
-  local output_path="$2"
-  local tailscaled_bin="${3:-}"
+  local tailscaled_bin="${2:-}"
   local rendered
+  local agentbox_version
   local health_label
   local health_script_path
   local health_stdout_log
@@ -2521,6 +2521,7 @@ render_agentbox_launchd_template() {
     abort "failed to read agentbox launchd template ${tty_ts}$(display_home_path "${template_path}")${tty_reset}."
   fi
 
+  agentbox_version="$(xml_escape "${SCRIPT_VERSION}")"
   health_label="$(xml_escape "${AGENTBOX_HEALTH_LABEL}")"
   health_script_path="$(xml_escape "${AGENTBOX_OPT_DIR}/bin/health.sh")"
   health_stdout_log="$(xml_escape "${AGENTBOX_LOG_DIR}/health.stdout.log")"
@@ -2543,6 +2544,7 @@ render_agentbox_launchd_template() {
   openclaw_gateway_stdout_log="$(xml_escape "${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log")"
   openclaw_gateway_stderr_log="$(xml_escape "${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log")"
 
+  rendered="${rendered//__AGENTBOX_VERSION__/${agentbox_version}}"
   rendered="${rendered//__AGENTBOX_HEALTH_LABEL__/${health_label}}"
   rendered="${rendered//__AGENTBOX_HEALTH_SCRIPT_PATH__/${health_script_path}}"
   rendered="${rendered//__AGENTBOX_HEALTH_STDOUT_LOG__/${health_stdout_log}}"
@@ -2568,17 +2570,74 @@ render_agentbox_launchd_template() {
     abort "agentbox launchd template ${tty_ts}$(display_home_path "${template_path}")${tty_reset} contains unresolved placeholders."
   fi
 
-  if ! printf "%s\n" "${rendered}" | sudo tee "${output_path}" >/dev/null; then
-    abort "failed to write agentbox launchd daemon ${tty_ts}${output_path}${tty_reset}."
+  printf "%s\n" "${rendered}"
+}
+
+AGENTBOX_LAST_LAUNCHD_PLIST_CHANGED="0"
+
+render_agentbox_launchd_template() {
+  local template_path="$1"
+  local output_path="$2"
+  local tailscaled_bin="${3:-}"
+  local rendered
+  local tmp_dir
+  local tmp_path
+
+  AGENTBOX_LAST_LAUNCHD_PLIST_CHANGED="0"
+  rendered="$(agentbox_launchd_template_content "${template_path}" "${tailscaled_bin}")"
+  tmp_dir="${BOOT_TMPDIR:-/tmp}"
+  tmp_path="${tmp_dir}/agentbox.$(basename "${output_path}").rendered.$$"
+
+  if ! printf "%s\n" "${rendered}" > "${tmp_path}"; then
+    abort "failed to write temporary agentbox launchd daemon ${tty_ts}${tmp_path}${tty_reset}."
   fi
 
-  execute sudo /usr/bin/plutil -lint "${output_path}"
+  execute /usr/bin/plutil -lint "${tmp_path}"
+
+  if ! sudo test -f "${output_path}" || ! sudo cmp -s "${tmp_path}" "${output_path}"; then
+    AGENTBOX_LAST_LAUNCHD_PLIST_CHANGED="1"
+    execute sudo cp "${tmp_path}" "${output_path}"
+  fi
+
+  execute sudo chown root:wheel "${output_path}"
+  execute sudo chmod 644 "${output_path}"
+  rm -f "${tmp_path}"
+}
+
+agentbox_system_launchd_loaded() {
+  local label="$1"
+
+  sudo launchctl print "system/${label}" >/dev/null 2>&1
+}
+
+refresh_agentbox_system_launchd_service() {
+  local label="$1"
+  local plist_path="$2"
+  local kickstart="${3:-0}"
+  local force_reload="${4:-0}"
+  local loaded="0"
+
+  if agentbox_system_launchd_loaded "${label}"; then
+    loaded="1"
+  fi
+
+  if [[ "${force_reload}" != "1" && "${AGENTBOX_LAST_LAUNCHD_PLIST_CHANGED}" != "1" && "${loaded}" == "1" ]]; then
+    execute sudo launchctl enable "system/${label}"
+    log "${tty_tp}skipping${tty_reset} launchd reload for ${tty_ts}${label}${tty_reset}; rendered plist is unchanged and already loaded"
+    return 0
+  fi
+
+  sudo launchctl bootout "system/${label}" >/dev/null 2>&1 || true
+  sudo launchctl bootout system "${plist_path}" >/dev/null 2>&1 || true
+  execute sudo launchctl enable "system/${label}"
+  execute sudo launchctl bootstrap system "${plist_path}"
+  if [[ "${kickstart}" == "1" ]]; then
+    execute sudo launchctl kickstart -k "system/${label}"
+  fi
 }
 
 write_agentbox_health_plist() {
   render_agentbox_launchd_template "${AGENTBOX_HEALTH_PLIST_TEMPLATE}" "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist"
-  execute sudo chown root:wheel "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist"
-  execute sudo chmod 644 "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist"
 }
 
 run_agentbox_launchd_health_setup() {
@@ -2595,10 +2654,7 @@ run_agentbox_launchd_health_setup() {
   write_agentbox_health_script
   write_agentbox_health_plist
 
-  sudo launchctl bootout system "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist" >/dev/null 2>&1 || true
-  execute sudo launchctl bootstrap system "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist"
-  execute sudo launchctl enable "system/${AGENTBOX_HEALTH_LABEL}"
-  execute sudo launchctl kickstart -k "system/${AGENTBOX_HEALTH_LABEL}"
+  refresh_agentbox_system_launchd_service "${AGENTBOX_HEALTH_LABEL}" "/Library/LaunchDaemons/${AGENTBOX_HEALTH_LABEL}.plist" "1" "1"
 }
 
 run_agentbox_post_bootstrap_summary() {
@@ -3554,8 +3610,6 @@ write_agentbox_tailscaled_plist() {
   local tailscaled_bin="$1"
 
   render_agentbox_launchd_template "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}" "${AGENTBOX_TAILSCALED_PLIST_PATH}" "${tailscaled_bin}"
-  execute sudo chown root:wheel "${AGENTBOX_TAILSCALED_PLIST_PATH}"
-  execute sudo chmod 644 "${AGENTBOX_TAILSCALED_PLIST_PATH}"
 }
 
 verify_agentbox_tailscaled_launchd_setup() {
@@ -3577,7 +3631,7 @@ verify_agentbox_tailscaled_launchd_setup() {
 }
 
 agentbox_tailscaled_launchd_loaded() {
-  sudo launchctl print "system/${AGENTBOX_TAILSCALED_LABEL}" >/dev/null 2>&1
+  agentbox_system_launchd_loaded "${AGENTBOX_TAILSCALED_LABEL}"
 }
 
 run_agentbox_tailscaled_launchd_setup() {
@@ -3594,16 +3648,7 @@ run_agentbox_tailscaled_launchd_setup() {
   prepare_tailscaled_statedir
   write_agentbox_tailscaled_plist "${tailscaled_bin}"
 
-  if agentbox_tailscaled_launchd_loaded; then
-    log "${tty_tp}skipping${tty_reset} ${tty_ts}tailscaled${tty_reset} restart; agentbox system launchd daemon is already loaded"
-    verify_agentbox_tailscaled_launchd_setup
-    return 0
-  fi
-
-  sudo launchctl bootout system "${AGENTBOX_TAILSCALED_PLIST_PATH}" >/dev/null 2>&1 || true
-  execute sudo launchctl bootstrap system "${AGENTBOX_TAILSCALED_PLIST_PATH}"
-  execute sudo launchctl enable "system/${AGENTBOX_TAILSCALED_LABEL}"
-  execute sudo launchctl kickstart -k "system/${AGENTBOX_TAILSCALED_LABEL}"
+  refresh_agentbox_system_launchd_service "${AGENTBOX_TAILSCALED_LABEL}" "${AGENTBOX_TAILSCALED_PLIST_PATH}" "1" "0"
   verify_agentbox_tailscaled_launchd_setup
 }
 
@@ -3859,8 +3904,6 @@ write_openclaw_gateway_service_env_files() {
 write_agentbox_openclaw_gateway_plist() {
   openclaw_runner_home_required >/dev/null
   render_agentbox_launchd_template "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE}" "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
-  execute sudo chown root:wheel "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
-  execute sudo chmod 644 "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
 }
 
 prepare_openclaw_gateway_log_file() {
@@ -3877,7 +3920,7 @@ prepare_openclaw_gateway_logs() {
 }
 
 agentbox_openclaw_gateway_launchd_loaded() {
-  sudo launchctl print "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" >/dev/null 2>&1
+  agentbox_system_launchd_loaded "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
 }
 
 verify_agentbox_openclaw_gateway_launchd_setup() {
@@ -3895,9 +3938,7 @@ run_agentbox_openclaw_gateway_launchd_setup() {
   write_openclaw_gateway_service_env_files
   write_agentbox_openclaw_gateway_plist
 
-  sudo launchctl bootout system "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}" >/dev/null 2>&1 || true
-  execute sudo launchctl enable "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
-  execute sudo launchctl bootstrap system "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
+  refresh_agentbox_system_launchd_service "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}" "0" "1"
   verify_agentbox_openclaw_gateway_launchd_setup
 }
 

@@ -137,6 +137,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:0" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/bin/sh"
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh"
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:2" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env"
+sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -E '^.+$'
 sudo stat -f "%Su:%Sg:%Lp" /Users/openclaw/.openclaw/service-env | tee /dev/stderr | grep -Fx "openclaw:$(id -gn openclaw):700"
 sudo stat -f "%Su:%Sg:%Lp" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env | tee /dev/stderr | grep -Fx "openclaw:$(id -gn openclaw):600"
 sudo stat -f "%Su:%Sg:%Lp" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh | tee /dev/stderr | grep -Fx "openclaw:$(id -gn openclaw):700"
@@ -179,6 +180,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ta
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_ok=1"
 
 # should render the tailscaled launchd daemon state directory
+sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist | grep -E '^.+$'
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist | grep -Fx -- "--statedir=/var/db/tanaab/agentbox/tailscale"
 sudo test -d /var/db/tanaab/agentbox/tailscale
 test "$(sudo stat -f "%Su:%Sg:%Lp" /var/db/tanaab/agentbox/tailscale)" = "root:wheel:700"
@@ -224,6 +226,7 @@ sudo "$tailscale_bin" serve status --json | tee /dev/stderr | jq -e --arg port "
 
 # should report launchd health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "health_launchd_loaded_ok=1"
+sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist | grep -E '^.+$'
 
 # should pass the overall agentbox health check
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"

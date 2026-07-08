@@ -288,6 +288,11 @@ In `system` mode, the agentbox LaunchDaemon invokes an agentbox-generated wrappe
 environment under `/Users/openclaw/.openclaw/service-env/`. That generated file is agentbox-owned
 output and may be rewritten on rerun; do not use it for local customizations.
 
+agentbox-managed LaunchDaemon plists include an `AgentboxVersion` metadata key for human-readable
+inspection. Reruns compare rendered plist content before deciding whether an already loaded
+agentbox service needs a launchd reload, so the metadata is informational rather than the refresh
+source of truth.
+
 The generated `system` mode service environment is aligned with OpenClaw's launcher markers,
 including `HOME`, `USER`, `LOGNAME`, `PATH`, `TMPDIR`, `NODE_EXTRA_CA_CERTS`,
 `NODE_USE_SYSTEM_CA`, `OPENCLAW_STATE_DIR`, `OPENCLAW_GATEWAY_PORT`, `OPENCLAW_LAUNCHD_LABEL`,
@@ -333,8 +338,9 @@ Tailscale is the recommended remote access path, but it is not mandatory. When e
 installs an agentbox-owned system LaunchDaemon for `tailscaled`, checks whether the Mac is already
 joined, and only requires an auth key for a first join. The daemon is installed as
 `/Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist` and runs as `root`; agentbox does not
-use `brew services` as the Tailscale launchd wrapper. Its daemon state directory is
-`/var/db/tanaab/agentbox/tailscale`.
+use `brew services` as the Tailscale launchd wrapper. On rerun, agentbox reloads the tailscaled
+daemon when the rendered plist changed, and otherwise leaves the already loaded daemon running. Its
+daemon state directory is `/var/db/tanaab/agentbox/tailscale`.
 
 To skip Tailscale setup, pass a falsey auth-key value:
 

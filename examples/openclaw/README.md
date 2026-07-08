@@ -66,6 +66,7 @@ grep -F -- "--json" "$TMPDIR/openclaw.log"
 
 # should render the openclaw gateway launchd daemon arguments
 sudo /usr/libexec/PlistBuddy -c "Print :WorkingDirectory" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw"
+sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -E '^.+$'
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:0" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/bin/sh"
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh"
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:2" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env"
