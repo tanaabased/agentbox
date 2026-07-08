@@ -54,7 +54,7 @@ contract.
 - Authorized keys enable SSH key-only hardening for the admin and OpenClaw runner users. Bad keys
   can lock out remote SSH, so keep physical or admin recovery access available.
 - `--openclaw-service-mode user` delegates gateway supervision to OpenClaw's native per-user
-  service. On macOS, agentbox enables OpenClaw runner autologin for that mode so the user session
+  service. On macOS, `agentbox` enables OpenClaw runner autologin for that mode so the user session
   can return after reboot. FileVault or local macOS policy may block autologin.
 
 ## Quickstart
@@ -63,7 +63,7 @@ Complete the [Manual Setup Checklist](#manual-setup-checklist) first, then run t
 script on the Mac you are preparing:
 
 ```sh
-curl -fsSL https://agentbox.boot.tanaab.sh/macos.sh | \
+curl -fsSL https://agentbox.tanaab.sh/macos.sh | \
   AGENTBOX_OPENCLAW_PASSWORD="$OPENCLAW_PASSWORD" \
   AGENTBOX_TAILSCALE_AUTHKEY="$TS_AUTHKEY" \
   AGENTBOX_HOSTNAME=TANAABAGENTBOX1 \
@@ -72,7 +72,7 @@ curl -fsSL https://agentbox.boot.tanaab.sh/macos.sh | \
 
 ## Manual Setup Checklist
 
-Before running `macos.sh`:
+Before running `agentbox`:
 
 - Put the Mac somewhere ventilated, physically safe, and connected to power.
 - Connect Ethernet and reserve its LAN IP in the router by MAC address.
@@ -92,11 +92,11 @@ sudo softwareupdate --install --all --restart
 - Consider installing an HDMI dummy plug / headless display adapter, such as
   [this example](https://www.amazon.com/dp/B0CKKLTWMN?ref=fed_asin_title), for smoother headless
   display behavior.
-- Temporarily enable Remote Login only if you need SSH access before running `macos.sh`; the
+- Temporarily enable Remote Login only if you need SSH access before running `agentbox`; the
   bootstrap enables classic SSH programmatically.
 - Create or choose a preauthorized Tailscale auth key with any desired device tags, or decide to
   skip Tailscale setup.
-- Optionally choose SSH public keys for `macos.sh` to install for the admin and OpenClaw runner
+- Optionally choose SSH public keys for `agentbox` to install for the admin and OpenClaw runner
   users.
 
 ## Usage
@@ -105,7 +105,7 @@ For repeated use, install the hosted script as a local command in a directory yo
 
 ```sh
 mkdir -p "$HOME/.local/bin"
-curl -fsSL https://agentbox.boot.tanaab.sh/macos.sh -o "$HOME/.local/bin/agentbox"
+curl -fsSL https://agentbox.tanaab.sh/macos.sh -o "$HOME/.local/bin/agentbox"
 chmod +x "$HOME/.local/bin/agentbox"
 
 agentbox --help
@@ -117,7 +117,7 @@ Run it with flags when you want to keep the command explicit:
 agentbox --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
 ```
 
-Authorized keys are optional runtime inputs for classic SSH. When provided, `macos.sh` installs them
+Authorized keys are optional runtime inputs for classic SSH. When provided, `agentbox` installs them
 for the invoking admin user and the OpenClaw runner, then hardens SSH to key-only access for those
 users. Supported values are public-key lines, explicit `file:` references, and existing public-key
 paths:
@@ -135,11 +135,11 @@ agentbox \
   --hostname TANAABAGENTBOX1
 ```
 
-`macos.sh` resolves its agentbox payload automatically. When run from a source checkout, it uses the
-checkout beside the script. When run as a released hosted script, it fetches the matching release
-archive for the script version and uses that payload for the core Brewfile, health script, launchd
-templates, and profile assets. It does not clone the default branch as a fallback, because that can
-pair an old script with newer runtime files.
+The macOS entrypoint resolves its agentbox payload automatically. When run from a source checkout,
+it uses the checkout beside the script. When run as a released hosted script, it fetches the
+matching release archive for the script version and uses that payload for the core Brewfile, health
+script, launchd templates, and profile assets. It does not clone the default branch as a fallback,
+because that can pair an old script with newer runtime files.
 
 Use `--brewfile` to append extra Bootbox Brewfiles after the core agentbox `Brewfile`. Values can be
 local paths or URLs. Relative local paths are resolved from the invocation directory first, then from
@@ -179,12 +179,12 @@ AGENTBOX_OPENCLAW_PASSWORD="$OPENCLAW_PASSWORD" \
 agentbox --tailscale-authkey "$TS_AUTHKEY" --hostname TANAABAGENTBOX1
 ```
 
-agentbox never prints, persists, or generates the runner password. When run interactively without a
-password and one is required, it prompts without echoing input. For newly created runners, agentbox
-selects one bundled profile image. If the runner already exists, agentbox verifies that it is not an
-admin user, preserves any existing profile picture, and does not reset the password.
+`agentbox` never prints, persists, or generates the runner password. When run interactively without a
+password and one is required, it prompts without echoing input. For newly created runners,
+`agentbox` selects one bundled profile image. If the runner already exists, `agentbox` verifies that
+it is not an admin user, preserves any existing profile picture, and does not reset the password.
 
-The OpenClaw gateway service mode defaults to `system`. In `system` mode, agentbox runs OpenClaw
+The OpenClaw gateway service mode defaults to `system`. In `system` mode, `agentbox` runs OpenClaw
 onboarding with native service installation disabled, then installs an agentbox-owned system
 LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user. This is the recommended
 headless mode because it does not require a GUI login session or autologin. On rerun, `system` mode
@@ -199,7 +199,7 @@ agentbox \
 
 Use `--openclaw-service-mode user` to delegate gateway supervision to OpenClaw's native per-user
 service installer. On macOS, that service is a LaunchAgent and requires a logged-in user session, so
-agentbox configures OpenClaw runner autologin in `user` mode to preserve reboot behavior on headless
+`agentbox` configures OpenClaw runner autologin in `user` mode to preserve reboot behavior on headless
 hosts. On rerun, `user` mode removes the agentbox-owned system gateway LaunchDaemon if it is
 present:
 
@@ -210,19 +210,19 @@ agentbox \
   --hostname TANAABAGENTBOX1
 ```
 
-agentbox validates the `user` mode option wiring and records the selected mode in health output, but
+`agentbox` validates the `user` mode option wiring and records the selected mode in health output, but
 agentbox CI does not run a full live `user` mode gateway because GitHub-hosted macOS runners do not
-provide the logged-in target-user GUI session required by macOS LaunchAgents. agentbox relies on
+provide the logged-in target-user GUI session required by macOS LaunchAgents. `agentbox` relies on
 OpenClaw's supported native user-service path for that supervisor behavior.
 
-OpenClaw gateway onboarding is gateway-only by default: agentbox uses `--auth-choice skip`, skips
+OpenClaw gateway onboarding is gateway-only by default: `agentbox` uses `--auth-choice skip`, skips
 OpenClaw workspace bootstrap files and skill installation, and keeps gateway token auth enabled.
-agentbox keeps those gateway-only settings in both interactive and non-interactive runs. When
-agentbox runs interactively, OpenClaw can show its normal onboarding prompts for the remaining
-choices. When `CI`, `NONINTERACTIVE`, `--yes`, or a missing interactive terminal puts agentbox in
-non-interactive mode, agentbox passes OpenClaw's non-interactive onboarding flags and explicit risk
-acknowledgement. agentbox always binds the OpenClaw gateway to loopback. When Tailscale setup is
-enabled, agentbox also asks OpenClaw to expose the loopback gateway through Tailscale Serve:
+`agentbox` keeps those gateway-only settings in both interactive and non-interactive runs. When
+`agentbox` runs interactively, OpenClaw can show its normal onboarding prompts for the remaining
+choices. When `CI`, `NONINTERACTIVE`, `--yes`, or a missing interactive terminal puts `agentbox` in
+non-interactive mode, `agentbox` passes OpenClaw's non-interactive onboarding flags and explicit
+risk acknowledgement. `agentbox` always binds the OpenClaw gateway to loopback. When Tailscale setup
+is enabled, `agentbox` also asks OpenClaw to expose the loopback gateway through Tailscale Serve:
 
 ```sh
 agentbox \
@@ -234,7 +234,7 @@ agentbox \
 For the Tailscale Serve route, confirm that MagicDNS and HTTPS Certificates are enabled in the
 Tailscale admin DNS settings. With those enabled, Tailscale serves the gateway through the node's
 MagicDNS HTTPS name while OpenClaw itself remains bound to `127.0.0.1`. If either setting is off,
-agentbox stops after Tailscale setup and asks you to enable them before it installs the OpenClaw
+`agentbox` stops after Tailscale setup and asks you to enable them before it installs the OpenClaw
 gateway.
 
 Pass `--openclaw-auth-choice` only when you want OpenClaw onboarding to configure initial model
@@ -249,12 +249,12 @@ agentbox \
   --hostname TANAABAGENTBOX1
 ```
 
-For known environment-backed auth choices, agentbox requires the matching provider environment
+For known environment-backed auth choices, `agentbox` requires the matching provider environment
 variable in the parent process before sudo setup and passes it only to `openclaw onboard`. Debug
-output masks the value. If the variable is missing, agentbox stops with the required env names and
+output masks the value. If the variable is missing, `agentbox` stops with the required env names and
 OpenClaw provider docs before sudo bootstrap.
 
-If OpenClaw adds a new environment-backed auth choice before agentbox knows its provider variable,
+If OpenClaw adds a new environment-backed auth choice before `agentbox` knows its provider variable,
 use `--openclaw-auth-env` with one parent environment variable name:
 
 ```sh
@@ -282,7 +282,7 @@ The generated `system` mode service environment is aligned with OpenClaw's launc
 including `HOME`, `USER`, `LOGNAME`, `PATH`, `TMPDIR`, `NODE_EXTRA_CA_CERTS`,
 `NODE_USE_SYSTEM_CA`, `OPENCLAW_STATE_DIR`, `OPENCLAW_GATEWAY_PORT`, `OPENCLAW_LAUNCHD_LABEL`,
 `OPENCLAW_SERVICE_MARKER=openclaw`, `OPENCLAW_SERVICE_KIND=gateway`, and
-`OPENCLAW_SERVICE_VERSION`. agentbox also adds `AGENTBOX_MANAGED=1`,
+`OPENCLAW_SERVICE_VERSION`. `agentbox` also adds `AGENTBOX_MANAGED=1`,
 `AGENTBOX_SERVICE_KIND=openclaw-gateway`, `AGENTBOX_VERSION`, and
 `AGENTBOX_HEALTH_COMMAND=/opt/tanaab/agentbox/bin/health.sh --report` for local integrations that
 need to detect the managed host or inspect its health. For durable user-provided gateway runtime
@@ -297,7 +297,7 @@ agentbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup agentbrew --hostname TANA
 agentbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup off --hostname TANAABAGENTBOX1
 ```
 
-When brewgroup setup is enabled, agentbox adds the invoking admin user to the configured brewgroup
+When brewgroup setup is enabled, `agentbox` adds the invoking admin user to the configured brewgroup
 as a direct member so the bootstrap account keeps write access to the Homebrew prefix. It also adds
 the OpenClaw runner as a direct member so the runner can use the Homebrew-managed OpenClaw CLI and
 related tools.
@@ -314,16 +314,16 @@ agentbox --tailscale-authkey "$TS_AUTHKEY" --brewgroup brewer:staff --hostname T
 This is opt-in because it grants every current and future member of the trusted group write access
 to the Homebrew prefix. Use it only on secured infrastructure hosts with restrictive network access,
 SSH-key access, and trusted local account creation. Do not use it on shared workstations or machines
-where unrelated local users may be added to the trusted group. agentbox creates the brewgroup when
+where unrelated local users may be added to the trusted group. `agentbox` creates the brewgroup when
 missing, but the trusted group must already exist.
 
 ## Tailscale
 
-Tailscale is the recommended remote access path, but it is not mandatory. When enabled, `macos.sh`
+Tailscale is the recommended remote access path, but it is not mandatory. When enabled, `agentbox`
 installs an agentbox-owned system LaunchDaemon for `tailscaled`, checks whether the Mac is already
 joined, and only requires an auth key for a first join. The daemon is installed as
-`/Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist` and runs as `root`; agentbox does not
-use `brew services` as the Tailscale launchd wrapper. On rerun, agentbox reloads the tailscaled
+`/Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist` and runs as `root`; `agentbox` does
+not use `brew services` as the Tailscale launchd wrapper. On rerun, `agentbox` reloads the tailscaled
 daemon when the rendered plist changed, and otherwise leaves the already loaded daemon running. Its
 daemon state directory is `/var/db/tanaab/agentbox/tailscale`.
 
@@ -339,8 +339,8 @@ identity. When Tailscale is enabled, a leading `TANAAB` prefix is stripped for t
 name, so `TANAABAGENTBOX1` joins as `AGENTBOX1`.
 
 To tag newly joined machines, create or use a Tailscale auth key that applies the desired tags.
-agentbox passes the auth key to `tailscale up` and does not manage tailnet tag policy itself.
-When Tailscale is enabled, agentbox sets the OpenClaw runner as the Tailscale operator so
+`agentbox` passes the auth key to `tailscale up` and does not manage tailnet tag policy itself.
+When Tailscale is enabled, `agentbox` sets the OpenClaw runner as the Tailscale operator so
 OpenClaw's gateway process can use native Tailscale Serve without sudo. Bootstrap fails if the
 tailnet does not have MagicDNS and HTTPS Certificates enabled in
 [Tailscale DNS settings](https://login.tailscale.com/admin/dns), or if the OpenClaw gateway becomes
@@ -348,12 +348,12 @@ ready but the expected Tailscale Serve route is not configured. See Tailscale's
 [MagicDNS](https://tailscale.com/docs/features/magicdns) and
 [HTTPS certificate](https://tailscale.com/docs/how-to/set-up-https-certificates) docs for the
 required tailnet settings.
-agentbox also writes a macOS scoped resolver file for the tailnet MagicDNS suffix under
+`agentbox` also writes a macOS scoped resolver file for the tailnet MagicDNS suffix under
 `/etc/resolver/`, pointing that suffix at Tailscale's local DNS resolver `100.100.100.100`.
 
-agentbox does not enable macOS Application Firewall. When the OpenClaw gateway is exposed through
+`agentbox` does not enable macOS Application Firewall. When the OpenClaw gateway is exposed through
 Tailscale Serve, macOS Application Firewall can prevent Tailscale Serve HTTPS from reaching the
-gateway over the tailnet. If the firewall is already enabled, agentbox prints a warning and
+gateway over the tailnet. If the firewall is already enabled, `agentbox` prints a warning and
 recommends disabling it for tailnet-hosted gateway access. Use Tailscale ACLs, no WAN port
 forwarding, SSH hardening, and loopback gateway binding as the access-control boundary.
 
@@ -396,7 +396,7 @@ they do not land in shell history.
 - `CI`: run in CI mode and disable prompts.
 - `NONINTERACTIVE` or `--yes`: skip interactive prompts.
 
-Run `macos.sh --help` for the exact current CLI and environment-variable contract.
+Run `agentbox --help` for the exact current CLI and environment-variable contract.
 
 ## Verification
 
@@ -414,7 +414,7 @@ includes `agentbox_version`. When Tailscale is enabled, it should include
 legacy Homebrew launchd wrapper is not.
 
 The report should also include `homebrew_login_path_file_ok=1`, `openclaw_cli_ok=1`, `node_cli_ok=1`,
-and `ripgrep_ok=1`. agentbox does not pin `node@24`; the Homebrew `openclaw-cli` formula owns its
+and `ripgrep_ok=1`. `agentbox` does not pin `node@24`; the Homebrew `openclaw-cli` formula owns its
 Node dependency.
 
 The report should include `openclaw_service_mode=system`, `openclaw_gateway_launchd_loaded_ok=1`,
