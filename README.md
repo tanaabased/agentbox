@@ -204,7 +204,8 @@ admin user, preserves any existing profile picture, and does not reset the passw
 The OpenClaw gateway service mode defaults to `system`. In `system` mode, agentbox runs OpenClaw
 onboarding with native service installation disabled, then installs an agentbox-owned system
 LaunchDaemon that runs `openclaw gateway` as the OpenClaw runner user. This is the recommended
-headless mode because it does not require a GUI login session or autologin:
+headless mode because it does not require a GUI login session or autologin. On rerun, `system` mode
+removes OpenClaw's native `ai.openclaw.gateway` user LaunchAgent if it is present:
 
 ```sh
 agentbootbox \
@@ -216,7 +217,8 @@ agentbootbox \
 Use `--openclaw-service-mode user` to delegate gateway supervision to OpenClaw's native per-user
 service installer. On macOS, that service is a LaunchAgent and requires a logged-in user session, so
 agentbox configures OpenClaw runner autologin in `user` mode to preserve reboot behavior on headless
-hosts:
+hosts. On rerun, `user` mode removes the agentbox-owned system gateway LaunchDaemon if it is
+present:
 
 ```sh
 agentbootbox \

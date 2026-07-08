@@ -32,6 +32,7 @@ AGENTBOX_TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 AGENTBOX_TAILSCALED_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_TAILSCALED_LABEL}.plist"
 AGENTBOX_OPENCLAW_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
 AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}.plist"
+OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL="ai.openclaw.gateway"
 AGENTBOX_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
 HOMEBREW_TAILSCALE_SYSTEM_PLIST_PATH="/Library/LaunchDaemons/${HOMEBREW_TAILSCALE_LABEL}.plist"
@@ -3110,6 +3111,11 @@ plan_wrapper_execution() {
   else
     plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, tailscale serve prerequisites, and scoped magicdns resolver"
   fi
+  if openclaw_service_mode_is_system; then
+    plan_action "${tty_tp}remove${tty_reset} openclaw native user gateway service ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} if present"
+  else
+    plan_action "${tty_tp}remove${tty_reset} agentbox openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset} if present"
+  fi
   plan_action "${tty_tp}onboard${tty_reset} openclaw gateway config in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   if openclaw_service_mode_is_system; then
     plan_action "${tty_tp}install or refresh${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
@@ -3923,9 +3929,55 @@ agentbox_openclaw_gateway_launchd_loaded() {
   agentbox_system_launchd_loaded "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
 }
 
+openclaw_native_gateway_launch_agent_plist_path() {
+  printf "%s/Library/LaunchAgents/%s.plist" "$(openclaw_runner_home_required)" "${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}"
+}
+
+openclaw_native_gateway_launch_agent_loaded() {
+  local uid="$1"
+
+  [[ -n "${uid}" ]] && sudo launchctl print "gui/${uid}/${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}" >/dev/null 2>&1
+}
+
 verify_agentbox_openclaw_gateway_launchd_setup() {
   if ! agentbox_openclaw_gateway_launchd_loaded; then
     abort "agentbox openclaw gateway launchd daemon is not loaded in the system launchd domain."
+  fi
+}
+
+remove_agentbox_openclaw_gateway_launchd_service() {
+  if ! agentbox_openclaw_gateway_launchd_loaded && ! sudo test -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"; then
+    return 0
+  fi
+
+  log "${tty_tp}removing${tty_reset} agentbox openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset} because openclaw service mode is ${tty_ts}user${tty_reset}"
+  sudo launchctl bootout "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" >/dev/null 2>&1 || true
+  sudo launchctl bootout system "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}" >/dev/null 2>&1 || true
+  if sudo test -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"; then
+    execute sudo rm -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
+  fi
+}
+
+remove_openclaw_native_gateway_launch_agent() {
+  local openclaw_bin="$1"
+  local plist_path
+  local uid
+
+  uid="$(id -u "${OPENCLAW_USER}" 2>/dev/null || true)"
+  plist_path="$(openclaw_native_gateway_launch_agent_plist_path)"
+
+  if ! openclaw_native_gateway_launch_agent_loaded "${uid}" && ! sudo test -f "${plist_path}"; then
+    return 0
+  fi
+
+  log "${tty_tp}removing${tty_reset} openclaw native user gateway service ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} because openclaw service mode is ${tty_ts}system${tty_reset}"
+  run_as_openclaw_runner "${openclaw_bin}" gateway uninstall >/dev/null 2>&1 || true
+  if [[ -n "${uid}" ]]; then
+    sudo launchctl bootout "gui/${uid}/${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}" >/dev/null 2>&1 || true
+    sudo launchctl bootout "gui/${uid}" "${plist_path}" >/dev/null 2>&1 || true
+  fi
+  if sudo test -f "${plist_path}"; then
+    execute sudo rm -f "${plist_path}"
   fi
 }
 
@@ -4089,6 +4141,11 @@ run_agentbox_openclaw_gateway_setup() {
   check_sudo_access "before openclaw gateway setup"
   resolve_brew_prefix
   openclaw_bin="$(openclaw_bin_path)"
+  if openclaw_service_mode_is_system; then
+    remove_openclaw_native_gateway_launch_agent "${openclaw_bin}"
+  else
+    remove_agentbox_openclaw_gateway_launchd_service
+  fi
   run_openclaw_gateway_onboarding "${openclaw_bin}"
   if openclaw_service_mode_is_system; then
     log "${tty_tp}installing${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
