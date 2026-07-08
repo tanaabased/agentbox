@@ -54,7 +54,9 @@ sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:3" /Library/LaunchDaemo
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:5" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "loopback"
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:7" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "serve"
 
-# should report the openclaw gateway tailscale serve route
+# should report the openclaw gateway tailscale serve prerequisites and route
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_magicdns_enabled=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_https_certificates_enabled=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_serve_route_ok=1"
 
 # should reach the openclaw gateway ready endpoint through tailscale magicdns over HTTPS

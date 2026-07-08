@@ -363,6 +363,26 @@ openclaw_gateway_tailscale_serve_route_ok_value() {
   fi
 }
 
+tailscale_magicdns_enabled_value() {
+  local status_json="$1"
+
+  if printf "%s" "${status_json}" | jq -e '.CurrentTailnet.MagicDNSEnabled == true' >/dev/null 2>&1; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+tailscale_https_certificates_enabled_value() {
+  local status_json="$1"
+
+  if printf "%s" "${status_json}" | jq -e '((.CertDomains // []) | length) > 0' >/dev/null 2>&1; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
 print_brewgroup() {
   if [[ "${STATE_LOADED}" != "1" ]]; then
     printf 'off\n'
@@ -435,7 +455,9 @@ generate_report() {
   local tailscaled_homebrew_user_launchd_absent_ok="skipped"
   local tailscale_backend_state=""
   local tailscale_hostname=""
+  local tailscale_https_certificates_enabled="skipped"
   local tailscale_ip=""
+  local tailscale_magicdns_enabled="skipped"
   local tailscale_firewall_warning="skipped"
   local tailscale_operator_ok="skipped"
   local tailscale_operator_user=""
@@ -705,6 +727,8 @@ generate_report() {
         tailscale_backend_state="$(printf "%s" "${tailscale_status_json}" | jq -r '.BackendState // ""' 2>/dev/null || true)"
         tailscale_hostname="$(printf "%s" "${tailscale_status_json}" | jq -r '.Self.HostName // ""' 2>/dev/null || true)"
         tailscale_ip="$(printf "%s" "${tailscale_status_json}" | jq -r '(.Self.TailscaleIPs // []) | .[0] // ""' 2>/dev/null || true)"
+        tailscale_magicdns_enabled="$(tailscale_magicdns_enabled_value "${tailscale_status_json}")"
+        tailscale_https_certificates_enabled="$(tailscale_https_certificates_enabled_value "${tailscale_status_json}")"
       fi
       tailscale_operator_user="$(tailscale debug prefs 2>/dev/null | jq -r '.OperatorUser // ""' 2>/dev/null || true)"
     fi
@@ -729,10 +753,15 @@ generate_report() {
       tailscale_operator_ok="0"
     fi
     if [[ "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE}" == "serve" ]]; then
+      mark_required tailscale_magicdns_enabled "${tailscale_magicdns_enabled}"
+      mark_required tailscale_https_certificates_enabled "${tailscale_https_certificates_enabled}"
       openclaw_gateway_tailscale_serve_route_ok="$(
         openclaw_gateway_tailscale_serve_route_ok_value "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT}"
       )"
       mark_required openclaw_gateway_tailscale_serve_route_ok "${openclaw_gateway_tailscale_serve_route_ok}"
+    else
+      print_kv tailscale_magicdns_enabled "${tailscale_magicdns_enabled}"
+      print_kv tailscale_https_certificates_enabled "${tailscale_https_certificates_enabled}"
     fi
     mark_required tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
     mark_required tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
@@ -743,6 +772,8 @@ generate_report() {
     print_kv tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
     print_kv tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
     print_kv tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
+    print_kv tailscale_magicdns_enabled "${tailscale_magicdns_enabled}"
+    print_kv tailscale_https_certificates_enabled "${tailscale_https_certificates_enabled}"
     print_kv tailscale_operator_user "${tailscale_operator_user}"
     print_kv tailscale_operator_ok "${tailscale_operator_ok}"
     print_kv tailscale_ok "${tailscale_ok}"

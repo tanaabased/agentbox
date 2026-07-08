@@ -227,7 +227,9 @@ agentbootbox \
 
 For the Tailscale Serve route, confirm that MagicDNS and HTTPS Certificates are enabled in the
 Tailscale admin DNS settings. With those enabled, Tailscale serves the gateway through the node's
-MagicDNS HTTPS name while OpenClaw itself remains bound to `127.0.0.1`.
+MagicDNS HTTPS name while OpenClaw itself remains bound to `127.0.0.1`. If either setting is off,
+agentbox stops after Tailscale setup and asks you to enable them before it installs the OpenClaw
+gateway.
 
 Pass `--openclaw-auth-choice` only when you want OpenClaw onboarding to configure initial model
 auth. For example, OpenClaw can use provider-specific environment variables such as
@@ -298,7 +300,12 @@ To tag newly joined machines, create or use a Tailscale auth key that applies th
 agentbox passes the auth key to `tailscale up` and does not manage tailnet tag policy itself.
 When Tailscale is enabled, agentbox sets the OpenClaw runner as the Tailscale operator so
 OpenClaw's gateway process can use native Tailscale Serve without sudo. Bootstrap fails if the
-OpenClaw gateway becomes ready but the expected Tailscale Serve route is not configured.
+tailnet does not have MagicDNS and HTTPS Certificates enabled in
+[Tailscale DNS settings](https://login.tailscale.com/admin/dns), or if the OpenClaw gateway becomes
+ready but the expected Tailscale Serve route is not configured. See Tailscale's
+[MagicDNS](https://tailscale.com/docs/features/magicdns) and
+[HTTPS certificate](https://tailscale.com/docs/how-to/set-up-https-certificates) docs for the
+required tailnet settings.
 agentbox also writes a macOS scoped resolver file for the tailnet MagicDNS suffix under
 `/etc/resolver/`, pointing that suffix at Tailscale's local DNS resolver `100.100.100.100`.
 
@@ -371,7 +378,8 @@ The report should include `openclaw_gateway_launchd_loaded_ok=1`,
 native `gateway status --require-rpc` command as the OpenClaw runner. It also prints
 `openclaw_gateway_bind`, `openclaw_gateway_tailscale_mode`, and `openclaw_gateway_port`.
 Tailscale-enabled hosts should report `openclaw_gateway_bind=loopback` and
-`openclaw_gateway_tailscale_mode=serve` plus `openclaw_gateway_tailscale_serve_route_ok=1`;
+`openclaw_gateway_tailscale_mode=serve`, `tailscale_magicdns_enabled=1`,
+`tailscale_https_certificates_enabled=1`, and `openclaw_gateway_tailscale_serve_route_ok=1`;
 hosts bootstrapped with Tailscale disabled should report `openclaw_gateway_bind=loopback` and
 `openclaw_gateway_tailscale_mode=off`.
 

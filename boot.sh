@@ -41,6 +41,9 @@ SSHD_CONFIG_PATH="/etc/ssh/sshd_config"
 SSHD_CONFIG_DIR="/etc/ssh/sshd_config.d"
 SSHD_AGENTBOX_CONFIG_PATH="${SSHD_CONFIG_DIR}/agentbox.conf"
 SSH_ACCESS_GROUP="com.apple.access_ssh"
+TAILSCALE_DNS_ADMIN_URL="https://login.tailscale.com/admin/dns"
+TAILSCALE_MAGICDNS_DOCS_URL="https://tailscale.com/docs/features/magicdns"
+TAILSCALE_HTTPS_CERTS_DOCS_URL="https://tailscale.com/docs/how-to/set-up-https-certificates"
 
 abort() {
   printf "%serror%s: %s\n" "${tty_red-}" "${tty_reset-}" "$*" >&2
@@ -2618,7 +2621,7 @@ plan_wrapper_execution() {
   if tailscale_setup_disabled; then
     plan_action "${tty_tp}skip${tty_reset} tailscale setup because the auth-key input is disabled"
   else
-    plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, and scoped magicdns resolver"
+    plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, Tailscale Serve prerequisites, and scoped magicdns resolver"
   fi
   plan_action "${tty_tp}onboard${tty_reset} openclaw gateway config for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   plan_action "${tty_tp}install or refresh${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
@@ -2952,6 +2955,66 @@ tailscale_magicdns_suffix_valid() {
     "${suffix}" =~ ^[A-Za-z0-9][-A-Za-z0-9.]*[A-Za-z0-9]$ ]]
 }
 
+tailscale_magicdns_enabled_value() {
+  local status_json="$1"
+  local value=""
+
+  value="$(json_value "${status_json}" 'if .CurrentTailnet.MagicDNSEnabled == true then "1" else "0" end' || true)"
+  if [[ "${value}" == "1" ]]; then
+    printf "1"
+  else
+    printf "0"
+  fi
+}
+
+tailscale_https_certificates_enabled_value() {
+  local status_json="$1"
+  local value=""
+
+  value="$(json_value "${status_json}" 'if ((.CertDomains // []) | length) > 0 then "1" else "0" end' || true)"
+  if [[ "${value}" == "1" ]]; then
+    printf "1"
+  else
+    printf "0"
+  fi
+}
+
+verify_tailscale_serve_prerequisites() {
+  local status_json="$1"
+  local magicdns_enabled="0"
+  local https_certificates_enabled="0"
+
+  if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" != "serve" ]]; then
+    return 0
+  fi
+
+  if [[ -z "${status_json}" ]]; then
+    abort_multi "$(cat <<EOABORT
+could not read tailscale status after joining the tailnet, so agentbox cannot verify Tailscale Serve prerequisites.
+OpenClaw Tailscale Serve requires MagicDNS and HTTPS Certificates to be enabled in Tailscale DNS settings: ${tty_underline}${tty_magenta}${TAILSCALE_DNS_ADMIN_URL}${tty_reset}
+enable MagicDNS and HTTPS Certificates, then rerun agentbox. docs: ${tty_underline}${tty_magenta}${TAILSCALE_MAGICDNS_DOCS_URL}${tty_reset} and ${tty_underline}${tty_magenta}${TAILSCALE_HTTPS_CERTS_DOCS_URL}${tty_reset}
+EOABORT
+)"
+  fi
+
+  magicdns_enabled="$(tailscale_magicdns_enabled_value "${status_json}")"
+  https_certificates_enabled="$(tailscale_https_certificates_enabled_value "${status_json}")"
+
+  if [[ "${magicdns_enabled}" == "1" && "${https_certificates_enabled}" == "1" ]]; then
+    log "${tty_tp}verified${tty_reset} tailscale MagicDNS and HTTPS Certificates for OpenClaw Tailscale Serve"
+    return 0
+  fi
+
+  abort_multi "$(cat <<EOABORT
+OpenClaw Tailscale Serve requires MagicDNS and HTTPS Certificates to be enabled in this tailnet.
+tailscale_magicdns_enabled=${magicdns_enabled}
+tailscale_https_certificates_enabled=${https_certificates_enabled}
+Open Tailscale DNS settings, enable MagicDNS and HTTPS Certificates, then rerun agentbox: ${tty_underline}${tty_magenta}${TAILSCALE_DNS_ADMIN_URL}${tty_reset}
+docs: ${tty_underline}${tty_magenta}${TAILSCALE_MAGICDNS_DOCS_URL}${tty_reset} and ${tty_underline}${tty_magenta}${TAILSCALE_HTTPS_CERTS_DOCS_URL}${tty_reset}
+EOABORT
+)"
+}
+
 configure_tailscale_magicdns_resolver() {
   local status_json="$1"
   local suffix=""
@@ -3157,6 +3220,7 @@ run_agentbox_tailscale_setup() {
 
       configure_tailscale_operator_user
       configure_tailscale_magicdns_resolver "${status_json}"
+      verify_tailscale_serve_prerequisites "${status_json}"
       show_tailscale_status_summary
       return 0
     fi
@@ -3164,6 +3228,7 @@ run_agentbox_tailscale_setup() {
     warn "tailscale is already joined as ${current_hostname}; expected ${TAILSCALE_HOSTNAME_VALUE}. skipping reauth for this run."
     configure_tailscale_operator_user
     configure_tailscale_magicdns_resolver "${status_json}"
+    verify_tailscale_serve_prerequisites "${status_json}"
     show_tailscale_status_summary
     return 0
   fi
@@ -3185,6 +3250,7 @@ run_agentbox_tailscale_setup() {
   else
     warn "could not read tailscale status after join; skipping macOS scoped resolver setup."
   fi
+  verify_tailscale_serve_prerequisites "${status_json}"
   show_tailscale_status_summary
 }
 
