@@ -200,6 +200,10 @@ This is the recommended headless mode because it does not require a GUI login se
 On rerun, `system` mode removes OpenClaw's native `ai.openclaw.gateway` user LaunchAgent if it is
 present.
 
+The shared `/var/log/tanaab/agentbox` directory remains `root:wheel` mode `0755`, while the gateway's
+stdout and stderr files are owned by the OpenClaw runner and its primary group at mode `0600`.
+Reruns repair those file permissions without truncating existing log contents.
+
 Use `--openclaw-service-mode user` to delegate gateway supervision to OpenClaw's native per-user
 service installer:
 
@@ -503,6 +507,8 @@ For default system-mode installs, the report should include:
 ```ini
 openclaw_service_mode=system
 openclaw_gateway_launchd_loaded_ok=1
+openclaw_gateway_launchd_running_ok=1
+openclaw_gateway_log_permissions_ok=1
 openclaw_gateway_status_ok=1
 openclaw_gateway_ok=1
 ```
@@ -513,6 +519,8 @@ the OpenClaw runner:
 ```ini
 openclaw_service_mode=user
 openclaw_gateway_launchd_loaded_ok=skipped
+openclaw_gateway_launchd_running_ok=skipped
+openclaw_gateway_log_permissions_ok=skipped
 openclaw_gateway_ok=1
 openclaw_autologin_ok=1
 ```

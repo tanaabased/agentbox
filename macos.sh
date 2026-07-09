@@ -2616,7 +2616,8 @@ run_agentbox_launchd_health_setup() {
   fi
 
   execute sudo mkdir -p "${AGENTBOX_OPT_DIR}/bin" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
-  execute sudo chown -R root:wheel "${AGENTBOX_OPT_DIR}" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
+  execute sudo chown -R root:wheel "${AGENTBOX_OPT_DIR}" "${AGENTBOX_STATE_DIR}"
+  execute sudo chown root:wheel "${AGENTBOX_LOG_DIR}"
   execute sudo chmod 755 "${AGENTBOX_OPT_DIR}" "${AGENTBOX_OPT_DIR}/bin" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
   write_agentbox_health_state
   write_agentbox_health_script
@@ -3991,9 +3992,11 @@ write_agentbox_openclaw_gateway_plist() {
 
 prepare_openclaw_gateway_log_file() {
   local path="$1"
+  local primary_group
 
-  execute sudo /usr/bin/install -o "${OPENCLAW_USER}" -m 600 /dev/null "${path}"
-  execute sudo chown "${OPENCLAW_USER}" "${path}"
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+  execute sudo touch "${path}"
+  execute sudo chown "${OPENCLAW_USER}:${primary_group}" "${path}"
   execute sudo chmod 600 "${path}"
 }
 

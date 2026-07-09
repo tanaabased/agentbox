@@ -35,6 +35,11 @@ sudo chmod 644 /Library/LaunchDaemons/com.tailscale.tailscaled.plist
 sudo launchctl bootstrap system /Library/LaunchDaemons/com.tailscale.tailscaled.plist
 sudo launchctl print system/com.tailscale.tailscaled >/dev/null
 
+# should preserve an openclaw log marker while repairing root-owned gateway logs
+sudo -u rita /bin/sh -c 'printf "%s\n" "agentbox-rerun-log-marker" >> /var/log/tanaab/agentbox/openclaw-gateway.stdout.log'
+sudo chown root:wheel /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log
+sudo chmod 600 /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log
+
 # should rerun agentbox successfully without a tailscale auth key
 AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
   --force \
@@ -67,7 +72,13 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_bind=loopback"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_mode=serve"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_port=18789"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_launchd_running_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_log_permissions_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
+sudo stat -f "%Su:%Sg:%Lp" /var/log/tanaab/agentbox | tee /dev/stderr | grep -Fx "root:wheel:755"
+sudo stat -f "%Su:%Sg:%Lp" /var/log/tanaab/agentbox/openclaw-gateway.stdout.log | tee /dev/stderr | grep -Fx "rita:$(id -gn rita):600"
+sudo stat -f "%Su:%Sg:%Lp" /var/log/tanaab/agentbox/openclaw-gateway.stderr.log | tee /dev/stderr | grep -Fx "rita:$(id -gn rita):600"
+sudo grep -Fx "agentbox-rerun-log-marker" /var/log/tanaab/agentbox/openclaw-gateway.stdout.log
 
 # should report tailscale health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_loaded_ok=1"

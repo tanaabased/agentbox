@@ -129,6 +129,8 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_mode=serve"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_port=18789"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_launchd_loaded_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_launchd_running_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_log_permissions_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_status_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
 
@@ -162,14 +164,24 @@ sudo grep -F "export AGENTBOX_SERVICE_KIND='openclaw-gateway'" /Users/openclaw/.
 sudo grep -F "export AGENTBOX_HEALTH_COMMAND='/opt/tanaab/agentbox/bin/health.sh --report'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
 sudo grep -E "^export AGENTBOX_VERSION='[^']+'$" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
 
-# should reach the default openclaw gateway ready endpoint locally
+# should keep private openclaw gateway logs owned by the runner
+sudo stat -f "%Su:%Sg:%Lp" /var/log/tanaab/agentbox | tee /dev/stderr | grep -Fx "root:wheel:755"
+sudo stat -f "%Su:%Sg:%Lp" /var/log/tanaab/agentbox/openclaw-gateway.stdout.log | tee /dev/stderr | grep -Fx "openclaw:$(id -gn openclaw):600"
+sudo stat -f "%Su:%Sg:%Lp" /var/log/tanaab/agentbox/openclaw-gateway.stderr.log | tee /dev/stderr | grep -Fx "openclaw:$(id -gn openclaw):600"
+
+# should restart the default openclaw gateway from its final filesystem state
+sudo launchctl kickstart -k system/dev.tanaab.agentbox.openclaw-gateway
 curl \
   --fail \
   --silent \
   --show-error \
   --ipv4 \
   --connect-timeout 10 \
-  --max-time 30 \
+  --max-time 90 \
+  --retry 30 \
+  --retry-all-errors \
+  --retry-delay 2 \
+  --retry-max-time 90 \
   "http://127.0.0.1:18789/readyz" | tee /dev/stderr
 
 # should report tailscale health

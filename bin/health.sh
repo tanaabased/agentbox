@@ -3,10 +3,13 @@ set -euo pipefail
 
 STATE_FILE="/var/db/tanaab/agentbox/health.env"
 LOG_FILE="/var/log/tanaab/agentbox/health.log"
+AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
 HEALTH_LABEL="dev.tanaab.agentbox.health"
 TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 TAILSCALED_STATE_FILE="/var/db/tanaab/agentbox/tailscale/tailscaled.state"
 OPENCLAW_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
+OPENCLAW_GATEWAY_STDOUT_LOG="${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
+OPENCLAW_GATEWAY_STDERR_LOG="${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
 OFFICIAL_TAILSCALE_LABEL="com.tailscale.tailscaled"
 OFFICIAL_TAILSCALE_PLIST="/Library/LaunchDaemons/${OFFICIAL_TAILSCALE_LABEL}.plist"
@@ -167,6 +170,21 @@ path_group_rwx_value() {
 
   mode="$(stat -f "%Lp" "${path}" 2>/dev/null || true)"
   if [[ "${mode}" =~ ^[0-7]+$ ]] && (( (8#${mode} & 8#070) == 8#070 )); then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+path_owner_group_mode_value() {
+  local expected_group="$3"
+  local expected_mode="$4"
+  local expected_owner="$2"
+  local path="$1"
+  local value=""
+
+  value="$(stat -f "%Su:%Sg:%Lp" "${path}" 2>/dev/null || true)"
+  if [[ "${value}" == "${expected_owner}:${expected_group}:${expected_mode}" ]]; then
     printf '1'
   else
     printf '0'
@@ -493,9 +511,12 @@ generate_report() {
   local openclaw_service_mode="${AGENTBOX_HEALTH_OPENCLAW_SERVICE_MODE:-system}"
   local openclaw_gateway_label="${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL:-${OPENCLAW_GATEWAY_LABEL}}"
   local openclaw_gateway_launchd_loaded_ok="skipped"
+  local openclaw_gateway_launchd_running_ok="skipped"
+  local openclaw_gateway_log_permissions_ok="skipped"
   local openclaw_gateway_status_ok="0"
   local openclaw_gateway_tailscale_serve_route_ok="skipped"
   local openclaw_gateway_ok="0"
+  local openclaw_primary_group=""
   local ripgrep_path=""
   local ripgrep_ok="0"
   local trusted_brewgroup_nested_ok="skipped"
@@ -751,13 +772,28 @@ generate_report() {
   print_kv openclaw_gateway_port "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT}"
   if [[ "${openclaw_service_mode}" == "system" ]]; then
     openclaw_gateway_launchd_loaded_ok="0"
+    openclaw_gateway_launchd_running_ok="0"
+    openclaw_gateway_log_permissions_ok="0"
     if launchctl print "system/${openclaw_gateway_label}" >/dev/null 2>&1; then
       openclaw_gateway_launchd_loaded_ok="1"
+    fi
+    if launchctl print "system/${openclaw_gateway_label}" 2>/dev/null |
+      grep -Eq '^[[:space:]]*state = running$'; then
+      openclaw_gateway_launchd_running_ok="1"
+    fi
+    openclaw_primary_group="$(id -gn "${AGENTBOX_HEALTH_OPENCLAW_USER}" 2>/dev/null || true)"
+    if [[ -n "${AGENTBOX_HEALTH_OPENCLAW_USER}" && -n "${openclaw_primary_group}" ]] &&
+      [[ "$(path_owner_group_mode_value "${AGENTBOX_LOG_DIR}" root wheel 755)" == "1" ]] &&
+      [[ "$(path_owner_group_mode_value "${OPENCLAW_GATEWAY_STDOUT_LOG}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_primary_group}" 600)" == "1" ]] &&
+      [[ "$(path_owner_group_mode_value "${OPENCLAW_GATEWAY_STDERR_LOG}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_primary_group}" 600)" == "1" ]]; then
+      openclaw_gateway_log_permissions_ok="1"
     fi
   fi
   openclaw_gateway_status_ok="$(openclaw_gateway_status_ok_value)"
   if [[ "${openclaw_service_mode}" == "system" &&
     "${openclaw_gateway_launchd_loaded_ok}" == "1" &&
+    "${openclaw_gateway_launchd_running_ok}" == "1" &&
+    "${openclaw_gateway_log_permissions_ok}" == "1" &&
     "${openclaw_gateway_status_ok}" == "1" ]]; then
     openclaw_gateway_ok="1"
   elif [[ "${openclaw_service_mode}" == "user" && "${openclaw_gateway_status_ok}" == "1" ]]; then
@@ -765,8 +801,12 @@ generate_report() {
   fi
   if [[ "${openclaw_service_mode}" == "system" ]]; then
     mark_required openclaw_gateway_launchd_loaded_ok "${openclaw_gateway_launchd_loaded_ok}"
+    mark_required openclaw_gateway_launchd_running_ok "${openclaw_gateway_launchd_running_ok}"
+    mark_required openclaw_gateway_log_permissions_ok "${openclaw_gateway_log_permissions_ok}"
   else
     print_kv openclaw_gateway_launchd_loaded_ok "${openclaw_gateway_launchd_loaded_ok}"
+    print_kv openclaw_gateway_launchd_running_ok "${openclaw_gateway_launchd_running_ok}"
+    print_kv openclaw_gateway_log_permissions_ok "${openclaw_gateway_log_permissions_ok}"
   fi
   mark_required openclaw_gateway_status_ok "${openclaw_gateway_status_ok}"
   mark_required openclaw_gateway_ok "${openclaw_gateway_ok}"
