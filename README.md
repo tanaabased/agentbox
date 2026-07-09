@@ -424,9 +424,9 @@ OpenClaw's native `gateway status --require-rpc` check as the OpenClaw runner. T
 prints `openclaw_gateway_bind`, `openclaw_gateway_tailscale_mode`, and `openclaw_gateway_port`.
 Tailscale-enabled hosts should report `openclaw_gateway_bind=loopback` and
 `openclaw_gateway_tailscale_mode=serve`, `tailscale_magicdns_enabled=1`,
-`tailscale_https_certificates_enabled=1`, and `openclaw_gateway_tailscale_serve_route_ok=1`;
-hosts bootstrapped with Tailscale disabled should report `openclaw_gateway_bind=loopback` and
-`openclaw_gateway_tailscale_mode=off`.
+`tailscale_magicdns_resolver_ok=1`, `tailscale_https_certificates_enabled=1`, and
+`openclaw_gateway_tailscale_serve_route_ok=1`; hosts bootstrapped with Tailscale disabled should
+report `openclaw_gateway_bind=loopback` and `openclaw_gateway_tailscale_mode=off`.
 
 When brewgroup setup is enabled, the report should include `brewgroup_admin_user_ok=1` and
 `brewgroup_openclaw_user_ok=1` plus `brew_prefix_ok=1`. The report should also include

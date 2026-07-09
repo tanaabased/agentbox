@@ -1,26 +1,34 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
-- Added automatic agentbox payload resolution so `macos.sh` uses source-relative payloads during
-  development and matching release archive payloads for hosted releases.
+### Breaking Changes
+
+- Removed `--agentbox-version`; use source-relative payloads, release archives, or `AGENTBOX_PAYLOAD_DIR` instead. [#15](https://github.com/tanaabased/agentbox/pull/15)
+- Removed `--skip-openclaw-autologin`; system mode no longer needs autologin, and `user` mode owns it. [#15](https://github.com/tanaabased/agentbox/pull/15)
+- Renamed the hosted macOS entrypoint from `boot.sh` to `macos.sh`. [#16](https://github.com/tanaabased/agentbox/pull/16)
+
+### New Features
+
 - Added `--brewfile` and `AGENTBOX_BREWFILE` for optional extra Bootbox Brewfiles.
-- Added `Brewfile.extras` for optional Codex, Codex App, OpenClaw, and Warp casks.
-- Added gateway-only OpenClaw onboarding, OpenClaw gateway configuration, an agentbox-owned gateway
-  LaunchDaemon, and gateway health checks.
-- Added OpenClaw runner user creation, autologin, SSH keys, and health checks.
-- Added randomized selection from bundled OpenClaw runner profile images for newly created users.
-- Added `openclaw-cli`, `ripgrep`, and Homebrew login-shell `PATH` setup to the base bootstrap.
-- Added `unsupported.sh` as the hosted fallback for unsupported or unknown platforms.
-- Externalized the installed health script and agentbox LaunchDaemon plist bodies into root-level
-  `bin/` and `launchd/` directories.
-- Renamed the hosted macOS entrypoint to `macos.sh`.
-- Updated Tailscale-enabled OpenClaw gateway setup to keep the gateway bound to loopback and expose
-  it through Tailscale Serve.
-- Updated Tailscale setup to set the OpenClaw runner as the Tailscale operator and verify the
-  OpenClaw gateway Serve route during bootstrap and health checks.
-- Updated the agentbox-owned `tailscaled` LaunchDaemon to use an explicit state directory under
-  `/var/db/tanaab/agentbox/tailscale`.
-- Updated repo docs to make OpenClaw gateway host setup the target `agentbox` scope.
-- Updated `macos.sh --help` option layout for readability.
+- Added `--openclaw-auth-env` for provider auth choices not yet known to agentbox. [#15](https://github.com/tanaabased/agentbox/pull/15)
+- Added `--openclaw-service-mode` with default system supervision and optional OpenClaw user service mode. [#15](https://github.com/tanaabased/agentbox/pull/15)
+- Added automatic payload resolution for source checkouts, CI payloads, and release-matched archives. [#15](https://github.com/tanaabased/agentbox/pull/15)
+- Added base OpenClaw host tooling, including `openclaw-cli`, `ripgrep`, and login-shell Homebrew `PATH`.
+- Added gateway-only OpenClaw onboarding with loopback binding and Tailscale Serve exposure. [#13](https://github.com/tanaabased/agentbox/pull/13)
+- Added OpenClaw runner user creation, SSH access, profile image setup, and health checks. [#13](https://github.com/tanaabased/agentbox/pull/13)
+- Added `unsupported.sh` as the hosted fallback for unsupported or unknown platforms. [#16](https://github.com/tanaabased/agentbox/pull/16)
+
+### Improvements
+
+- Updated health reports to cover service mode, gateway readiness, Tailscale Serve, MagicDNS settings, and resolver drift.
+- Updated OpenClaw system services to use generated runner-owned service environment files. [#15](https://github.com/tanaabased/agentbox/pull/15)
+- Updated Tailscale setup to manage an agentbox-owned `tailscaled` state directory. [#15](https://github.com/tanaabased/agentbox/pull/15)
+- Updated Tailscale setup to set the OpenClaw runner as operator and configure a scoped MagicDNS resolver. [#15](https://github.com/tanaabased/agentbox/pull/15)
+
+### Bug Fixes
+
+- Fixed debug color rendering. [#10](https://github.com/tanaabased/agentbox/pull/10)
+- Fixed OpenClaw gateway launch environment alignment with OpenClaw service markers and macOS CA settings. [#15](https://github.com/tanaabased/agentbox/pull/15)
+- Fixed Tailscale Serve setup to fail early when MagicDNS or HTTPS Certificates are missing. [#15](https://github.com/tanaabased/agentbox/pull/15)
 
 ## v1.0.0-beta.5 - [June 16, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.5)
 
