@@ -21,9 +21,10 @@ agentbox \
   --brewgroup brewer:staff \
   --openclaw-identity "Emori One <emori>" \
   --openclaw-password "$AGENTBOX_OPENCLAW_PASSWORD" \
-  --openclaw-service-mode user \
+  --openclaw-service-mode system \
   --openclaw-auth-choice openai \
-  --openclaw-gateway-port 18789
+  --openclaw-gateway-port 18789 \
+  --debug
 ```
 
 **Notes**
