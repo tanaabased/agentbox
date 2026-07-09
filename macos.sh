@@ -298,6 +298,7 @@ declare -a RESOLVED_EXTRA_BREWFILES=()
 declare -a AGENTBOX_PROFILE_IMAGE_SOURCES=()
 BOOT_TMPDIR=""
 BOOTBOX_SCRIPT_PATH=""
+SUDO_KEEPALIVE_PID=""
 CORE_NEEDS_REMEDIATION="0"
 CURL=""
 DETECTED_ARCH=""
@@ -2713,6 +2714,11 @@ require_command() {
 }
 
 cleanup() {
+  if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then
+    kill "${SUDO_KEEPALIVE_PID}" >/dev/null 2>&1 || true
+    wait "${SUDO_KEEPALIVE_PID}" 2>/dev/null || true
+  fi
+
   if [[ -n "${BOOT_TMPDIR:-}" && -d "${BOOT_TMPDIR}" ]]; then
     rm -rf "${BOOT_TMPDIR}"
   fi
@@ -2920,6 +2926,35 @@ EOS
   fi
 
   abort "sudo access is required before agentbox can install packages or configure services."
+}
+
+start_sudo_keepalive() {
+  if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then
+    return 0
+  fi
+
+  (
+    while :; do
+      sudo -n -v >/dev/null 2>&1 || exit 0
+      sleep 60
+    done
+  ) &
+  SUDO_KEEPALIVE_PID="$!"
+}
+
+start_sudo_session() {
+  local phase="${1:-before bootstrap changes}"
+
+  if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then
+    return 0
+  fi
+
+  if [[ -z "${CI-}" && -z "${NONINTERACTIVE-}" ]]; then
+    log "agentbox needs sudo to install packages and configure macOS services; enter your admin password if prompted."
+  fi
+
+  check_sudo_access "${phase}"
+  start_sudo_keepalive
 }
 
 core_remediation_needed() {
@@ -4106,7 +4141,9 @@ main() {
   apply_noninteractive_mode
   prepare_agentbox_payload
   validate_inputs_before_sudo
-  check_sudo_access
+  if [[ -n "${CI-}" || -n "${NONINTERACTIVE-}" ]]; then
+    start_sudo_session "before non-interactive input validation"
+  fi
   validate_inputs
   warn_if_xcode_clt_missing
 
@@ -4161,6 +4198,7 @@ main() {
     wait_for_user
   fi
 
+  start_sudo_session
   ensure_bootbox_core_requirements
   run_agentbox_hostname_setup
   run_agentbox_macos_settings
