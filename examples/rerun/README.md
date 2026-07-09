@@ -26,6 +26,15 @@ agentbox \
   --openclaw-auth-choice skip \
   --openclaw-gateway-port 18789
 
+# should register a conflicting official tailscale launchd job before rerun
+sudo /usr/bin/plutil -create xml1 /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo /usr/bin/plutil -insert Label -string com.tailscale.tailscaled /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo /usr/bin/plutil -insert ProgramArguments -json '["/usr/bin/true"]' /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo chown root:wheel /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo chmod 644 /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo launchctl print system/com.tailscale.tailscaled >/dev/null
+
 # should rerun agentbox successfully without a tailscale auth key
 AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
   --force \
@@ -62,7 +71,12 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 
 # should report tailscale health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_loaded_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_running_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_official_launchd_absent_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_state_file_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_ok=1"
+sudo test ! -e /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+if sudo launchctl print system/com.tailscale.tailscaled >/dev/null 2>&1; then exit 1; fi
 
 # should pass the overall agentbox health check
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"

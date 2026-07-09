@@ -37,6 +37,8 @@ OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL="ai.openclaw.gateway"
 AGENTBOX_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
 HOMEBREW_TAILSCALE_SYSTEM_PLIST_PATH="/Library/LaunchDaemons/${HOMEBREW_TAILSCALE_LABEL}.plist"
+OFFICIAL_TAILSCALE_LABEL="com.tailscale.tailscaled"
+OFFICIAL_TAILSCALE_SYSTEM_PLIST_PATH="/Library/LaunchDaemons/${OFFICIAL_TAILSCALE_LABEL}.plist"
 AGENTBOX_REPO_ARCHIVE_BASE_URL="https://github.com/tanaabased/agentbox/archive/refs/tags"
 SSHD_BIN="/usr/sbin/sshd"
 SSHD_CONFIG_PATH="/etc/ssh/sshd_config"
@@ -3086,6 +3088,7 @@ plan_wrapper_execution() {
   if tailscale_setup_disabled; then
     plan_action "${tty_tp}skip${tty_reset} tailscale setup because the auth-key input is disabled"
   else
+    plan_action "${tty_tp}remove${tty_reset} competing official or homebrew ${tty_ts}tailscaled${tty_reset} launchd services if present"
     plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, tailscale serve prerequisites, and scoped magicdns resolver"
   fi
   if openclaw_service_mode_is_system; then
@@ -3567,6 +3570,19 @@ prepare_tailscaled_statedir() {
   execute sudo chmod 700 "${AGENTBOX_TAILSCALED_STATE_DIR}"
 }
 
+remove_official_tailscale_launchd_service() {
+  if sudo launchctl print "system/${OFFICIAL_TAILSCALE_LABEL}" >/dev/null 2>&1 ||
+    sudo test -f "${OFFICIAL_TAILSCALE_SYSTEM_PLIST_PATH}"; then
+    log "${tty_tp}removing${tty_reset} competing official tailscale launchd daemon ${tty_ts}${OFFICIAL_TAILSCALE_LABEL}${tty_reset}"
+  fi
+
+  sudo launchctl bootout "system/${OFFICIAL_TAILSCALE_LABEL}" >/dev/null 2>&1 || true
+  sudo launchctl bootout system "${OFFICIAL_TAILSCALE_SYSTEM_PLIST_PATH}" >/dev/null 2>&1 || true
+  if sudo test -f "${OFFICIAL_TAILSCALE_SYSTEM_PLIST_PATH}"; then
+    execute sudo rm -f "${OFFICIAL_TAILSCALE_SYSTEM_PLIST_PATH}"
+  fi
+}
+
 remove_homebrew_tailscale_launchd_services() {
   local admin_uid=""
   local homebrew_user_plist_path="${HOME}/Library/LaunchAgents/${HOMEBREW_TAILSCALE_LABEL}.plist"
@@ -3604,6 +3620,11 @@ verify_agentbox_tailscaled_launchd_setup() {
     abort "agentbox tailscaled launchd daemon is not loaded in the system launchd domain."
   fi
 
+  if sudo launchctl print "system/${OFFICIAL_TAILSCALE_LABEL}" >/dev/null 2>&1 ||
+    sudo test -f "${OFFICIAL_TAILSCALE_SYSTEM_PLIST_PATH}"; then
+    abort "competing official tailscale launchd daemon ${tty_ts}${OFFICIAL_TAILSCALE_LABEL}${tty_reset} is still installed or loaded."
+  fi
+
   if sudo launchctl print "system/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
     abort "legacy homebrew tailscale launchd daemon is still loaded in the system launchd domain."
   fi
@@ -3611,10 +3632,82 @@ verify_agentbox_tailscaled_launchd_setup() {
   if [[ -n "${admin_uid}" ]] && launchctl print "gui/${admin_uid}/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
     abort "legacy homebrew tailscale launchd agent is still loaded in the invoking user's launchd domain."
   fi
+
+  if ! wait_for_agentbox_tailscaled_launchd_running; then
+    abort "agentbox tailscaled launchd daemon did not remain running; inspect ${tty_ts}${AGENTBOX_LOG_DIR}/tailscaled.stderr.log${tty_reset} for a competing process or startup failure."
+  fi
 }
 
 agentbox_tailscaled_launchd_loaded() {
   agentbox_system_launchd_loaded "${AGENTBOX_TAILSCALED_LABEL}"
+}
+
+agentbox_tailscaled_launchd_running() {
+  sudo launchctl print "system/${AGENTBOX_TAILSCALED_LABEL}" 2>/dev/null |
+    grep -Eq '^[[:space:]]*state = running$'
+}
+
+wait_for_agentbox_tailscaled_launchd_running() {
+  local attempts="0"
+
+  while [[ "${attempts}" -lt 30 ]]; do
+    attempts=$((attempts + 1))
+    if agentbox_tailscaled_launchd_running; then
+      sleep 2
+      agentbox_tailscaled_launchd_running && return 0
+    fi
+    sleep 1
+  done
+
+  return 1
+}
+
+agentbox_tailscaled_state_file_path() {
+  printf "%s/tailscaled.state" "${AGENTBOX_TAILSCALED_STATE_DIR}"
+}
+
+verify_agentbox_tailscaled_state_file() {
+  local state_file
+
+  state_file="$(agentbox_tailscaled_state_file_path)"
+  if ! sudo test -s "${state_file}"; then
+    abort "agentbox tailscaled state was not persisted at ${tty_ts}${state_file}${tty_reset}; refusing to report a successful tailscale join."
+  fi
+}
+
+wait_for_agentbox_tailscale_running_status() {
+  local attempts="0"
+  local backend_state=""
+  local current_hostname=""
+  local status_json=""
+
+  while [[ "${attempts}" -lt 30 ]]; do
+    attempts=$((attempts + 1))
+    status_json="$(capture_tailscale_status_json || true)"
+    if [[ -n "${status_json}" ]]; then
+      backend_state="$(json_value "${status_json}" '.BackendState // empty' || true)"
+      current_hostname="$(json_value "${status_json}" '.Self.HostName // empty' || true)"
+      if [[ "${backend_state}" == "Running" && "${current_hostname}" == "${TAILSCALE_HOSTNAME_VALUE}" ]]; then
+        printf "%s" "${status_json}"
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+
+  return 1
+}
+
+verify_agentbox_tailscale_restart_persistence() {
+  local status_json=""
+
+  verify_agentbox_tailscaled_state_file
+  log "${tty_tp}verifying${tty_reset} tailscale state survives an agentbox daemon restart"
+  execute sudo launchctl kickstart -k "system/${AGENTBOX_TAILSCALED_LABEL}"
+  verify_agentbox_tailscaled_launchd_setup
+  if ! status_json="$(wait_for_agentbox_tailscale_running_status)"; then
+    abort "tailscale did not return as ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset} with backend state ${tty_ts}Running${tty_reset} after restarting the agentbox daemon."
+  fi
 }
 
 run_agentbox_tailscaled_launchd_setup() {
@@ -3627,11 +3720,15 @@ run_agentbox_tailscaled_launchd_setup() {
   execute sudo mkdir -p "${AGENTBOX_LOG_DIR}"
   execute sudo chown root:wheel "${AGENTBOX_LOG_DIR}"
   execute sudo chmod 755 "${AGENTBOX_LOG_DIR}"
+  remove_official_tailscale_launchd_service
   remove_homebrew_tailscale_launchd_services
   prepare_tailscaled_statedir
   write_agentbox_tailscaled_plist "${tailscaled_bin}"
 
   refresh_agentbox_system_launchd_service "${AGENTBOX_TAILSCALED_LABEL}" "${AGENTBOX_TAILSCALED_PLIST_PATH}" "1" "0"
+  if ! agentbox_tailscaled_launchd_running; then
+    execute sudo launchctl kickstart -k "system/${AGENTBOX_TAILSCALED_LABEL}"
+  fi
   verify_agentbox_tailscaled_launchd_setup
 }
 
@@ -3681,6 +3778,7 @@ run_agentbox_tailscale_setup() {
         warn "tailscale is already joined as ${current_hostname}, but backend state is ${backend_state:-unknown}; skipping reauth."
       fi
 
+      verify_agentbox_tailscaled_state_file
       configure_tailscale_operator_user
       configure_tailscale_magicdns_resolver "${status_json}"
       verify_tailscale_serve_prerequisites "${status_json}"
@@ -3689,6 +3787,7 @@ run_agentbox_tailscale_setup() {
     fi
 
     warn "tailscale is already joined as ${current_hostname}; expected ${TAILSCALE_HOSTNAME_VALUE}. skipping reauth for this run."
+    verify_agentbox_tailscaled_state_file
     configure_tailscale_operator_user
     configure_tailscale_magicdns_resolver "${status_json}"
     verify_tailscale_serve_prerequisites "${status_json}"
@@ -3707,7 +3806,8 @@ run_agentbox_tailscale_setup() {
   fi
 
   configure_tailscale_operator_user
-  status_json="$(capture_tailscale_status_json || true)"
+  verify_agentbox_tailscale_restart_persistence
+  status_json="$(wait_for_agentbox_tailscale_running_status || true)"
   if [[ -n "${status_json}" ]]; then
     configure_tailscale_magicdns_resolver "${status_json}"
   else

@@ -5,8 +5,11 @@ STATE_FILE="/var/db/tanaab/agentbox/health.env"
 LOG_FILE="/var/log/tanaab/agentbox/health.log"
 HEALTH_LABEL="dev.tanaab.agentbox.health"
 TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
+TAILSCALED_STATE_FILE="/var/db/tanaab/agentbox/tailscale/tailscaled.state"
 OPENCLAW_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
+OFFICIAL_TAILSCALE_LABEL="com.tailscale.tailscaled"
+OFFICIAL_TAILSCALE_PLIST="/Library/LaunchDaemons/${OFFICIAL_TAILSCALE_LABEL}.plist"
 SSHD_BIN="/usr/sbin/sshd"
 SOCKETFILTERFW="/usr/libexec/ApplicationFirewall/socketfilterfw"
 SSH_ACCESS_GROUP="com.apple.access_ssh"
@@ -498,8 +501,11 @@ generate_report() {
   local trusted_brewgroup_nested_ok="skipped"
   local health_launchd_loaded_ok="0"
   local tailscaled_launchd_loaded_ok="skipped"
+  local tailscaled_launchd_running_ok="skipped"
   local tailscaled_homebrew_launchd_absent_ok="skipped"
   local tailscaled_homebrew_user_launchd_absent_ok="skipped"
+  local tailscaled_official_launchd_absent_ok="skipped"
+  local tailscaled_state_file_ok="skipped"
   local tailscale_backend_state=""
   local tailscale_hostname=""
   local tailscale_https_certificates_enabled="skipped"
@@ -769,11 +775,19 @@ generate_report() {
   print_kv expected_tailscale_hostname "${AGENTBOX_HEALTH_EXPECTED_TAILSCALE_HOSTNAME}"
   if [[ "${AGENTBOX_HEALTH_TAILSCALE_ENABLED}" == "1" ]]; then
     tailscaled_launchd_loaded_ok="0"
+    tailscaled_launchd_running_ok="0"
     tailscaled_homebrew_launchd_absent_ok="1"
     tailscaled_homebrew_user_launchd_absent_ok="1"
+    tailscaled_official_launchd_absent_ok="1"
+    tailscaled_state_file_ok="0"
 
     if launchctl print "system/${TAILSCALED_LABEL}" >/dev/null 2>&1; then
       tailscaled_launchd_loaded_ok="1"
+    fi
+
+    if launchctl print "system/${TAILSCALED_LABEL}" 2>/dev/null |
+      grep -Eq '^[[:space:]]*state = running$'; then
+      tailscaled_launchd_running_ok="1"
     fi
 
     if launchctl print "system/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
@@ -782,6 +796,15 @@ generate_report() {
 
     if [[ -n "${admin_uid}" ]] && launchctl print "gui/${admin_uid}/${HOMEBREW_TAILSCALE_LABEL}" >/dev/null 2>&1; then
       tailscaled_homebrew_user_launchd_absent_ok="0"
+    fi
+
+    if launchctl print "system/${OFFICIAL_TAILSCALE_LABEL}" >/dev/null 2>&1 ||
+      [[ -f "${OFFICIAL_TAILSCALE_PLIST}" ]]; then
+      tailscaled_official_launchd_absent_ok="0"
+    fi
+
+    if [[ -s "${TAILSCALED_STATE_FILE}" ]]; then
+      tailscaled_state_file_ok="1"
     fi
 
     if command -v tailscale >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
@@ -834,14 +857,20 @@ generate_report() {
       print_kv tailscale_https_certificates_enabled "${tailscale_https_certificates_enabled}"
     fi
     mark_required tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
+    mark_required tailscaled_launchd_running_ok "${tailscaled_launchd_running_ok}"
     mark_required tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
     mark_required tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
+    mark_required tailscaled_official_launchd_absent_ok "${tailscaled_official_launchd_absent_ok}"
+    mark_required tailscaled_state_file_ok "${tailscaled_state_file_ok}"
     mark_required tailscale_operator_ok "${tailscale_operator_ok}"
     mark_required tailscale_ok "${tailscale_ok}"
   else
     print_kv tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
+    print_kv tailscaled_launchd_running_ok "${tailscaled_launchd_running_ok}"
     print_kv tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
     print_kv tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
+    print_kv tailscaled_official_launchd_absent_ok "${tailscaled_official_launchd_absent_ok}"
+    print_kv tailscaled_state_file_ok "${tailscaled_state_file_ok}"
     print_kv tailscale_magicdns_enabled "${tailscale_magicdns_enabled}"
     print_kv tailscale_magicdns_resolver_ok "${tailscale_magicdns_resolver_ok}"
     print_kv tailscale_magicdns_suffix "${tailscale_magicdns_suffix}"

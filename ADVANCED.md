@@ -395,6 +395,10 @@ When Tailscale is enabled, `agentbox` installs
 `agentbox` does not use `brew services` as the Tailscale launchd wrapper. On rerun, it reloads the
 daemon only when the rendered plist changed, and otherwise leaves the already loaded daemon running.
 The daemon state directory is `/var/db/tanaab/agentbox/tailscale`.
+Before loading its daemon, `agentbox` removes conflicting official CLI and Homebrew launchd wrappers
+while preserving their binaries and state directories. A new join must persist
+`/var/db/tanaab/agentbox/tailscale/tailscaled.state` and survive one managed daemon restart before
+bootstrap continues.
 
 When Tailscale is enabled, `agentbox` sets the OpenClaw runner as the Tailscale operator so the
 OpenClaw Gateway process can use native Tailscale Serve without sudo. Bootstrap fails if the tailnet
@@ -478,7 +482,10 @@ legacy Homebrew launchd wrapper is not:
 
 ```ini
 tailscaled_launchd_loaded_ok=1
+tailscaled_launchd_running_ok=1
 tailscaled_homebrew_launchd_absent_ok=1
+tailscaled_official_launchd_absent_ok=1
+tailscaled_state_file_ok=1
 ```
 
 The report should also include the core dependency checks. `agentbox` does not pin `node@24`; the

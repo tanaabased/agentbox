@@ -174,14 +174,18 @@ curl \
 
 # should report tailscale health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_loaded_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_running_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_homebrew_launchd_absent_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_homebrew_user_launchd_absent_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_official_launchd_absent_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_state_file_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_ok=1"
 
 # should render the tailscaled launchd daemon state directory
 sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist | grep -E '^.+$'
 sudo /usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist | grep -Fx -- "--statedir=/var/db/tanaab/agentbox/tailscale"
 sudo test -d /var/db/tanaab/agentbox/tailscale
+sudo test -s /var/db/tanaab/agentbox/tailscale/tailscaled.state
 test "$(sudo stat -f "%Su:%Sg:%Lp" /var/db/tanaab/agentbox/tailscale)" = "root:wheel:700"
 
 # should install the tailnet magicdns resolver
