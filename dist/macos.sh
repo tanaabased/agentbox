@@ -263,7 +263,7 @@ tty_ts="$(tty_escape '38;2;219;39;119')"
 
 SCRIPT_NAME="${0##*/}"
 # Keep a single top-level assignment so release automation can stamp the entrypoint in place.
-SCRIPT_VERSION="${SCRIPT_VERSION:-$(git describe --tags --always --abbrev=1 2>/dev/null || printf '%s' '0.0.0-unreleased')}"
+SCRIPT_VERSION="v1.0.0-beta.6"
 INVOCATION_CWD="${PWD}"
 
 DEBUG="${AGENTBOX_DEBUG:-${DEBUG:-${RUNNER_DEBUG:-}}}"

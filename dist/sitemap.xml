@@ -2,19 +2,19 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://agentbox.tanaab.sh/macos.sh</loc>
-    <lastmod>2026-07-08T20:26:35.000Z</lastmod>
+    <lastmod>2026-07-09T15:22:46.000Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://agentbox.tanaab.sh/unsupported.sh</loc>
-    <lastmod>2026-07-08T20:26:35.000Z</lastmod>
+    <lastmod>2026-07-09T15:22:46.000Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://agentbox.tanaab.sh/llms.txt</loc>
-    <lastmod>2026-07-08T20:26:35.000Z</lastmod>
+    <lastmod>2026-07-09T15:22:46.000Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.5</priority>
   </url>

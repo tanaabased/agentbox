@@ -1,5 +1,7 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+## v1.0.0-beta.6 - [July 9, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.6)
+
 ### Breaking Changes
 
 - Removed `--agentbox-version`; use source-relative payloads, release archives, or `AGENTBOX_PAYLOAD_DIR` instead. [#15](https://github.com/tanaabased/agentbox/pull/15)
