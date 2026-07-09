@@ -55,6 +55,10 @@ This is directional guidance, not the current public contract:
 
 ## Critical Rules
 
+- Style the product, repository, and CLI name as lowercase `agentbox` in all prose and user-facing
+  output, including at the start of a sentence. Never render the brand as `AgentBox`; preserve
+  uppercase only where required by case-sensitive identifiers such as `AGENTBOX_*` environment
+  variables, constants, and fixture hostnames.
 - Do not edit, regenerate, stage, or commit `dist/` during routine local work. Change source inputs
   and leave generated output to CI unless the user explicitly asks.
 - Do not run `bun run build` locally unless the user explicitly asks for generated-output

@@ -2953,7 +2953,10 @@ start_sudo_session() {
   fi
 
   if [[ -z "${CI-}" && -z "${NONINTERACTIVE-}" ]]; then
-    log "agentbox needs sudo to install packages and configure macOS services; enter your admin password if prompted."
+    log ""
+    log "${tty_bold}${tty_tp}administrator access required${tty_reset}"
+    log "agentbox uses sudo to install packages and configure macOS services."
+    log "enter your admin password when prompted; agentbox keeps this authorization active until it exits."
   fi
 
   check_sudo_access "${phase}"
