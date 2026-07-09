@@ -8,12 +8,13 @@
 
 ### New Features
 
-- Added `--brewfile` and `AGENTBOX_BREWFILE` for optional extra Bootbox Brewfiles.
+- Added `--brewfile` and `AGENTBOX_BREWFILE` for optional extra Bootbox Brewfiles. [#13](https://github.com/tanaabased/agentbox/pull/13)
 - Added `--openclaw-auth-env` for provider auth choices not yet known to agentbox. [#15](https://github.com/tanaabased/agentbox/pull/15)
+- Added `--openclaw-gateway-port` for configuring the local OpenClaw Gateway port. [#13](https://github.com/tanaabased/agentbox/pull/13)
 - Added `--openclaw-service-mode` with default system supervision and optional OpenClaw user service mode. [#15](https://github.com/tanaabased/agentbox/pull/15)
 - Added automatic payload resolution for source checkouts, CI payloads, and release-matched archives. [#15](https://github.com/tanaabased/agentbox/pull/15)
-- Added base OpenClaw host tooling, including `openclaw-cli`, `ripgrep`, and login-shell Homebrew `PATH`.
-- Added gateway-only OpenClaw onboarding with loopback binding and Tailscale Serve exposure. [#13](https://github.com/tanaabased/agentbox/pull/13)
+- Added base OpenClaw host tooling, including `openclaw-cli`, `ripgrep`, and login-shell Homebrew `PATH`. [#13](https://github.com/tanaabased/agentbox/pull/13)
+- Added gateway-only OpenClaw onboarding with loopback binding and optional Tailscale Serve exposure. [#13](https://github.com/tanaabased/agentbox/pull/13)
 - Added OpenClaw runner user creation, SSH access, profile image setup, and health checks. [#13](https://github.com/tanaabased/agentbox/pull/13)
 - Added `unsupported.sh` as the hosted fallback for unsupported or unknown platforms. [#16](https://github.com/tanaabased/agentbox/pull/16)
 
@@ -21,6 +22,7 @@
 
 - Updated health reports to cover service mode, gateway readiness, Tailscale Serve, MagicDNS settings, and resolver drift.
 - Updated OpenClaw system services to use generated runner-owned service environment files. [#15](https://github.com/tanaabased/agentbox/pull/15)
+- Updated setup docs with a shorter README and new `ADVANCED.md` operator reference.
 - Updated Tailscale setup to manage an agentbox-owned `tailscaled` state directory. [#15](https://github.com/tanaabased/agentbox/pull/15)
 - Updated Tailscale setup to set the OpenClaw runner as operator and configure a scoped MagicDNS resolver. [#15](https://github.com/tanaabased/agentbox/pull/15)
 

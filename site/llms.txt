@@ -1,19 +1,24 @@
-# agentbox
+# `agentbox`
 
-> agentbox is a hosted macOS 26.x bootstrap script for preparing a physically accessible Mac as a managed OpenClaw host.
+> `agentbox` prepares a Mac to become a managed, headless OpenClaw host with a running OpenClaw Gateway, reasonable security defaults, and optional Tailscale access.
 
-agentbox owns the host substrate from fresh Mac to working OpenClaw gateway: base packages, optional extra Brewfiles, Homebrew prefix brewgroup permissions, macOS headless settings, SSH/Tailscale connectivity, a non-sudo OpenClaw runner user, gateway-only OpenClaw onboarding, configurable gateway supervision, Tailscale Serve exposure, scoped MagicDNS resolver setup, launchd health, recovery, security hardening, and future host-level OpenClaw plugin installation.
+`agentbox` is a hosted macOS bootstrap script for going from a fresh Mac to a running OpenClaw Gateway and a host ready for agent workspaces. It targets macOS 26.x on `x64` and `arm64`, requires a sudo-capable admin user plus physical or admin recovery access, and is best run on a fresh Mac dedicated to the OpenClaw host role.
 
-Current releases provide the base host bootstrap plus OpenClaw gateway bring-up, including OpenClaw CLI, ripgrep, login-shell Homebrew PATH setup, runner SSH authorized keys, macOS Remote Login access, runner brewgroup membership, gateway-only onboarding, and an agentbox-owned system LaunchDaemon that runs the gateway as the runner user by default. The optional OpenClaw native user-service mode enables runner autologin when a per-user LaunchAgent is explicitly selected.
+Linux and Windows are not supported yet. Linux support is planned.
 
-Agent workspaces layer on top of that host and remain out of scope here: no EMORI-specific setup, per-agent dotfiles, project credentials, trading services, app-specific workloads, router port forwarding, or public WAN exposure. Tailscale is recommended, but setup can be explicitly disabled.
+At a high level, `agentbox` installs Homebrew and core dependencies, creates or reuses a non-admin OpenClaw runner user, sets macOS system identity and headless power/time/recovery defaults, enables classic SSH, launches OpenClaw Gateway in `system` or `user` service mode, installs health checks and logs, optionally hardens SSH to key-only access, optionally connects the Mac to a Tailscale tailnet, and optionally configures initial OpenClaw model auth.
+
+The advanced reference covers installed components, the full option and environment-variable contract, brewgroup behavior, OpenClaw service modes, OpenClaw auth environment handling, Tailscale details, health-report fields, and payload resolution.
+
+Agent workspaces layer on top of the host and remain out of scope here: no agent-, persona-, or workspace-specific setup, dotfiles, project credentials, trading services, app-specific workloads, router port forwarding, or public WAN exposure. Tailscale is recommended for remote access, but setup can be explicitly disabled.
 
 ## Primary Resources
 
 - [Hosted macOS script](https://agentbox.tanaab.sh/macos.sh): The generated shell entrypoint for bootstrapping a Mac.
 - [Hosted unsupported script](https://agentbox.tanaab.sh/unsupported.sh): The generated fallback for unsupported or unknown platforms.
-- [GitHub repository](https://github.com/tanaabased/agentbox): Source code, README, workflows, and examples.
-- [README](https://github.com/tanaabased/agentbox#readme): Human setup, usage, configuration, and verification guidance.
+- [README source](https://raw.githubusercontent.com/tanaabased/agentbox/main/README.md): Main setup path, quickstart, usage, manual setup checklist, verification, and project links.
+- [Advanced source](https://raw.githubusercontent.com/tanaabased/agentbox/main/ADVANCED.md): Installed components, full configuration reference, health-report keys, and payload-resolution details.
+- [GitHub repository](https://github.com/tanaabased/agentbox): Source code, canonical docs, workflows, and examples.
 - [Releases](https://github.com/tanaabased/agentbox/releases): Published release tags for version-pinned installs.
 - [Issues](https://github.com/tanaabased/agentbox/issues): Bug reports, regressions, and feature requests.
 - [Bootbox](https://github.com/tanaabased/bootbox): The generic macOS bootstrap layer used by agentbox.
