@@ -385,6 +385,50 @@ tailscale_https_certificates_enabled_value() {
   fi
 }
 
+tailscale_magicdns_suffix_value() {
+  local status_json="$1"
+
+  printf "%s" "${status_json}" | jq -r '.CurrentTailnet.MagicDNSSuffix // ""' 2>/dev/null | sed 's/[.]$//'
+}
+
+tailscale_magicdns_suffix_valid() {
+  local suffix="$1"
+
+  [[ -n "${suffix}" &&
+    "${suffix}" != *..* &&
+    "${suffix}" =~ ^[A-Za-z0-9][-A-Za-z0-9.]*[A-Za-z0-9]$ ]]
+}
+
+tailscale_magicdns_resolver_path_value() {
+  local suffix="$1"
+
+  if tailscale_magicdns_suffix_valid "${suffix}"; then
+    printf "/etc/resolver/%s" "${suffix}"
+  fi
+  return 0
+}
+
+tailscale_magicdns_resolver_ok_value() {
+  local status_json="$1"
+  local resolver_path=""
+  local suffix=""
+
+  if [[ -z "${status_json}" ]] || ! command -v jq >/dev/null 2>&1; then
+    printf '0'
+    return 0
+  fi
+
+  suffix="$(tailscale_magicdns_suffix_value "${status_json}" || true)"
+  resolver_path="$(tailscale_magicdns_resolver_path_value "${suffix}")"
+  if [[ -n "${resolver_path}" &&
+    -f "${resolver_path}" ]] &&
+    grep -Eq '^[[:space:]]*nameserver[[:space:]]+100[.]100[.]100[.]100([[:space:]]|$)' "${resolver_path}" 2>/dev/null; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
 print_brewgroup() {
   if [[ "${STATE_LOADED}" != "1" ]]; then
     printf 'off\n'
@@ -461,6 +505,9 @@ generate_report() {
   local tailscale_https_certificates_enabled="skipped"
   local tailscale_ip=""
   local tailscale_magicdns_enabled="skipped"
+  local tailscale_magicdns_resolver_ok="skipped"
+  local tailscale_magicdns_resolver_path="skipped"
+  local tailscale_magicdns_suffix="skipped"
   local tailscale_firewall_warning="skipped"
   local tailscale_operator_ok="skipped"
   local tailscale_operator_user=""
@@ -745,6 +792,9 @@ generate_report() {
         tailscale_ip="$(printf "%s" "${tailscale_status_json}" | jq -r '(.Self.TailscaleIPs // []) | .[0] // ""' 2>/dev/null || true)"
         tailscale_magicdns_enabled="$(tailscale_magicdns_enabled_value "${tailscale_status_json}")"
         tailscale_https_certificates_enabled="$(tailscale_https_certificates_enabled_value "${tailscale_status_json}")"
+        tailscale_magicdns_suffix="$(tailscale_magicdns_suffix_value "${tailscale_status_json}" || true)"
+        tailscale_magicdns_resolver_path="$(tailscale_magicdns_resolver_path_value "${tailscale_magicdns_suffix}")"
+        tailscale_magicdns_resolver_ok="$(tailscale_magicdns_resolver_ok_value "${tailscale_status_json}")"
       fi
       tailscale_operator_user="$(tailscale debug prefs 2>/dev/null | jq -r '.OperatorUser // ""' 2>/dev/null || true)"
     fi
@@ -753,6 +803,8 @@ generate_report() {
     print_kv tailscale_hostname "${tailscale_hostname}"
     print_kv tailscale_ip "${tailscale_ip}"
     print_kv tailscale_operator_user "${tailscale_operator_user}"
+    print_kv tailscale_magicdns_suffix "${tailscale_magicdns_suffix}"
+    print_kv tailscale_magicdns_resolver_path "${tailscale_magicdns_resolver_path}"
 
     if [[ "${tailscale_backend_state}" == "Running" &&
       -n "${tailscale_ip}" &&
@@ -770,6 +822,7 @@ generate_report() {
     fi
     if [[ "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE}" == "serve" ]]; then
       mark_required tailscale_magicdns_enabled "${tailscale_magicdns_enabled}"
+      mark_required tailscale_magicdns_resolver_ok "${tailscale_magicdns_resolver_ok}"
       mark_required tailscale_https_certificates_enabled "${tailscale_https_certificates_enabled}"
       openclaw_gateway_tailscale_serve_route_ok="$(
         openclaw_gateway_tailscale_serve_route_ok_value "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT}"
@@ -777,6 +830,7 @@ generate_report() {
       mark_required openclaw_gateway_tailscale_serve_route_ok "${openclaw_gateway_tailscale_serve_route_ok}"
     else
       print_kv tailscale_magicdns_enabled "${tailscale_magicdns_enabled}"
+      print_kv tailscale_magicdns_resolver_ok "${tailscale_magicdns_resolver_ok}"
       print_kv tailscale_https_certificates_enabled "${tailscale_https_certificates_enabled}"
     fi
     mark_required tailscaled_launchd_loaded_ok "${tailscaled_launchd_loaded_ok}"
@@ -789,6 +843,9 @@ generate_report() {
     print_kv tailscaled_homebrew_launchd_absent_ok "${tailscaled_homebrew_launchd_absent_ok}"
     print_kv tailscaled_homebrew_user_launchd_absent_ok "${tailscaled_homebrew_user_launchd_absent_ok}"
     print_kv tailscale_magicdns_enabled "${tailscale_magicdns_enabled}"
+    print_kv tailscale_magicdns_resolver_ok "${tailscale_magicdns_resolver_ok}"
+    print_kv tailscale_magicdns_suffix "${tailscale_magicdns_suffix}"
+    print_kv tailscale_magicdns_resolver_path "${tailscale_magicdns_resolver_path}"
     print_kv tailscale_https_certificates_enabled "${tailscale_https_certificates_enabled}"
     print_kv tailscale_operator_user "${tailscale_operator_user}"
     print_kv tailscale_operator_ok "${tailscale_operator_ok}"
