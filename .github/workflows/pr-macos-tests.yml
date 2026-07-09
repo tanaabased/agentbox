@@ -12,7 +12,7 @@ env:
 
 jobs:
   examples:
-    name: macOS / ${{ matrix.example }}
+    name: ${{ matrix.example }}
     runs-on: macos-26
     strategy:
       fail-fast: false
