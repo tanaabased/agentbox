@@ -2986,6 +2986,7 @@ bootbox_run() {
     TANAAB_SSH_KEYS
     TANAAB_FORCE
     TANAAB_DEBUG
+    BOOTBOX_EXTERNAL_SUDO
     BOOTBOX_QUIET
     TANAAB_QUIET
     TANAAB_ARCH
@@ -3019,6 +3020,7 @@ bootbox_run() {
     bootbox_display_command+=("AGENTBOX_FORCE=${FORCE}")
   fi
 
+  bootbox_command+=("BOOTBOX_EXTERNAL_SUDO=1")
   bootbox_command+=("BOOTBOX_QUIET=1")
   bootbox_display_command+=("BOOTBOX_QUIET=1")
 
