@@ -51,8 +51,12 @@ consumed in CI, and many scenarios mutate GitHub-hosted macOS runners.
   assertion files.
 - When a mutating example provides authorized keys, verify localhost SSH login with the generated
   private key fixture instead of only inspecting `authorized_keys`.
-- Avoid braced shell variable expansions such as `${VAR}` when plain `$VAR` works; Leia parsing has
-  been brittle around braces.
+- Leia embeds executable command blocks in JavaScript template literals. Inside those blocks, do not
+  use literal backticks or braced shell expansions such as `${VAR}`.
+- Use `$(command)` instead of backtick command substitution and `$VAR` instead of `${VAR}`. When
+  braces are required for shell semantics, move that logic into a checked-in example-local helper.
+- These restrictions do not apply to Markdown fences or inline code outside executable blocks;
+  shell tests using `[ ... ]` or `[[ ... ]]` remain safe.
 - Do not give setup fixture commands standalone `# should` blocks unless the fixture state itself is
   the contract. Put `mkdir -p "$TMPDIR"` beside the first fixture that writes into `TMPDIR`.
 
