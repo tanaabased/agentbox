@@ -23,8 +23,7 @@ agentbox \
   --openclaw-password "$AGENTBOX_OPENCLAW_PASSWORD" \
   --openclaw-service-mode system \
   --openclaw-auth-choice openai \
-  --openclaw-gateway-port 18789 \
-  --debug
+  --openclaw-gateway-port 18789
 ```
 
 **Notes**
@@ -36,3 +35,4 @@ agentbox \
 - `--openclaw-auth-choice openai` is the ChatGPT/Codex subscription route. OpenClaw's default OAuth
   flow uses a browser callback; for headless or callback-hostile setups, use OpenClaw's device-code
   login flow after bootstrap.
+- Add `--debug` when troubleshooting bootstrap output; agentbox keeps supported secret values masked.
