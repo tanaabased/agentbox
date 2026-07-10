@@ -69,6 +69,7 @@ authorization_line="$(grep -n -m 1 -F "administrator access required" "$TMPDIR/i
 test -n "$bootbox_line"
 test -n "$authorization_line"
 test "$bootbox_line" -lt "$authorization_line"
+grep -Fx "bootbox_sudo_prompt_count=0" "$TMPDIR/interactive.log"
 grep -Fx "agentbox_sudo_prompt_count=1" "$TMPDIR/interactive.log"
 
 # should pass the overall agentbox health check

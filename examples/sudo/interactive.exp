@@ -1,7 +1,26 @@
 #!/usr/bin/expect -f
 
-set timeout 3600
+set timeout 600
 match_max 200000
+
+proc fail_phase {phase reason} {
+  global expect_out
+
+  set output ""
+  if {[info exists expect_out(buffer)]} {
+    set output $expect_out(buffer)
+    if {[string length $output] > 4000} {
+      set output [string range $output end-3999 end]
+    }
+  }
+
+  puts stderr "$reason during $phase"
+  if {$output ne ""} {
+    puts stderr "last output:"
+    puts stderr $output
+  }
+  exit 1
+}
 
 set password_file [open $env(AGENTBOX_SUDO_PASSWORD_FILE) r]
 set password [string trim [read $password_file]]
@@ -30,36 +49,67 @@ set bootbox_sudo_prompt_count 0
 spawn -noecho $env(AGENTBOX_SUDO_AGENTBOX)
 
 expect {
+  -re {(?i)(^|[\r\n])[^\r\n]*password[^\r\n]*:[ \t]*$} {
+    incr bootbox_sudo_prompt_count
+    fail_phase "plan confirmation" "unexpected password prompt"
+  }
   -re {to continue or any other key to abort:} {
     send -- "\r"
-    exp_continue
+  }
+  eof { fail_phase "plan confirmation" "agentbox exited unexpectedly" }
+  timeout { fail_phase "plan confirmation" "timed out" }
+}
+
+expect {
+  -re {(?i)(^|[\r\n])[^\r\n]*password[^\r\n]*:[ \t]*$} {
+    incr bootbox_sudo_prompt_count
+    fail_phase "bootbox execution" "unexpected password prompt"
+  }
+  -re {bootbox finished applying agentbox brewfiles} {}
+  eof { fail_phase "bootbox execution" "agentbox exited unexpectedly" }
+  timeout { fail_phase "bootbox execution" "timed out" }
+}
+
+expect {
+  -re {(?i)(^|[\r\n])[^\r\n]*password[^\r\n]*:[ \t]*$} {
+    incr bootbox_sudo_prompt_count
+    fail_phase "administrator authorization gate" "unexpected password prompt"
   }
   -re {administrator access required} {
     set administrator_gate_seen 1
-    exp_continue
   }
-  -re {(?i)password[^:]*:} {
-    if {$administrator_gate_seen} {
-      incr agentbox_sudo_prompt_count
-      if {$agentbox_sudo_prompt_count > 1} {
-        puts stderr "agentbox requested the administrator password more than once"
-        exit 1
-      }
-    } else {
-      incr bootbox_sudo_prompt_count
-    }
+  eof { fail_phase "administrator authorization gate" "agentbox exited unexpectedly" }
+  timeout { fail_phase "administrator authorization gate" "timed out" }
+}
+
+expect {
+  -re {(?i)(^|[\r\n])[^\r\n]*password[^\r\n]*:[ \t]*$} {
+    incr agentbox_sudo_prompt_count
     send -- "$password\r"
-    exp_continue
+  }
+  eof { fail_phase "administrator password prompt" "agentbox exited unexpectedly" }
+  timeout { fail_phase "administrator password prompt" "timed out" }
+}
+
+expect {
+  -re {(?i)(^|[\r\n])[^\r\n]*password[^\r\n]*:[ \t]*$} {
+    incr agentbox_sudo_prompt_count
+    fail_phase "openclaw security confirmation" "agentbox requested the administrator password more than once"
   }
   -re {I understand this is personal-by-default.*Continue\?} {
-    send -- "\r"
-    exp_continue
+    send -- "y\r"
+  }
+  eof { fail_phase "openclaw security confirmation" "agentbox exited unexpectedly" }
+  timeout { fail_phase "openclaw security confirmation" "timed out" }
+}
+
+expect {
+  -re {(?i)(^|[\r\n])[^\r\n]*password[^\r\n]*:[ \t]*$} {
+    incr agentbox_sudo_prompt_count
+    fail_phase "agentbox completion" "agentbox requested the administrator password more than once"
   }
   eof {}
-  timeout {
-    puts stderr "timed out waiting for the interactive agentbox run"
-    exit 1
-  }
+  timeout { fail_phase "agentbox completion" "timed out" }
 }
 
 set wait_result [wait]
@@ -72,11 +122,16 @@ if {!$administrator_gate_seen} {
   puts stderr "interactive agentbox never displayed its administrator authorization gate"
   exit 1
 }
+if {$bootbox_sudo_prompt_count != 0} {
+  puts stderr "bootbox requested the administrator password $bootbox_sudo_prompt_count times"
+  exit 1
+}
 if {$agentbox_sudo_prompt_count != 1} {
   puts stderr "interactive agentbox requested its administrator password $agentbox_sudo_prompt_count times"
   exit 1
 }
 
+send_log "bootbox_sudo_prompt_count=$bootbox_sudo_prompt_count\n"
 send_log "agentbox_sudo_prompt_count=$agentbox_sudo_prompt_count\n"
 puts "bootbox_sudo_prompt_count=$bootbox_sudo_prompt_count"
 puts "agentbox_sudo_prompt_count=$agentbox_sudo_prompt_count"
