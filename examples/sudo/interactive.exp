@@ -1,0 +1,82 @@
+#!/usr/bin/expect -f
+
+set timeout 3600
+match_max 200000
+
+set password_file [open $env(AGENTBOX_SUDO_PASSWORD_FILE) r]
+set password [string trim [read $password_file]]
+close $password_file
+
+unset -nocomplain env(CI)
+unset -nocomplain env(NONINTERACTIVE)
+set env(INTERACTIVE) 1
+set env(AGENTBOX_DEBUG) 1
+set env(AGENTBOX_FORCE) 1
+set env(AGENTBOX_HOSTNAME) TANAABAGENTBOXSUDO
+set env(AGENTBOX_BREWGROUP) off
+set env(AGENTBOX_TAILSCALE_AUTHKEY) off
+set env(AGENTBOX_OPENCLAW_IDENTITY) "Sudo Example Claw <sudoclaw>"
+set env(AGENTBOX_OPENCLAW_PASSWORD) $password
+set env(AGENTBOX_OPENCLAW_AUTH_CHOICE) skip
+set env(AGENTBOX_OPENCLAW_GATEWAY_PORT) 18789
+set env(AGENTBOX_PAYLOAD_DIR) $env(AGENTBOX_SUDO_WORKSPACE)
+
+log_file -noappend $env(AGENTBOX_SUDO_TRANSCRIPT)
+
+set administrator_gate_seen 0
+set agentbox_sudo_prompt_count 0
+set bootbox_sudo_prompt_count 0
+
+spawn -noecho $env(AGENTBOX_SUDO_AGENTBOX)
+
+expect {
+  -re {to continue or any other key to abort:} {
+    send -- "\r"
+    exp_continue
+  }
+  -re {administrator access required} {
+    set administrator_gate_seen 1
+    exp_continue
+  }
+  -re {(?i)password[^:]*:} {
+    if {$administrator_gate_seen} {
+      incr agentbox_sudo_prompt_count
+      if {$agentbox_sudo_prompt_count > 1} {
+        puts stderr "agentbox requested the administrator password more than once"
+        exit 1
+      }
+    } else {
+      incr bootbox_sudo_prompt_count
+    }
+    send -- "$password\r"
+    exp_continue
+  }
+  -re {I understand this is personal-by-default.*Continue\?} {
+    send -- "\r"
+    exp_continue
+  }
+  eof
+  timeout {
+    puts stderr "timed out waiting for the interactive agentbox run"
+    exit 1
+  }
+}
+
+set wait_result [wait]
+set exit_status [lindex $wait_result 3]
+if {$exit_status != 0} {
+  puts stderr "interactive agentbox exited with status $exit_status"
+  exit $exit_status
+}
+if {!$administrator_gate_seen} {
+  puts stderr "interactive agentbox never displayed its administrator authorization gate"
+  exit 1
+}
+if {$agentbox_sudo_prompt_count != 1} {
+  puts stderr "interactive agentbox requested its administrator password $agentbox_sudo_prompt_count times"
+  exit 1
+}
+
+send_log "agentbox_sudo_prompt_count=$agentbox_sudo_prompt_count\n"
+puts "bootbox_sudo_prompt_count=$bootbox_sudo_prompt_count"
+puts "agentbox_sudo_prompt_count=$agentbox_sudo_prompt_count"

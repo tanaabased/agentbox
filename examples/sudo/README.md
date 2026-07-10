@@ -1,140 +1,85 @@
 # Sudo Example
 
-This example verifies the non-mutating `agentbox` sudo contract with example-local fake sudo and
-Bootbox commands. It exercises interactive authorization, stale-keepalive recovery, contextual
-reauthorization, the Bootbox boundary, and CI paths without changing machine state or reading an
-administrator password.
+This example runs the prepared `agentbox` entrypoint with real macOS users, `/usr/bin/sudo`,
+Bootbox, Homebrew, and launchd. It verifies the password-required interactive authorization boundary
+on a fresh GitHub-hosted runner rather than replacing product dependencies with test doubles.
 
 ## Setup
 
 ```bash
-# should have prepared agentbox on PATH or provided a local source override
-if ! printenv AGENTBOX_SUDO_TEST_SCRIPT >/dev/null; then command -v agentbox >/dev/null; fi
+# should have the prepared agentbox entrypoint and interactive driver
+test -x "$GITHUB_WORKSPACE/dist/agentbox"
+test -d "$AGENTBOX_PAYLOAD_DIR/.git"
+test -x /usr/bin/expect
+test -f interactive.exp
 
-# should have executable sudo fixtures
-test -x bin/run-agentbox
-test -x bin/sudo
-test -x bin/bootbox
-```
-
-## Testing
-
-```bash
-# should check sudo capability before downloading bootbox
-agentbox_source="$(printenv AGENTBOX_SUDO_TEST_SCRIPT 2>/dev/null || command -v agentbox)"
-awk '
-  /^main[(][)] [{]/ { in_main=1 }
-  in_main && $0 == "  validate_sudo_capability" { capability=NR }
-  in_main && $0 == "  prepare_bootbox_script" { download=NR }
-  END { exit !(capability < download) }
-' "$agentbox_source"
-```
-
-```bash
-# should keep bootbox brewfile application before interactive authorization
-agentbox_source="$(printenv AGENTBOX_SUDO_TEST_SCRIPT 2>/dev/null || command -v agentbox)"
-awk '
-  /^main[(][)] [{]/ { in_main=1 }
-  in_main && $0 == "  ensure_bootbox_core_requirements" { core=NR }
-  in_main && $0 == "  run_bootbox_for_agentbox_brewfile" { brewfiles=NR }
-  in_main && $0 == "  start_sudo_session" { authorization=NR }
-  in_main && $0 == "  run_agentbox_hostname_setup" { host_setup=NR }
-  END { exit !(core < brewfiles && brewfiles < authorization && authorization < host_setup) }
-' "$agentbox_source"
-```
-
-```bash
-# should authorize once after bootbox invalidates a cached sudo timestamp
+# should prepare a password-required macos administrator
 mkdir -p "$TMPDIR"
-output="$(bin/run-agentbox interactive-brew-invalidates 2>&1)"
-printf "%s\n" "$output"
-printf "%s\n" "$output" | grep -F "debug prepared effective brewfile at /var/folders/fake/brewfile-effective.test"
-printf "%s\n" "$output" | grep -F "keepalive_after_authorization=alive"
-printf "%s\n" "$output" | grep -F "verified sudo access before\\ homebrew\\ login-shell\\ PATH\\ setup"
-state_dir="$TMPDIR/sudo-state-interactive-brew-invalidates"
-grep -Fx "bootbox_external_sudo=missing" "$state_dir/bootbox.log"
-test "$(sed -n '1p' "$state_dir/events.log")" = "bootbox"
-test "$(sed -n '2p' "$state_dir/events.log")" = "sudo -k"
-test "$(sed -n '3p' "$state_dir/events.log")" = "sudo -v"
-test "$(grep -Fxc "password-prompt" "$state_dir/password-prompts.log")" -eq 1
-grep -Fx "sudo -n -v" "$state_dir/sudo.log"
-grep -Fx "sudo -n /usr/bin/true" "$state_dir/sudo.log"
-tail -n +3 "$state_dir/sudo.log" | awk '$2 != "-n" { exit 1 }'
-```
+umask 077
+printf "Agentbox%sAa1!\n" "$(uuidgen | tr -d '-')" > "$TMPDIR/admin-password"
+sudo sysadminctl -addUser sudoexample -fullName "Sudo Example Admin" -password "$(cat "$TMPDIR/admin-password")" -home /Users/sudoexample -shell /bin/bash -admin
+sudo /usr/sbin/createhomedir -c -u sudoexample
+printf '%s\n' 'Defaults:sudoexample timestamp_timeout=5' 'sudoexample ALL = (ALL) PASSWD: ALL' | sudo tee /private/etc/sudoers.d/zz-agentbox-sudo-example >/dev/null
+sudo chmod 440 /private/etc/sudoers.d/zz-agentbox-sudo-example
+sudo visudo -cf /etc/sudoers
+sudo chown -R "sudoexample:$(id -gn sudoexample)" "$TMPDIR"
+sudo chown -R sudoexample:admin "$(brew --prefix)"
+if sudo -u sudoexample /usr/bin/sudo -n -v; then exit 1; fi
 
-```bash
-# should allow bootbox to request sudo before agentbox authorization when required
-output="$(bin/run-agentbox interactive-bootbox-sudo 2>&1)"
-printf "%s\n" "$output"
-grep -Fx "bootbox_external_sudo=missing" "$TMPDIR/sudo-state-interactive-bootbox-sudo/bootbox.log"
-test "$(sed -n '1p' "$TMPDIR/sudo-state-interactive-bootbox-sudo/events.log")" = "bootbox"
-test "$(sed -n '2p' "$TMPDIR/sudo-state-interactive-bootbox-sudo/events.log")" = "sudo -v"
-test "$(sed -n '3p' "$TMPDIR/sudo-state-interactive-bootbox-sudo/events.log")" = "sudo -v"
-test "$(grep -Fxc "sudo -v" "$TMPDIR/sudo-state-interactive-bootbox-sudo/sudo.log")" -eq 2
-grep -Fx "sudo -n /usr/bin/true" "$TMPDIR/sudo-state-interactive-bootbox-sudo/sudo.log"
-```
-
-```bash
-# should restart a stale keepalive while cached authorization remains valid
-output="$(bin/run-agentbox stale-keepalive 2>&1)"
-printf "%s\n" "$output"
-printf "%s\n" "$output" | grep -F "keepalive_before_check=dead"
-printf "%s\n" "$output" | grep -F "detected inactive sudo keepalive"
-printf "%s\n" "$output" | grep -F "restarted sudo keepalive before\\ homebrew\\ login-shell\\ PATH\\ setup"
-printf "%s\n" "$output" | grep -F "keepalive_after_check=alive"
-test "$(grep -Fxc "sudo -v" "$TMPDIR/sudo-state-stale-keepalive/sudo.log")" -eq 1
-grep -Fx "sudo -n /usr/bin/true" "$TMPDIR/sudo-state-stale-keepalive/sudo.log"
-tail -n +2 "$TMPDIR/sudo-state-stale-keepalive/sudo.log" | awk '$2 != "-n" { exit 1 }'
-if printf "%s\n" "$output" | grep -F "administrator authorization required again"; then exit 1; fi
-```
-
-```bash
-# should explain and recover each time interactive authorization is lost
-output="$(bin/run-agentbox interactive-recovery 2>&1)"
-printf "%s\n" "$output"
-printf "%s\n" "$output" | grep -F "keepalive_before_check=dead"
-test "$(printf "%s\n" "$output" | grep -Fxc "administrator authorization required again")" -eq 2
-printf "%s\n" "$output" | grep -F "agentbox could not refresh its sudo authorization during before homebrew login-shell PATH setup."
-printf "%s\n" "$output" | grep -F "agentbox could not refresh its sudo authorization during before second privileged phase."
-printf "%s\n" "$output" | grep -F "restored sudo access before\\ homebrew\\ login-shell\\ PATH\\ setup"
-printf "%s\n" "$output" | grep -F "restored sudo access before\\ second\\ privileged\\ phase"
-printf "%s\n" "$output" | grep -F "keepalive_after_recovery=alive"
-test "$(grep -Fxc "sudo -v" "$TMPDIR/sudo-state-interactive-recovery/sudo.log")" -eq 3
-grep -Fx "sudo -n /usr/bin/true" "$TMPDIR/sudo-state-interactive-recovery/sudo.log"
-awk '$0 == "sudo -v" { prompts++; next } $2 != "-n" { exit 1 } END { exit (prompts == 3 ? 0 : 1) }' "$TMPDIR/sudo-state-interactive-recovery/sudo.log"
-```
-
-```bash
-# should keep ci sudo authorization fully noninteractive
-output="$(bin/run-agentbox ci-valid 2>&1)"
-printf "%s\n" "$output"
-printf "%s\n" "$output" | grep -F "verified sudo access before\\ ci\\ phase"
-grep -Fx "bootbox_external_sudo=1" "$TMPDIR/sudo-state-ci-valid/bootbox.log"
-grep -Fx "sudo -n /usr/bin/true" "$TMPDIR/sudo-state-ci-valid/sudo.log"
-if grep -Fx "sudo -v" "$TMPDIR/sudo-state-ci-valid/sudo.log"; then exit 1; fi
-awk '$2 != "-n" { exit 1 }' "$TMPDIR/sudo-state-ci-valid/sudo.log"
-if printf "%s\n" "$output" | grep -F "administrator access required"; then exit 1; fi
-```
-
-```bash
-# should fail ci authorization without prompting or starting a keepalive
+# should reject unavailable non-interactive sudo before bootbox
 set +e
-output="$(bin/run-agentbox ci-invalid 2>&1)"
+output="$(
+  sudo -u sudoexample env \
+    CI=1 \
+    NONINTERACTIVE=1 \
+    HOME=/Users/sudoexample \
+    USER=sudoexample \
+    LOGNAME=sudoexample \
+    AGENTBOX_PAYLOAD_DIR="$GITHUB_WORKSPACE" \
+    AGENTBOX_OPENCLAW_PASSWORD="$(cat "$TMPDIR/admin-password")" \
+    AGENTBOX_TAILSCALE_AUTHKEY=off \
+    AGENTBOX_BREWGROUP=off \
+    AGENTBOX_OPENCLAW_AUTH_CHOICE=skip \
+    "$GITHUB_WORKSPACE/dist/agentbox" --hostname TANAABAGENTBOXSUDO 2>&1
+)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
 test "$command_status" -ne 0
 printf "%s\n" "$output" | grep -F "sudo access is required before agentbox can install packages or configure services."
-printf "%s\n" "$output" | grep -F "keepalive_pid_at_exit=empty"
-printf "%s\n" "$output" | grep -F "sudo_session_active_at_exit=0"
-grep -Fx "sudo -n -v" "$TMPDIR/sudo-state-ci-invalid/sudo.log"
-if grep -Fx "sudo -v" "$TMPDIR/sudo-state-ci-invalid/sudo.log"; then exit 1; fi
-if printf "%s\n" "$output" | grep -F "administrator access required"; then exit 1; fi
+if printf "%s\n" "$output" | grep -F "bootbox finished applying agentbox brewfiles"; then exit 1; fi
+
+# should run agentbox interactively with real password-required sudo
+sudo -iu sudoexample env \
+  AGENTBOX_PAYLOAD_DIR="$GITHUB_WORKSPACE" \
+  AGENTBOX_SUDO_AGENTBOX="$GITHUB_WORKSPACE/dist/agentbox" \
+  AGENTBOX_SUDO_PASSWORD_FILE="$TMPDIR/admin-password" \
+  AGENTBOX_SUDO_TRANSCRIPT="$TMPDIR/interactive.log" \
+  AGENTBOX_SUDO_WORKSPACE="$GITHUB_WORKSPACE" \
+  TERM=xterm-256color \
+  /usr/bin/expect "$GITHUB_WORKSPACE/examples/sudo/interactive.exp"
+```
+
+## Testing
+
+```bash
+# should authorize agentbox once after bootbox completes
+bootbox_line="$(grep -n -m 1 -F "bootbox finished applying agentbox brewfiles" "$TMPDIR/interactive.log" | cut -d: -f1)"
+authorization_line="$(grep -n -m 1 -F "administrator access required" "$TMPDIR/interactive.log" | cut -d: -f1)"
+test -n "$bootbox_line"
+test -n "$authorization_line"
+test "$bootbox_line" -lt "$authorization_line"
+grep -Fx "agentbox_sudo_prompt_count=1" "$TMPDIR/interactive.log"
+
+# should pass the overall agentbox health check
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --check
 ```
 
 ## Destroy tests
 
 ```bash
-# should remove sudo fixtures
-rm -rf "$TMPDIR"/agentbox-sudo-testable.sh "$TMPDIR"/sudo-state-*
+# should remove generated sudo password material
+sudo rm -f /private/etc/sudoers.d/zz-agentbox-sudo-example
+sudo rm -f "$TMPDIR/admin-password"
 ```

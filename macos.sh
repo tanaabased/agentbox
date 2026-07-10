@@ -3299,6 +3299,7 @@ run_bootbox_for_agentbox_brewfile() {
   fi
 
   bootbox_run_or_abort agentbox "bootbox failed while applying agentbox brewfiles." "${bootbox_args[@]}"
+  debug "bootbox finished applying agentbox brewfiles"
 }
 
 resolve_brew_prefix() {
