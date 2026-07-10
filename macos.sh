@@ -3129,6 +3129,7 @@ bootbox_run() {
     TANAAB_DEBUG
     BOOTBOX_EXTERNAL_SUDO
     BOOTBOX_QUIET
+    HOMEBREW_ASK
     INTERACTIVE
     TANAAB_QUIET
     TANAAB_ARCH
@@ -3167,6 +3168,9 @@ bootbox_run() {
   fi
   bootbox_command+=("BOOTBOX_QUIET=1")
   bootbox_display_command+=("BOOTBOX_QUIET=1")
+
+  bootbox_command+=("HOMEBREW_NO_ASK=1")
+  bootbox_display_command+=("HOMEBREW_NO_ASK=1")
 
   bootbox_command+=("NONINTERACTIVE=1")
   bootbox_display_command+=("NONINTERACTIVE=1")
