@@ -65,6 +65,14 @@ grep -F -- "--non-interactive" "$TMPDIR/openclaw.log"
 grep -F -- "--accept-risk" "$TMPDIR/openclaw.log"
 grep -F -- "--json" "$TMPDIR/openclaw.log"
 
+# should print the detailed health report in debug mode
+grep -F "debug agentbox health report" "$TMPDIR/openclaw.log"
+grep -F "agentbox_ok=1" "$TMPDIR/openclaw.log"
+
+# should print the concise health success status
+grep -F "agentbox setup succeeded" "$TMPDIR/openclaw.log"
+! grep -F "agentbox post-bootstrap summary" "$TMPDIR/openclaw.log"
+
 # should render the openclaw gateway launchd daemon arguments
 sudo /usr/libexec/PlistBuddy -c "Print :WorkingDirectory" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -Fx "/Users/openclaw/.openclaw"
 sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist | grep -E '^.+$'

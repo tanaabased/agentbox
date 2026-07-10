@@ -21,16 +21,23 @@ test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 test -n "$AGENTBOX_TAILSCALE_AUTHKEY"
 
 # should run agentbox successfully
+set -o pipefail
 agentbox \
   --force \
   --hostname "TANAABAGENTBOX-DEF$GITHUB_RUN_ID" \
   --tailscale-authkey "$AGENTBOX_TAILSCALE_AUTHKEY" \
-  --openclaw-password "DefaultOpenClawPass1!"
+  --openclaw-password "DefaultOpenClawPass1!" \
+  2>&1 | tee "$TMPDIR/defaults.log"
 ```
 
 ## Testing
 
 ```bash
+# should print only the concise health success status without debug mode
+grep -F "agentbox setup succeeded" "$TMPDIR/defaults.log"
+! grep -F "agentbox_ok=" "$TMPDIR/defaults.log"
+! grep -F "debug agentbox health report" "$TMPDIR/defaults.log"
+
 # should install homebrew
 command -v brew >/dev/null
 

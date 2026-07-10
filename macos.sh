@@ -256,6 +256,7 @@ tty_mkbold() { tty_escape "1;$1"; }
 tty_mkdim() { tty_escape "2;$1"; }
 tty_bold="$(tty_mkbold 39)"
 tty_dim="$(tty_mkdim 39)"
+tty_green="$(tty_mkbold 32)"
 tty_magenta="$(tty_escape 35)"
 tty_red="$(tty_mkbold 31)"
 tty_reset="$(tty_escape 0)"
@@ -636,6 +637,16 @@ extra_brewfiles_display() {
 debug() {
   if debug_enabled; then
     printf "${tty_dim}debug${tty_reset} %s\n" "$(shell_join "$@")" >&2
+  fi
+}
+
+debug_multi() {
+  local label="$1"
+  local value="${2:-}"
+
+  if debug_enabled; then
+    printf "${tty_dim}debug${tty_reset} %s\n" "${label}" >&2
+    printf "%s\n" "${value}" >&2
   fi
 }
 
@@ -2630,9 +2641,24 @@ run_agentbox_launchd_health_setup() {
 }
 
 run_agentbox_post_bootstrap_summary() {
+  local health_command="${AGENTBOX_OPT_DIR}/bin/health.sh"
+  local health_ok="0"
+  local health_report
+
+  if health_report="$(sudo "${health_command}" --check 2>&1)"; then
+    health_ok="1"
+  fi
+
+  debug_multi "agentbox health report" "${health_report}"
   log
-  log "${tty_bold}agentbox post-bootstrap summary${tty_reset}"
-  sudo "${AGENTBOX_OPT_DIR}/bin/health.sh" --report || true
+  if [[ "${health_ok}" == "1" ]]; then
+    log "agentbox setup ${tty_green}succeeded${tty_reset}"
+    return 0
+  fi
+
+  printf "agentbox setup completed, but health checks %sfailed%s\n" "${tty_red}" "${tty_reset}" >&2
+  printf "%sdetails:%s %ssudo %s --report%s\n" "${tty_dim}" "${tty_reset}" "${tty_ts}" "${health_command}" "${tty_reset}" >&2
+  return 1
 }
 
 plan_action() {

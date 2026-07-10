@@ -139,8 +139,12 @@ sudo softwareupdate --install --all --restart
 
 ## Verification
 
-Reboot the Mac and confirm it returns to the expected network state before any GUI login. Then use the
-installed health script to check or report host state:
+At the end of setup, `agentbox` prints a concise health success or failure status. A failed health
+check exits nonzero and prints the report command below; `--debug` includes the full health report in
+the setup output.
+
+Reboot the Mac and confirm it returns to the expected network state before any GUI login. Then use
+the installed health script to check or report host state:
 
 ```sh
 sudo /opt/tanaab/agentbox/bin/health.sh --check
