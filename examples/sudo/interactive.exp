@@ -55,7 +55,7 @@ expect {
     send -- "\r"
     exp_continue
   }
-  eof
+  eof {}
   timeout {
     puts stderr "timed out waiting for the interactive agentbox run"
     exit 1
