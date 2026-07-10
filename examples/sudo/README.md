@@ -31,6 +31,7 @@ if sudo -u sudoexample /usr/bin/sudo -n -v; then exit 1; fi
 set +e
 output="$(
   sudo -u sudoexample env \
+    CI="$CI" \
     HOME=/Users/sudoexample \
     USER=sudoexample \
     LOGNAME=sudoexample \
