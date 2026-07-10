@@ -102,6 +102,10 @@ Common inputs:
 Use [ADVANCED.md](./ADVANCED.md) for the full option guide, payload-resolution details, brewgroup
 behavior, OpenClaw auth environment handling, and deeper Tailscale notes.
 
+On rerun, `agentbox` reconciles an existing valid local OpenClaw gateway configuration
+non-interactively instead of reopening the onboarding wizard. See
+[OpenClaw reruns and later configuration](./ADVANCED.md#reruns-and-later-openclaw-configuration).
+
 ## Manual Setup Checklist
 
 Before running `agentbox`:

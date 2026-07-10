@@ -53,6 +53,31 @@ does not require a GUI login session or autologin.
 that service is a LaunchAgent and requires a logged-in user session, so `agentbox` enables OpenClaw
 runner autologin in that mode. FileVault or local macOS policy may block autologin.
 
+#### Reruns and Later OpenClaw Configuration
+
+On first setup, interactive `agentbox` runs let OpenClaw show its normal onboarding flow. On a later
+run, `agentbox` asks OpenClaw to validate the runner configuration and read `gateway.mode`. When the
+configuration is valid and the gateway mode is `local`, `agentbox` reconciles its managed gateway
+settings through OpenClaw's non-interactive onboarding path instead of reopening the wizard. Missing,
+invalid, or non-local configuration keeps the normal onboarding path so repair remains visible.
+
+Use OpenClaw's native configuration flow for targeted changes after setup. The default runner command
+is:
+
+```sh
+sudo -iu openclaw "$(brew --prefix)/bin/openclaw" configure
+```
+
+Replace `openclaw` with the configured runner short name when using a custom identity. To deliberately
+run the complete OpenClaw onboarding flow again, use `onboard --classic` as that runner:
+
+```sh
+sudo -iu openclaw "$(brew --prefix)/bin/openclaw" onboard --classic
+```
+
+Full OpenClaw onboarding can change gateway or service choices. Rerun `agentbox` afterward to
+reconcile the agentbox-managed service mode, loopback bind, gateway port, and Tailscale exposure.
+
 ## Configuration Reference
 
 The public configuration surface is intentionally small. CLI options override environment variables,

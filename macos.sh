@@ -3250,7 +3250,7 @@ plan_wrapper_execution() {
   else
     plan_action "${tty_tp}remove${tty_reset} agentbox openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset} if present"
   fi
-  plan_action "${tty_tp}onboard${tty_reset} openclaw gateway config in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  plan_action "${tty_tp}onboard or reconcile${tty_reset} openclaw gateway configuration for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   if openclaw_service_mode_is_system; then
     plan_action "${tty_tp}install or refresh${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
   else
@@ -4055,8 +4055,32 @@ execute_as_openclaw_runner() {
   fi
 }
 
+openclaw_gateway_configuration_initialized() {
+  local openclaw_bin="$1"
+  local gateway_mode
+
+  if ! run_as_openclaw_runner "${openclaw_bin}" config validate --json >/dev/null 2>&1; then
+    debug "${tty_tp}detected${tty_reset}" missing or invalid openclaw gateway configuration for runner "${OPENCLAW_USER}"
+    return 1
+  fi
+
+  gateway_mode="$(run_as_openclaw_runner "${openclaw_bin}" config get gateway.mode 2>/dev/null)" || {
+    debug "${tty_tp}detected${tty_reset}" openclaw gateway configuration without a mode for runner "${OPENCLAW_USER}"
+    return 1
+  }
+  gateway_mode="$(trim_whitespace "${gateway_mode}")"
+  if [[ "${gateway_mode}" != "local" ]]; then
+    debug "${tty_tp}detected${tty_reset}" openclaw gateway mode "${gateway_mode}" instead of local for runner "${OPENCLAW_USER}"
+    return 1
+  fi
+
+  debug "${tty_tp}detected${tty_reset}" valid local openclaw gateway configuration for runner "${OPENCLAW_USER}"
+  return 0
+}
+
 run_openclaw_gateway_onboarding() {
   local openclaw_bin="$1"
+  local reconcile_existing="${2:-0}"
   local -a openclaw_args=()
   local custom_auth_env_value
   local onboarding_env_names
@@ -4097,7 +4121,7 @@ run_openclaw_gateway_onboarding() {
     openclaw_args+=(--install-daemon)
   fi
 
-  if noninteractive_mode_enabled; then
+  if noninteractive_mode_enabled || [[ "${reconcile_existing}" == "1" ]]; then
     openclaw_args+=(--non-interactive --accept-risk --json)
   else
     if [[ ! -t 0 ]]; then
@@ -4108,7 +4132,11 @@ run_openclaw_gateway_onboarding() {
     fi
   fi
 
-  log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode with service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  if [[ "${reconcile_existing}" == "1" ]]; then
+    log "${tty_tp}reconciling${tty_reset} existing openclaw gateway configuration non-interactively for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} with service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  else
+    log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode with service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  fi
   OPENCLAW_RUNNER_EXTRA_ENV_NAMES="${onboarding_env_names}" \
     OPENCLAW_RUNNER_STDIN_PATH="${runner_stdin_path}" \
     OPENCLAW_RUNNER_STDOUT_PATH="${runner_stdout_path}" \
@@ -4369,6 +4397,7 @@ wait_for_openclaw_gateway_tailscale_serve_route() {
 
 run_agentbox_openclaw_gateway_setup() {
   local openclaw_bin
+  local reconcile_existing="0"
 
   check_sudo_access "before openclaw gateway setup"
   resolve_brew_prefix
@@ -4378,7 +4407,10 @@ run_agentbox_openclaw_gateway_setup() {
   else
     remove_agentbox_openclaw_gateway_launchd_service
   fi
-  run_openclaw_gateway_onboarding "${openclaw_bin}"
+  if openclaw_gateway_configuration_initialized "${openclaw_bin}"; then
+    reconcile_existing="1"
+  fi
+  run_openclaw_gateway_onboarding "${openclaw_bin}" "${reconcile_existing}"
   if openclaw_service_mode_is_system; then
     log "${tty_tp}installing${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
     run_agentbox_openclaw_gateway_launchd_setup
@@ -4416,7 +4448,7 @@ main() {
   debug raw AGENTBOX_OPENCLAW_PASSWORD="$(openclaw_password_display)"
   debug raw AGENTBOX_OPENCLAW_SERVICE_MODE="${OPENCLAW_SERVICE_MODE}"
   debug raw OPENCLAW_AUTOLOGIN="$(openclaw_autologin_display)"
-  debug raw OPENCLAW_ONBOARDING_MODE="$(openclaw_onboarding_mode_display)"
+  debug raw AGENTBOX_INTERACTION_MODE="$(openclaw_onboarding_mode_display)"
   debug raw AGENTBOX_OPENCLAW_AUTH_CHOICE="${OPENCLAW_AUTH_CHOICE}"
   debug raw AGENTBOX_OPENCLAW_AUTH_ENV="$(openclaw_auth_env_display)"
   debug raw OPENCLAW_GATEWAY_BIND="${OPENCLAW_GATEWAY_BIND_VALUE}"

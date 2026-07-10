@@ -45,18 +45,27 @@ sudo tailscale down
 sudo tailscale status --json | tee /dev/stderr | jq -e '.BackendState == "Stopped"'
 
 # should rerun agentbox successfully without a tailscale auth key
+set -o pipefail
 AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
+  --debug \
   --force \
   --hostname "TANAABAGENTBOX-RERUN$GITHUB_RUN_ID" \
   --openclaw-identity "Rita Rerun Claw <rita>" \
   --openclaw-password "RitaRerunClawPass1!" \
   --openclaw-auth-choice skip \
-  --openclaw-gateway-port 18789
+  --openclaw-gateway-port 18789 \
+  2>&1 | tee "$TMPDIR/rerun.log"
 ```
 
 ## Testing
 
 ```bash
+# should reconcile existing openclaw gateway configuration non-interactively
+grep -F "reconciling existing openclaw gateway configuration non-interactively" "$TMPDIR/rerun.log"
+grep -F -- "--non-interactive" "$TMPDIR/rerun.log"
+grep -F -- "--accept-risk" "$TMPDIR/rerun.log"
+grep -F -- "--json" "$TMPDIR/rerun.log"
+
 # should keep the openclaw runner account
 id -u rita >/dev/null
 dscl . -read /Users/rita RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^[[:space:]]*//' | grep -Fx "Rita Rerun Claw"
