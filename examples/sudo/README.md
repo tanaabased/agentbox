@@ -20,7 +20,18 @@ test -x bin/bootbox
 ## Testing
 
 ```bash
-# should keep bootbox execution before interactive authorization in main
+# should check sudo capability before downloading bootbox
+agentbox_source="$(printenv AGENTBOX_SUDO_TEST_SCRIPT 2>/dev/null || command -v agentbox)"
+awk '
+  /^main[(][)] [{]/ { in_main=1 }
+  in_main && $0 == "  validate_sudo_capability" { capability=NR }
+  in_main && $0 == "  prepare_bootbox_script" { download=NR }
+  END { exit !(capability < download) }
+' "$agentbox_source"
+```
+
+```bash
+# should keep bootbox brewfile application before interactive authorization
 agentbox_source="$(printenv AGENTBOX_SUDO_TEST_SCRIPT 2>/dev/null || command -v agentbox)"
 awk '
   /^main[(][)] [{]/ { in_main=1 }
@@ -33,21 +44,22 @@ awk '
 ```
 
 ```bash
-# should run bootbox before requesting interactive agentbox authorization
+# should authorize once after bootbox invalidates a cached sudo timestamp
 mkdir -p "$TMPDIR"
-output="$(bin/run-agentbox interactive-happy 2>&1)"
+output="$(bin/run-agentbox interactive-brew-invalidates 2>&1)"
 printf "%s\n" "$output"
 printf "%s\n" "$output" | grep -F "debug prepared effective brewfile at /var/folders/fake/brewfile-effective.test"
 printf "%s\n" "$output" | grep -F "keepalive_after_authorization=alive"
 printf "%s\n" "$output" | grep -F "verified sudo access before\\ homebrew\\ login-shell\\ PATH\\ setup"
-grep -Fx "bootbox_external_sudo=missing" "$TMPDIR/sudo-state-interactive-happy/bootbox.log"
-test "$(sed -n '1p' "$TMPDIR/sudo-state-interactive-happy/events.log")" = "bootbox"
-test "$(sed -n '2p' "$TMPDIR/sudo-state-interactive-happy/events.log")" = "sudo -v"
-test "$(grep -Fxc "sudo -v" "$TMPDIR/sudo-state-interactive-happy/sudo.log")" -eq 1
-grep -Fx "sudo -n -v" "$TMPDIR/sudo-state-interactive-happy/sudo.log"
-grep -Fx "sudo -n /usr/bin/true" "$TMPDIR/sudo-state-interactive-happy/sudo.log"
-tail -n +2 "$TMPDIR/sudo-state-interactive-happy/sudo.log" | awk '$2 != "-n" { exit 1 }'
-if printf "%s\n" "$output" | grep -F "please enter sudo password:"; then exit 1; fi
+state_dir="$TMPDIR/sudo-state-interactive-brew-invalidates"
+grep -Fx "bootbox_external_sudo=missing" "$state_dir/bootbox.log"
+test "$(sed -n '1p' "$state_dir/events.log")" = "bootbox"
+test "$(sed -n '2p' "$state_dir/events.log")" = "sudo -k"
+test "$(sed -n '3p' "$state_dir/events.log")" = "sudo -v"
+test "$(grep -Fxc "password-prompt" "$state_dir/password-prompts.log")" -eq 1
+grep -Fx "sudo -n -v" "$state_dir/sudo.log"
+grep -Fx "sudo -n /usr/bin/true" "$state_dir/sudo.log"
+tail -n +3 "$state_dir/sudo.log" | awk '$2 != "-n" { exit 1 }'
 ```
 
 ```bash

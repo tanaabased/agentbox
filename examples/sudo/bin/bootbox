@@ -5,6 +5,11 @@ printf "debug prepared effective brewfile at /var/folders/fake/brewfile-effectiv
 printf "bootbox\n" >> "${AGENTBOX_FAKE_SUDO_EVENT_LOG}"
 printf "bootbox_external_sudo=%s\n" "${BOOTBOX_EXTERNAL_SUDO:-missing}" > "${AGENTBOX_FAKE_SUDO_STATE_DIR}/bootbox.log"
 
-if [[ "${AGENTBOX_FAKE_SUDO_CASE:-}" == "interactive-bootbox-sudo" ]]; then
-  "${SUDO_BIN}" -v
-fi
+case "${AGENTBOX_FAKE_SUDO_CASE:-}" in
+  interactive-brew-invalidates)
+    "${SUDO_BIN}" -k
+    ;;
+  interactive-bootbox-sudo)
+    "${SUDO_BIN}" -v
+    ;;
+esac

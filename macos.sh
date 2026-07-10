@@ -2909,6 +2909,16 @@ apply_noninteractive_mode() {
   fi
 }
 
+validate_sudo_capability() {
+  if [[ ! -x "${SUDO_BIN}" ]]; then
+    abort "sudo is required for agentbox bootstrap, but ${SUDO_BIN} was not found."
+  fi
+
+  if ! user_is_admin "${ADMIN_USER}"; then
+    abort "current user ${tty_ts}${ADMIN_USER}${tty_reset} must be a macos administrator before agentbox can continue."
+  fi
+}
+
 check_sudo_access() {
   local phase="${1:-initial}"
   local keepalive_was_active="1"
@@ -4386,6 +4396,7 @@ main() {
     start_sudo_session "before non-interactive input validation"
   fi
   validate_inputs
+  validate_sudo_capability
   warn_if_xcode_clt_missing
 
   debug "${tty_tp}running${tty_reset}" "${SCRIPT_NAME}" script version: "${SCRIPT_VERSION}"

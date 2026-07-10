@@ -81,8 +81,13 @@ This is directional guidance, not the current public contract:
 
 ## `macos.sh` Invariants
 
-- Preserve the macOS support gate and sudo preflight before Bootbox download, repo materialization,
-  Brewfile application, or other machine mutation.
+- Preserve the macOS support gate and a non-prompting sudo capability check before Bootbox download,
+  payload materialization, Brewfile application, or other machine mutation. This early check verifies
+  `/usr/bin/sudo` and the invoking admin account without establishing a sudo timestamp.
+- For interactive runs, establish the managed agentbox sudo session after Bootbox applies Brewfiles
+  because Homebrew invalidates prior sudo timestamps. For CI and other non-interactive runs, require
+  reusable non-interactive sudo before Bootbox and delegate that session with
+  `BOOTBOX_EXTERNAL_SUDO=1`.
 - Keep Bootbox delegation noninteractive; the `agentbox` wrapper owns the confirmation gate.
 - Keep payload resolution aligned with the running `macos.sh` and do not fall back to cloning the
   default branch.

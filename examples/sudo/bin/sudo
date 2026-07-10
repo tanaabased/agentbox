@@ -15,6 +15,18 @@ if [[ "${1:-}" == "-n" && "${2:-}" == "-v" ]]; then
 fi
 
 case "${AGENTBOX_FAKE_SUDO_CASE:-}" in
+  interactive-brew-invalidates)
+    if [[ "${1:-}" == "-k" ]]; then
+      rm -f "${AGENTBOX_FAKE_SUDO_STATE_DIR}/authorization-valid"
+    elif [[ "${1:-}" == "-v" ]]; then
+      if [[ ! -e "${AGENTBOX_FAKE_SUDO_STATE_DIR}/authorization-valid" ]]; then
+        printf "password-prompt\n" >> "${AGENTBOX_FAKE_SUDO_PROMPT_LOG}"
+        : > "${AGENTBOX_FAKE_SUDO_STATE_DIR}/authorization-valid"
+      fi
+    elif [[ "${1:-}" == "-n" && ! -e "${AGENTBOX_FAKE_SUDO_STATE_DIR}/authorization-valid" ]]; then
+      exit 1
+    fi
+    ;;
   stale-keepalive)
     if [[ "${is_validation}" == "1" && "${PPID}" != "${AGENTBOX_FAKE_SUDO_MAIN_PID}" && ! -e "${AGENTBOX_FAKE_SUDO_STATE_DIR}/keepalive-failed" ]]; then
       : > "${AGENTBOX_FAKE_SUDO_STATE_DIR}/keepalive-failed"
