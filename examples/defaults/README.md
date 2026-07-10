@@ -151,6 +151,7 @@ sudo grep -F "export TMPDIR='/Users/openclaw/.openclaw/tmp'" /Users/openclaw/.op
 sudo grep -F "export NODE_EXTRA_CA_CERTS='/etc/ssl/cert.pem'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
 sudo grep -F "export NODE_USE_SYSTEM_CA='1'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
 sudo grep -F "export OPENCLAW_STATE_DIR='/Users/openclaw/.openclaw'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo grep -F "export OPENCLAW_MDNS_HOSTNAME='TANAABAGENTBOX-DEF$GITHUB_RUN_ID'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
 sudo grep -F "export OPENCLAW_GATEWAY_PORT='18789'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
 sudo grep -F "export OPENCLAW_LAUNCHD_LABEL='dev.tanaab.agentbox.openclaw-gateway'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
 sudo grep -F "export OPENCLAW_SERVICE_MARKER='openclaw'" /Users/openclaw/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env

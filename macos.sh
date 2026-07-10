@@ -2437,6 +2437,7 @@ openclaw_gateway_service_env_content() {
   openclaw_gateway_service_env_entry "NODE_EXTRA_CA_CERTS" "$(openclaw_gateway_node_extra_ca_certs)"
   openclaw_gateway_service_env_entry "NODE_USE_SYSTEM_CA" "$(openclaw_gateway_node_use_system_ca)"
   openclaw_gateway_service_env_entry "OPENCLAW_STATE_DIR" "${state_dir}"
+  openclaw_gateway_service_env_entry "OPENCLAW_MDNS_HOSTNAME" "${AGENTBOX_HOSTNAME_VALUE}"
   openclaw_gateway_service_env_entry "OPENCLAW_GATEWAY_PORT" "${OPENCLAW_GATEWAY_PORT}"
   openclaw_gateway_service_env_entry "OPENCLAW_LAUNCHD_LABEL" "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
   openclaw_gateway_service_env_entry "OPENCLAW_SERVICE_MARKER" "openclaw"

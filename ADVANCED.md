@@ -268,12 +268,16 @@ TMPDIR
 NODE_EXTRA_CA_CERTS
 NODE_USE_SYSTEM_CA
 OPENCLAW_STATE_DIR
+OPENCLAW_MDNS_HOSTNAME
 OPENCLAW_GATEWAY_PORT
 OPENCLAW_LAUNCHD_LABEL
 OPENCLAW_SERVICE_MARKER=openclaw
 OPENCLAW_SERVICE_KIND=gateway
 OPENCLAW_SERVICE_VERSION
 ```
+
+`OPENCLAW_MDNS_HOSTNAME` uses the validated agentbox hostname so the system-mode Gateway advertises
+the same name through Bonjour. Native `user` mode service discovery remains OpenClaw-managed.
 
 `agentbox` also adds local integration markers:
 
