@@ -402,7 +402,8 @@ The daemon state directory is `/var/db/tanaab/agentbox/tailscale`.
 Before loading its daemon, `agentbox` removes conflicting official CLI and Homebrew launchd wrappers
 while preserving their binaries and state directories. A new join must persist
 `/var/db/tanaab/agentbox/tailscale/tailscaled.state` and survive one managed daemon restart before
-bootstrap continues.
+bootstrap continues. On rerun, `agentbox` resumes a stopped existing identity without a new auth key
+and requires it to return to the expected hostname with backend state `Running` before continuing.
 
 When Tailscale is enabled, `agentbox` sets the OpenClaw runner as the Tailscale operator so the
 OpenClaw Gateway process can use native Tailscale Serve without sudo. Bootstrap fails if the tailnet

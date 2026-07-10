@@ -3925,7 +3925,11 @@ run_agentbox_tailscale_setup() {
       if [[ "${backend_state}" == "Running" ]]; then
         log "${tty_tp}skipping${tty_reset} tailscale join; already joined as ${tty_ts}${current_hostname}${tty_reset}"
       else
-        warn "tailscale is already joined as ${current_hostname}, but backend state is ${backend_state:-unknown}; skipping reauth."
+        log "${tty_tp}resuming${tty_reset} existing tailscale identity ${tty_ts}${current_hostname}${tty_reset} from backend state ${tty_ts}${backend_state:-unknown}${tty_reset}"
+        execute sudo tailscale up
+        if ! status_json="$(wait_for_agentbox_tailscale_running_status)"; then
+          abort "tailscale did not return as ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset} with backend state ${tty_ts}Running${tty_reset} after resuming its existing identity."
+        fi
       fi
 
       verify_agentbox_tailscaled_state_file
@@ -3936,13 +3940,7 @@ run_agentbox_tailscale_setup() {
       return 0
     fi
 
-    warn "tailscale is already joined as ${current_hostname}; expected ${TAILSCALE_HOSTNAME_VALUE}. skipping reauth for this run."
-    verify_agentbox_tailscaled_state_file
-    configure_tailscale_operator_user
-    configure_tailscale_magicdns_resolver "${status_json}"
-    verify_tailscale_serve_prerequisites "${status_json}"
-    show_tailscale_status_summary
-    return 0
+    abort "tailscale is already joined as ${tty_ts}${current_hostname}${tty_reset}, but agentbox expects ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}; rerun with an agentbox hostname that derives the existing tailscale name, or log out before intentionally replacing the tailscale identity."
   fi
 
   if [[ -z "${TAILSCALE_AUTHKEY}" ]]; then

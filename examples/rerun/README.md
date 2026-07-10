@@ -40,6 +40,10 @@ sudo -u rita /bin/sh -c 'printf "%s\n" "agentbox-rerun-log-marker" >> /var/log/t
 sudo chown root:wheel /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log
 sudo chmod 600 /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log
 
+# should stop the existing tailscale identity before rerun
+sudo tailscale down
+sudo tailscale status --json | tee /dev/stderr | jq -e '.BackendState == "Stopped"'
+
 # should rerun agentbox successfully without a tailscale auth key
 AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
   --force \
@@ -85,6 +89,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ta
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_running_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_official_launchd_absent_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_state_file_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_backend_state=Running"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_ok=1"
 sudo test ! -e /Library/LaunchDaemons/com.tailscale.tailscaled.plist
 if sudo launchctl print system/com.tailscale.tailscaled >/dev/null 2>&1; then exit 1; fi
