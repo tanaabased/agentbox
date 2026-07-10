@@ -8,7 +8,7 @@ testable_agentbox="${TMPDIR}/agentbox-sudo-testable.sh"
 state_dir="${TMPDIR}/sudo-state-${case_name}"
 
 case "${case_name}" in
-  interactive-happy | stale-keepalive | interactive-recovery | ci-valid | ci-invalid)
+  interactive-happy | interactive-bootbox-sudo | stale-keepalive | interactive-recovery | ci-valid | ci-invalid)
     ;;
   *)
     printf "unknown sudo example case: %s\n" "${case_name:-<empty>}" >&2
@@ -27,10 +27,12 @@ rm -rf "${state_dir}"
 mkdir -p "${state_dir}/boot"
 
 export AGENTBOX_FAKE_SUDO_CASE="${case_name}"
+export AGENTBOX_FAKE_SUDO_EVENT_LOG="${state_dir}/events.log"
 export AGENTBOX_FAKE_SUDO_LOG="${state_dir}/sudo.log"
 export AGENTBOX_FAKE_SUDO_MAIN_PID="$$"
 export AGENTBOX_FAKE_SUDO_STATE_DIR="${state_dir}"
 : > "${AGENTBOX_FAKE_SUDO_LOG}"
+: > "${AGENTBOX_FAKE_SUDO_EVENT_LOG}"
 
 export DEBUG=1
 export SUDO_BIN="${example_dir}/bin/sudo"
@@ -70,20 +72,24 @@ trap harness_cleanup EXIT
 case "${case_name}" in
   interactive-happy)
     unset CI NONINTERACTIVE
+    bootbox_run agentbox --brewfile /private/tmp/fake-Brewfile
     start_sudo_session "after plan confirmation"
     sleep 0.1
-    printf "keepalive_before_bootbox=%s\n" "$(keepalive_state)"
-    bootbox_run agentbox --brewfile /private/tmp/fake-Brewfile
-    printf "keepalive_after_bootbox=%s\n" "$(keepalive_state)"
+    printf "keepalive_after_authorization=%s\n" "$(keepalive_state)"
     check_sudo_access "before homebrew login-shell PATH setup"
+    sudo /usr/bin/true
+    ;;
+  interactive-bootbox-sudo)
+    unset CI NONINTERACTIVE
+    bootbox_run agentbox --brewfile /private/tmp/fake-Brewfile
+    start_sudo_session "after plan confirmation"
     sudo /usr/bin/true
     ;;
   stale-keepalive)
     unset CI NONINTERACTIVE
     start_sudo_session "after plan confirmation"
     wait_for_keepalive_exit
-    printf "keepalive_before_bootbox=%s\n" "$(keepalive_state)"
-    bootbox_run agentbox --brewfile /private/tmp/fake-Brewfile
+    printf "keepalive_before_check=%s\n" "$(keepalive_state)"
     check_sudo_access "before homebrew login-shell PATH setup"
     sleep 0.1
     printf "keepalive_after_check=%s\n" "$(keepalive_state)"
@@ -93,8 +99,7 @@ case "${case_name}" in
     unset CI NONINTERACTIVE
     start_sudo_session "after plan confirmation"
     wait_for_keepalive_exit
-    printf "keepalive_before_bootbox=%s\n" "$(keepalive_state)"
-    bootbox_run agentbox --brewfile /private/tmp/fake-Brewfile
+    printf "keepalive_before_check=%s\n" "$(keepalive_state)"
     check_sudo_access "before homebrew login-shell PATH setup"
     wait_for_keepalive_exit
     check_sudo_access "before second privileged phase"
@@ -107,6 +112,7 @@ case "${case_name}" in
     unset NONINTERACTIVE
     start_sudo_session "before non-interactive input validation"
     sleep 0.1
+    bootbox_run agentbox --brewfile /private/tmp/fake-Brewfile
     check_sudo_access "before ci phase"
     sudo /usr/bin/true
     ;;

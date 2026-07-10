@@ -7,6 +7,7 @@ for arg in "$@"; do
   line="${line} ${quoted}"
 done
 printf "%s\n" "${line}" >> "${AGENTBOX_FAKE_SUDO_LOG}"
+printf "%s\n" "${line}" >> "${AGENTBOX_FAKE_SUDO_EVENT_LOG}"
 
 is_validation="0"
 if [[ "${1:-}" == "-n" && "${2:-}" == "-v" ]]; then

@@ -3151,7 +3151,9 @@ bootbox_run() {
     bootbox_display_command+=("AGENTBOX_FORCE=${FORCE}")
   fi
 
-  bootbox_command+=("BOOTBOX_EXTERNAL_SUDO=1")
+  if [[ "${SUDO_SESSION_ACTIVE:-0}" == "1" ]]; then
+    bootbox_command+=("BOOTBOX_EXTERNAL_SUDO=1")
+  fi
   bootbox_command+=("BOOTBOX_QUIET=1")
   bootbox_display_command+=("BOOTBOX_QUIET=1")
 
@@ -4437,11 +4439,11 @@ main() {
     wait_for_user
   fi
 
-  start_sudo_session
   ensure_bootbox_core_requirements
+  run_bootbox_for_agentbox_brewfile
+  start_sudo_session
   run_agentbox_hostname_setup
   run_agentbox_macos_settings
-  run_bootbox_for_agentbox_brewfile
   run_agentbox_homebrew_login_path_setup
   run_agentbox_openclaw_user_setup
   run_agentbox_brewgroup_setup
