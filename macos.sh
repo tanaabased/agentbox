@@ -45,6 +45,7 @@ SSHD_CONFIG_PATH="/etc/ssh/sshd_config"
 SSHD_CONFIG_DIR="/etc/ssh/sshd_config.d"
 SSHD_AGENTBOX_CONFIG_PATH="${SSHD_CONFIG_DIR}/agentbox.conf"
 SSH_ACCESS_GROUP="com.apple.access_ssh"
+SUDO_BIN="/usr/bin/sudo"
 TAILSCALE_DNS_ADMIN_URL="https://login.tailscale.com/admin/dns"
 TAILSCALE_MAGICDNS_DOCS_URL="https://tailscale.com/docs/features/magicdns"
 TAILSCALE_HTTPS_CERTS_DOCS_URL="https://tailscale.com/docs/how-to/set-up-https-certificates"
@@ -301,6 +302,7 @@ declare -a AGENTBOX_PROFILE_IMAGE_SOURCES=()
 BOOT_TMPDIR=""
 BOOTBOX_SCRIPT_PATH=""
 SUDO_KEEPALIVE_PID=""
+SUDO_SESSION_ACTIVE="0"
 CORE_NEEDS_REMEDIATION="0"
 CURL=""
 DETECTED_ARCH=""
@@ -2710,6 +2712,14 @@ execute() {
   fi
 }
 
+sudo() {
+  if [[ "${SUDO_SESSION_ACTIVE:-0}" != "1" ]]; then
+    abort "internal sudo command attempted before agentbox established its administrator session."
+  fi
+
+  "${SUDO_BIN}" -n "$@"
+}
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     abort "required command not found: $1"
@@ -2717,10 +2727,8 @@ require_command() {
 }
 
 cleanup() {
-  if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then
-    kill "${SUDO_KEEPALIVE_PID}" >/dev/null 2>&1 || true
-    wait "${SUDO_KEEPALIVE_PID}" 2>/dev/null || true
-  fi
+  stop_sudo_keepalive
+  SUDO_SESSION_ACTIVE="0"
 
   if [[ -n "${BOOT_TMPDIR:-}" && -d "${BOOT_TMPDIR}" ]]; then
     rm -rf "${BOOT_TMPDIR}"
@@ -2903,14 +2911,52 @@ apply_noninteractive_mode() {
 
 check_sudo_access() {
   local phase="${1:-initial}"
+  local keepalive_was_active="1"
   local sudo_failure
 
-  if ! command -v sudo >/dev/null 2>&1; then
-    abort "sudo is required for agentbox bootstrap, but the sudo command was not found."
+  if [[ ! -x "${SUDO_BIN}" ]]; then
+    abort "sudo is required for agentbox bootstrap, but ${SUDO_BIN} was not found."
+  fi
+
+  if [[ "${SUDO_SESSION_ACTIVE:-0}" == "1" ]]; then
+    if ! refresh_sudo_keepalive_state; then
+      keepalive_was_active="0"
+    fi
+
+    if "${SUDO_BIN}" -n -v; then
+      if [[ "${keepalive_was_active}" == "0" ]]; then
+        start_sudo_keepalive
+        debug "${tty_tp}restarted${tty_reset}" sudo keepalive "${phase}"
+      fi
+      debug "${tty_tp}verified${tty_reset}" sudo access "${phase}"
+      return 0
+    fi
+
+    if recover_sudo_authorization "${phase}"; then
+      return 0
+    fi
+
+    if [[ -n "${CI-}" || -n "${NONINTERACTIVE-}" ]]; then
+      sudo_failure="$(cat <<EOS
+sudo authorization is no longer available during ${phase}.
+agentbox cannot prompt again in CI or non-interactive mode.
+rerun agentbox interactively, or configure passwordless sudo for this bootstrap user.
+EOS
+)"
+    else
+      sudo_failure="$(cat <<EOS
+sudo authorization could not be restored during ${phase}.
+rerun agentbox and enter your admin password after plan confirmation.
+EOS
+)"
+    fi
+
+    SUDO_SESSION_ACTIVE="0"
+    abort_multi "${sudo_failure}"
   fi
 
   if [[ -n "${CI-}" || -n "${NONINTERACTIVE-}" ]]; then
-    if sudo -n -v; then
+    if "${SUDO_BIN}" -n -v; then
       debug "${tty_tp}verified${tty_reset}" sudo access "${phase}"
       return 0
     fi
@@ -2923,32 +2969,116 @@ EOS
     abort_multi "${sudo_failure}"
   fi
 
-  if sudo -v; then
-    debug "${tty_tp}verified${tty_reset}" sudo access "${phase}"
-    return 0
+  if "${SUDO_BIN}" -v; then
+    if "${SUDO_BIN}" -n -v; then
+      debug "${tty_tp}verified${tty_reset}" reusable sudo access "${phase}"
+      return 0
+    fi
+
+    sudo_failure="$(cat <<EOS
+sudo accepted administrator authentication, but reusable authorization is unavailable.
+agentbox requires a reusable sudo timestamp so later privileged operations remain non-interactive.
+check the sudo timestamp policy on this Mac, or configure passwordless sudo for this bootstrap user.
+EOS
+)"
+    abort_multi "${sudo_failure}"
   fi
 
   abort "sudo access is required before agentbox can install packages or configure services."
 }
 
+refresh_sudo_keepalive_state() {
+  if [[ -z "${SUDO_KEEPALIVE_PID:-}" ]]; then
+    return 1
+  fi
+
+  if kill -0 "${SUDO_KEEPALIVE_PID}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  wait "${SUDO_KEEPALIVE_PID}" 2>/dev/null || true
+  SUDO_KEEPALIVE_PID=""
+  debug "${tty_tp}detected${tty_reset}" inactive sudo keepalive
+  return 1
+}
+
+stop_sudo_keepalive() {
+  if [[ -z "${SUDO_KEEPALIVE_PID:-}" ]]; then
+    return 0
+  fi
+
+  if kill -0 "${SUDO_KEEPALIVE_PID}" >/dev/null 2>&1; then
+    kill "${SUDO_KEEPALIVE_PID}" >/dev/null 2>&1 || true
+  fi
+  wait "${SUDO_KEEPALIVE_PID}" 2>/dev/null || true
+  SUDO_KEEPALIVE_PID=""
+}
+
 start_sudo_keepalive() {
-  if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then
+  if [[ "${SUDO_SESSION_ACTIVE:-0}" != "1" ]]; then
+    abort "internal sudo keepalive attempted before agentbox established its administrator session."
+  fi
+
+  if refresh_sudo_keepalive_state; then
     return 0
   fi
 
   (
+    sleep_pid=""
+    trap 'if [[ -n "${sleep_pid}" ]]; then kill "${sleep_pid}" >/dev/null 2>&1 || true; fi; exit 0' INT TERM
     while :; do
-      sudo -n -v >/dev/null 2>&1 || exit 0
-      sleep 60
+      "${SUDO_BIN}" -n -v >/dev/null 2>&1 || exit 1
+      sleep 60 &
+      sleep_pid="$!"
+      wait "${sleep_pid}" || exit 0
+      sleep_pid=""
     done
   ) &
   SUDO_KEEPALIVE_PID="$!"
 }
 
+recover_sudo_authorization() {
+  local phase="${1:-before bootstrap changes}"
+  local sudo_failure
+
+  if [[ -n "${CI-}" || -n "${NONINTERACTIVE-}" ]]; then
+    return 1
+  fi
+
+  stop_sudo_keepalive
+
+  log ""
+  log "${tty_bold}${tty_tp}administrator authorization required again${tty_reset}"
+  log "agentbox could not refresh its sudo authorization during ${phase}."
+  log "enter your admin password again to continue; agentbox will restart its sudo keepalive."
+
+  if ! "${SUDO_BIN}" -v; then
+    return 1
+  fi
+
+  if ! "${SUDO_BIN}" -n -v; then
+    sudo_failure="$(cat <<EOS
+sudo accepted administrator authentication, but reusable authorization is still unavailable.
+agentbox cannot continue without repeatedly requesting your password.
+check the sudo timestamp policy on this Mac, or configure passwordless sudo for this bootstrap user.
+EOS
+)"
+    SUDO_SESSION_ACTIVE="0"
+    abort_multi "${sudo_failure}"
+  fi
+
+  SUDO_SESSION_ACTIVE="1"
+  start_sudo_keepalive
+  debug "${tty_tp}restored${tty_reset}" sudo access "${phase}"
+  return 0
+}
+
 start_sudo_session() {
   local phase="${1:-before bootstrap changes}"
 
-  if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then
+  if [[ "${SUDO_SESSION_ACTIVE:-0}" == "1" ]]; then
+    check_sudo_access "${phase}"
+    start_sudo_keepalive
     return 0
   fi
 
@@ -2960,6 +3090,7 @@ start_sudo_session() {
   fi
 
   check_sudo_access "${phase}"
+  SUDO_SESSION_ACTIVE="1"
   start_sudo_keepalive
 }
 

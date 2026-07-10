@@ -66,6 +66,9 @@ This is directional guidance, not the current public contract:
 - Keep `/llms.txt` concise in `site/llms.txt`; `scripts/build-dist.js` copies it into `dist/`.
 - Keep `--help` as the public CLI contract. Public option, env-var, help, status, debug, or
   failure-text changes must check `README.md`, `ADVANCED.md`, and affected examples.
+- Do not add user documentation for small interaction, presentation, or internal orchestration
+  changes by default. Document behavior needed to choose inputs, complete setup, interpret results,
+  or operate and recover the host.
 - Preserve the public `AGENTBOX_*` namespace. Do not leak upstream Bootbox names into the public
   `agentbox` interface.
 - Never commit Tailscale auth keys, SSH private keys, API tokens, passwords, machine-specific secret

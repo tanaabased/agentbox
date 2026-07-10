@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+
+printf "debug prepared effective brewfile at /var/folders/fake/brewfile-effective.test\n"
+printf "bootbox_external_sudo=%s\n" "${BOOTBOX_EXTERNAL_SUDO:-missing}" > "${AGENTBOX_FAKE_SUDO_STATE_DIR}/bootbox.log"

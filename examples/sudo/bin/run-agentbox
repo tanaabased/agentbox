@@ -1,0 +1,118 @@
+#!/bin/bash
+set -euo pipefail
+
+case_name="${1:-}"
+example_dir="$(cd "$(dirname "$0")/.." && pwd)"
+source_agentbox="${AGENTBOX_SUDO_TEST_SCRIPT:-$(command -v agentbox)}"
+testable_agentbox="${TMPDIR}/agentbox-sudo-testable.sh"
+state_dir="${TMPDIR}/sudo-state-${case_name}"
+
+case "${case_name}" in
+  interactive-happy | stale-keepalive | interactive-recovery | ci-valid | ci-invalid)
+    ;;
+  *)
+    printf "unknown sudo example case: %s\n" "${case_name:-<empty>}" >&2
+    exit 2
+    ;;
+esac
+
+mkdir -p "${TMPDIR}"
+sed -e '/^main "\$@"$/d' "${source_agentbox}" > "${testable_agentbox}"
+chmod 700 "${testable_agentbox}"
+
+# shellcheck source=/dev/null
+source "${testable_agentbox}"
+
+rm -rf "${state_dir}"
+mkdir -p "${state_dir}/boot"
+
+export AGENTBOX_FAKE_SUDO_CASE="${case_name}"
+export AGENTBOX_FAKE_SUDO_LOG="${state_dir}/sudo.log"
+export AGENTBOX_FAKE_SUDO_MAIN_PID="$$"
+export AGENTBOX_FAKE_SUDO_STATE_DIR="${state_dir}"
+: > "${AGENTBOX_FAKE_SUDO_LOG}"
+
+export DEBUG=1
+export SUDO_BIN="${example_dir}/bin/sudo"
+export BOOT_TMPDIR="${state_dir}/boot"
+export BOOTBOX_SCRIPT_PATH="${example_dir}/bin/bootbox"
+
+harness_cleanup() {
+  printf "keepalive_pid_at_exit=%s\n" "${SUDO_KEEPALIVE_PID:-empty}"
+  printf "sudo_session_active_at_exit=%s\n" "${SUDO_SESSION_ACTIVE:-0}"
+  cleanup
+}
+
+keepalive_state() {
+  if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]] && kill -0 "${SUDO_KEEPALIVE_PID}" 2>/dev/null; then
+    printf "alive"
+  else
+    printf "dead"
+  fi
+}
+
+wait_for_keepalive_exit() {
+  local attempt="1"
+
+  while [[ "${attempt}" -le 10 ]]; do
+    if [[ -z "${SUDO_KEEPALIVE_PID:-}" ]] || ! kill -0 "${SUDO_KEEPALIVE_PID}" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.05
+    attempt=$((attempt + 1))
+  done
+
+  return 1
+}
+
+trap harness_cleanup EXIT
+
+case "${case_name}" in
+  interactive-happy)
+    unset CI NONINTERACTIVE
+    start_sudo_session "after plan confirmation"
+    sleep 0.1
+    printf "keepalive_before_bootbox=%s\n" "$(keepalive_state)"
+    bootbox_run agentbox --brewfile /private/tmp/fake-Brewfile
+    printf "keepalive_after_bootbox=%s\n" "$(keepalive_state)"
+    check_sudo_access "before homebrew login-shell PATH setup"
+    sudo /usr/bin/true
+    ;;
+  stale-keepalive)
+    unset CI NONINTERACTIVE
+    start_sudo_session "after plan confirmation"
+    wait_for_keepalive_exit
+    printf "keepalive_before_bootbox=%s\n" "$(keepalive_state)"
+    bootbox_run agentbox --brewfile /private/tmp/fake-Brewfile
+    check_sudo_access "before homebrew login-shell PATH setup"
+    sleep 0.1
+    printf "keepalive_after_check=%s\n" "$(keepalive_state)"
+    sudo /usr/bin/true
+    ;;
+  interactive-recovery)
+    unset CI NONINTERACTIVE
+    start_sudo_session "after plan confirmation"
+    wait_for_keepalive_exit
+    printf "keepalive_before_bootbox=%s\n" "$(keepalive_state)"
+    bootbox_run agentbox --brewfile /private/tmp/fake-Brewfile
+    check_sudo_access "before homebrew login-shell PATH setup"
+    wait_for_keepalive_exit
+    check_sudo_access "before second privileged phase"
+    sleep 0.1
+    printf "keepalive_after_recovery=%s\n" "$(keepalive_state)"
+    sudo /usr/bin/true
+    ;;
+  ci-valid)
+    export CI=1
+    unset NONINTERACTIVE
+    start_sudo_session "before non-interactive input validation"
+    sleep 0.1
+    check_sudo_access "before ci phase"
+    sudo /usr/bin/true
+    ;;
+  ci-invalid)
+    export CI=1
+    unset NONINTERACTIVE
+    start_sudo_session "before non-interactive input validation"
+    ;;
+esac
