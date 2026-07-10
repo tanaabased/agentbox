@@ -53,6 +53,35 @@ does not require a GUI login session or autologin.
 that service is a LaunchAgent and requires a logged-in user session, so `agentbox` enables OpenClaw
 runner autologin in that mode. FileVault or local macOS policy may block autologin.
 
+#### Dashboard Access
+
+When logged in directly as the OpenClaw runner, open the authenticated Dashboard with:
+
+```sh
+openclaw dashboard
+```
+
+From an admin account, run the same command as the runner. The default runner command is:
+
+```sh
+sudo -iu openclaw "$(brew --prefix)/bin/openclaw" dashboard
+```
+
+Replace `openclaw` with the configured runner short name when using a custom identity. `agentbox`
+also prints the fully resolved command after a successful setup. OpenClaw normally opens the
+Dashboard and copies its authenticated URL without printing the gateway token.
+
+To copy the authenticated URL without opening a browser, add `--no-open`:
+
+```sh
+sudo -iu openclaw "$(brew --prefix)/bin/openclaw" dashboard --no-open
+```
+
+Copying may be unavailable in a purely headless or SSH-only session. In that case, OpenClaw does not
+print the hidden token as a fallback. `openclaw config get gateway.auth.token` also intentionally
+returns a redacted value. See the [OpenClaw Dashboard documentation](https://docs.openclaw.ai/cli/dashboard)
+for the upstream command behavior.
+
 #### Reruns and Later OpenClaw Configuration
 
 On first setup, interactive `agentbox` runs let OpenClaw show its normal onboarding flow. On a later

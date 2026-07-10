@@ -14,6 +14,7 @@ command -v agentbox >/dev/null
 test -d "$AGENTBOX_PAYLOAD_DIR/.git"
 
 # should run agentbox successfully with a new custom openclaw runner
+set -o pipefail
 agentbox \
   --force \
   --hostname "TANAABAGENTBOXUSERSCUSTOM" \
@@ -21,7 +22,8 @@ agentbox \
   --brewgroup off \
   --openclaw-identity "Luna Fresh Claw <luna>" \
   --openclaw-password "LunaFreshClawPass1!" \
-  --openclaw-auth-choice skip
+  --openclaw-auth-choice skip \
+  2>&1 | tee "$TMPDIR/users-custom.log"
 ```
 
 ## Testing
@@ -32,6 +34,9 @@ id -u luna >/dev/null
 dscl . -read /Users/luna RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^[[:space:]]*//' | grep -Fx "Luna Fresh Claw"
 test -d /Users/luna
 test "$(stat -f "%Su" /Users/luna)" = "luna"
+
+# should print the custom runner dashboard command
+grep -F "sudo -iu luna $(brew --prefix)/bin/openclaw dashboard" "$TMPDIR/users-custom.log"
 
 # should report the openclaw runner as non-admin
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"

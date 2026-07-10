@@ -106,6 +106,20 @@ On rerun, `agentbox` reconciles an existing valid local OpenClaw gateway configu
 non-interactively instead of reopening the onboarding wizard. See
 [OpenClaw reruns and later configuration](./ADVANCED.md#reruns-and-later-openclaw-configuration).
 
+### Open the OpenClaw Dashboard
+
+After setup succeeds, `agentbox` prints the exact command for opening the authenticated OpenClaw
+Dashboard. With the default runner username, that command is:
+
+```sh
+sudo -iu openclaw "$(brew --prefix)/bin/openclaw" dashboard
+```
+
+Replace `openclaw` with the configured runner short name when using a custom identity. Running the
+command as the runner lets OpenClaw use its runner-owned gateway configuration and token without
+printing the token. See [Dashboard access](./ADVANCED.md#dashboard-access) for direct runner usage,
+the copy-only option, and headless-session behavior.
+
 ## Manual Setup Checklist
 
 Before running `agentbox`:

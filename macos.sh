@@ -2641,9 +2641,12 @@ run_agentbox_launchd_health_setup() {
 }
 
 run_agentbox_post_bootstrap_summary() {
+  local dashboard_command
   local health_command="${AGENTBOX_OPT_DIR}/bin/health.sh"
   local health_ok="0"
   local health_report
+
+  dashboard_command="$(shell_join sudo -iu "${OPENCLAW_USER}" "${BREW_PREFIX_VALUE}/bin/openclaw" dashboard)"
 
   if health_report="$(sudo "${health_command}" --check 2>&1)"; then
     health_ok="1"
@@ -2653,6 +2656,9 @@ run_agentbox_post_bootstrap_summary() {
   log
   if [[ "${health_ok}" == "1" ]]; then
     log "agentbox setup ${tty_green}succeeded${tty_reset}"
+    log
+    log "${tty_tp}open${tty_reset} the openclaw dashboard:"
+    log "  ${tty_ts}${dashboard_command}${tty_reset}"
     return 0
   fi
 
