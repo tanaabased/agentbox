@@ -32,7 +32,8 @@ sudo cmp "$AGENTBOX_PAYLOAD_DIR/bin/health.sh" /opt/tanaab/agentbox/bin/health.s
 # should satisfy the workflow payload brewfile
 brew bundle check --file "$AGENTBOX_PAYLOAD_DIR/Brewfile" --no-upgrade
 
-# should keep payload profile picture assets available
+# should keep payload avatar and profile picture assets available
+test -f "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png"
 test -f "$AGENTBOX_PAYLOAD_DIR/assets/profile1.png"
 test -f "$AGENTBOX_PAYLOAD_DIR/assets/profile8.png"
 

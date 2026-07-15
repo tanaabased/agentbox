@@ -82,6 +82,10 @@ dscl . -read /Users/rita RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^
 test -d /Users/rita
 test "$(stat -f "%Su" /Users/rita)" = "rita"
 
+# should restore permanent openclaw fallback gateway branding on rerun
+test "$(sudo jq -r '.ui.assistant.name' /Users/rita/.openclaw/openclaw.json)" = "MODEL L3-37"
+sudo jq -r '.ui.assistant.avatar | select(startswith("data:image/png;base64,")) | sub("^data:image/png;base64,"; "")' /Users/rita/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png"
+
 # should repair the invoking admin openclaw app configuration on rerun
 test "$(stat -f "%Su:%Sg:%Lp" "$HOME/.openclaw")" = "$(id -un):$(id -gn):700"
 test "$(stat -f "%Su:%Sg:%Lp" "$HOME/.openclaw/disable-launchagent")" = "$(id -un):$(id -gn):600"

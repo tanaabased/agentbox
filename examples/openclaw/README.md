@@ -57,6 +57,10 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_status_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
 
+# should configure permanent openclaw fallback gateway branding
+test "$(sudo jq -r '.ui.assistant.name' /Users/openclaw/.openclaw/openclaw.json)" = "MODEL L3-37"
+sudo jq -r '.ui.assistant.avatar | select(startswith("data:image/png;base64,")) | sub("^data:image/png;base64,"; "")' /Users/openclaw/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png"
+
 # should configure the invoking admin openclaw app for the managed gateway
 test "$(stat -f "%Su:%Sg:%Lp" "$HOME/.openclaw")" = "$(id -un):$(id -gn):700"
 test "$(stat -f "%Su:%Sg:%Lp" "$HOME/.openclaw/disable-launchagent")" = "$(id -un):$(id -gn):600"
