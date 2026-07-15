@@ -23,6 +23,7 @@ DEFAULT_OPENCLAW_SERVICE_MODE="system"
 DEFAULT_OPENCLAW_GATEWAY_PORT="18789"
 DEFAULT_OPENCLAW_AUTH_CHOICE="skip"
 OPENCLAW_UI_ASSISTANT_NAME="MODEL L3-37"
+OPENCLAW_UI_SEAM_COLOR="#00c88a"
 AGENTBOX_OPT_DIR="/opt/tanaab/agentbox"
 AGENTBOX_PROFILE_IMAGE_PATH="${AGENTBOX_OPT_DIR}/profile.png"
 AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
@@ -3294,7 +3295,10 @@ plan_wrapper_execution() {
     plan_action "${tty_tp}remove${tty_reset} agentbox openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset} if present"
   fi
   plan_action "${tty_tp}onboard or reconcile${tty_reset} openclaw gateway configuration for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
-  plan_action "${tty_tp}configure${tty_reset} permanent openclaw fallback gateway branding as ${tty_ts}${OPENCLAW_UI_ASSISTANT_NAME}${tty_reset} with the bundled default avatar"
+  if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" == "serve" ]]; then
+    plan_action "${tty_tp}allow${tty_reset} verified tailscale identities for openclaw gateway authentication"
+  fi
+  plan_action "${tty_tp}configure${tty_reset} permanent openclaw fallback gateway branding as ${tty_ts}${OPENCLAW_UI_ASSISTANT_NAME}${tty_reset} with the bundled default avatar and Tanaab green seam color"
   if openclaw_service_mode_is_system; then
     plan_action "${tty_tp}install or refresh${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
   else
@@ -4209,6 +4213,30 @@ run_openclaw_gateway_onboarding() {
     execute_as_openclaw_runner "${openclaw_bin}" "${openclaw_args[@]}"
 }
 
+configure_openclaw_tailscale_auth() {
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+  local openclaw_bin="$1"
+  local runner_config
+
+  if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" != "serve" ]]; then
+    return 0
+  fi
+
+  runner_config="$(openclaw_gateway_state_dir)/openclaw.json"
+  log "${tty_tp}allowing${tty_reset} verified tailscale identities for openclaw gateway authentication"
+  if ! run_as_openclaw_runner "${openclaw_bin}" config set gateway.auth.allowTailscale true --strict-json >/dev/null; then
+    abort "failed to allow tailscale identity authentication for openclaw gateway runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+  fi
+
+  if ! run_as_openclaw_runner "${openclaw_bin}" config validate --json >/dev/null; then
+    abort "openclaw gateway configuration validation failed after enabling tailscale identity authentication for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+  fi
+
+  if ! run_as_openclaw_runner "${jq_bin}" -e '.gateway.auth.allowTailscale == true' "${runner_config}" >/dev/null; then
+    abort "openclaw gateway tailscale identity authentication verification failed for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+  fi
+}
+
 openclaw_default_avatar_data_uri() {
   local encoded
 
@@ -4236,9 +4264,11 @@ configure_openclaw_ui_assistant_branding() {
   if ! "${jq_bin}" -n \
     --arg assistant_name "${OPENCLAW_UI_ASSISTANT_NAME}" \
     --arg assistant_avatar "${avatar_data_uri}" \
+    --arg seam_color "${OPENCLAW_UI_SEAM_COLOR}" \
     '[
       {"path":"ui.assistant.name","value":$assistant_name},
-      {"path":"ui.assistant.avatar","value":$assistant_avatar}
+      {"path":"ui.assistant.avatar","value":$assistant_avatar},
+      {"path":"ui.seamColor","value":$seam_color}
     ]' | sudo tee "${batch_file}" >/dev/null; then
     sudo rm -f "${batch_file}" >/dev/null 2>&1 || true
     abort "failed to prepare openclaw fallback gateway branding for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
@@ -4261,8 +4291,9 @@ configure_openclaw_ui_assistant_branding() {
   # shellcheck disable=SC2016
   if ! run_as_openclaw_runner "${jq_bin}" -e \
     --arg expected_name "${OPENCLAW_UI_ASSISTANT_NAME}" \
+    --arg expected_seam_color "${OPENCLAW_UI_SEAM_COLOR}" \
     --slurpfile updates "${batch_file}" \
-    '.ui.assistant.name == $expected_name and .ui.assistant.avatar == $updates[0][1].value' \
+    '.ui.assistant.name == $expected_name and .ui.assistant.avatar == $updates[0][1].value and .ui.seamColor == $expected_seam_color' \
     "${runner_config}" >/dev/null; then
     sudo rm -f "${batch_file}" >/dev/null 2>&1 || true
     abort "openclaw fallback gateway branding verification failed for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
@@ -4686,6 +4717,7 @@ run_agentbox_openclaw_gateway_setup() {
     reconcile_existing="1"
   fi
   run_openclaw_gateway_onboarding "${openclaw_bin}" "${reconcile_existing}"
+  configure_openclaw_tailscale_auth "${openclaw_bin}"
   configure_openclaw_ui_assistant_branding "${openclaw_bin}"
   if openclaw_service_mode_is_system; then
     log "${tty_tp}installing${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"

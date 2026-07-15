@@ -3,6 +3,37 @@
 This file keeps the less common `agentbox` details out of the main README while preserving the deeper
 operator reference. Start with [README.md](./README.md) for the main install path.
 
+## Preflight Checks
+
+Complete these checks before following the [Quickstart](./README.md#quickstart):
+
+- Put the Mac somewhere ventilated, physically safe, and connected to power.
+- Use Mac hardware you physically control; Mac VPS behavior is unverified.
+- Connect Ethernet and reserve its LAN IP in the router by MAC address.
+- Do not add WAN port forwards for SSH, Screen Sharing, local services, or future app ports.
+- Create the initial macOS admin account for human maintenance and recovery.
+- Temporarily enable Remote Login only if you need SSH access before running `agentbox`; the bootstrap
+  enables classic SSH programmatically.
+- Install all macOS updates:
+
+```sh
+softwareupdate --list
+sudo softwareupdate --install --all --restart
+```
+
+- Keep automatic/background security updates enabled in System Settings.
+- Decide FileVault deliberately. macOS 26 on Apple silicon supports SSH unlock after restart when
+  Remote Login and network connectivity are available, but physical recovery access is still the
+  safest assumption for a headless `agentbox`.
+- Consider installing an [HDMI dummy plug or headless display adapter](https://www.amazon.com/dp/B0CKKLTWMN?ref=fed_asin_title)
+  for smoother headless display behavior.
+- Create or choose a preauthorized Tailscale auth key with any desired device tags, or decide to skip
+  Tailscale setup.
+- Confirm MagicDNS and HTTPS Certificates are enabled in
+  [Tailscale DNS settings](https://login.tailscale.com/admin/dns) when the OpenClaw Gateway should be
+  exposed through Tailscale Serve.
+- Optionally choose SSH public keys for `agentbox` to install for the admin and OpenClaw runner users.
+
 ## What Gets Installed
 
 ### Dependencies
@@ -81,6 +112,21 @@ Copying may be unavailable in a purely headless or SSH-only session. In that cas
 print the hidden token as a fallback. `openclaw config get gateway.auth.token` also intentionally
 returns a redacted value. See the [OpenClaw Dashboard documentation](https://docs.openclaw.ai/cli/dashboard)
 for the upstream command behavior.
+
+When Tailscale Serve is enabled, `agentbox` keeps gateway token authentication enabled and explicitly
+sets `gateway.auth.allowTailscale` to `true` in the runner-owned configuration. Open the remote
+Dashboard at the agentbox MagicDNS HTTPS address. Each additional browser profile or device must
+complete its own OpenClaw authorization flow; enter the gateway token in the Dashboard connection
+settings when prompted. Repeat this after clearing that browser's site data or when using another
+browser profile.
+
+If the authenticated Dashboard command cannot transfer the token to the remote device, an admin can
+deliberately reveal the runner-owned token with the following command. Replace `openclaw` with the
+configured runner short name, and treat the output as a secret:
+
+```sh
+sudo jq -r '.gateway.auth.token' /Users/openclaw/.openclaw/openclaw.json
+```
 
 #### Reruns and Later OpenClaw Configuration
 

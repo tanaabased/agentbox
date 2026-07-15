@@ -44,8 +44,8 @@ For a more complete look at installed components, see
 
 ## Quickstart
 
-Complete the [Manual Setup Checklist](#manual-setup-checklist) first, then run the hosted bootstrap on
-the Mac you are preparing:
+Complete the [Preflight Checks](./ADVANCED.md#preflight-checks) first, then run the hosted bootstrap
+on the Mac you are preparing:
 
 ```sh
 /bin/bash -c "$(curl -fsSL https://agentbox.tanaab.sh/macos.sh)" agentbox \
@@ -117,39 +117,10 @@ sudo -iu openclaw "$(brew --prefix)/bin/openclaw" dashboard
 
 Replace `openclaw` with the configured runner short name when using a custom identity. Running the
 command as the runner lets OpenClaw use its runner-owned gateway configuration and token without
-printing the token. See [Dashboard access](./ADVANCED.md#dashboard-access) for direct runner usage,
-the copy-only option, and headless-session behavior.
-
-## Manual Setup Checklist
-
-Before running `agentbox`:
-
-- Put the Mac somewhere ventilated, physically safe, and connected to power.
-- Use Mac hardware you physically control; Mac VPS behavior is unverified.
-- Connect Ethernet and reserve its LAN IP in the router by MAC address.
-- Do not add WAN port forwards for SSH, Screen Sharing, local services, or future app ports.
-- Create the initial macOS admin account for human maintenance and recovery.
-- Temporarily enable Remote Login only if you need SSH access before running `agentbox`; the bootstrap
-  enables classic SSH programmatically.
-- Install all macOS updates:
-
-```sh
-softwareupdate --list
-sudo softwareupdate --install --all --restart
-```
-
-- Keep automatic/background security updates enabled in System Settings.
-- Decide FileVault deliberately. macOS 26 on Apple silicon supports SSH unlock after restart when
-  Remote Login and network connectivity are available, but physical recovery access is still the
-  safest assumption for a headless `agentbox`.
-- Consider installing an [HDMI dummy plug or headless display adapter](https://www.amazon.com/dp/B0CKKLTWMN?ref=fed_asin_title)
-  for smoother headless display behavior.
-- Create or choose a preauthorized Tailscale auth key with any desired device tags, or decide to skip
-  Tailscale setup.
-- Confirm MagicDNS and HTTPS Certificates are enabled in
-  [Tailscale DNS settings](https://login.tailscale.com/admin/dns) when the OpenClaw Gateway should be
-  exposed through Tailscale Serve.
-- Optionally choose SSH public keys for `agentbox` to install for the admin and OpenClaw runner users.
+printing the token. Each additional browser profile or device connecting over the tailnet must
+complete its own OpenClaw authorization flow and may need the gateway token on first connection. See
+[Dashboard access](./ADVANCED.md#dashboard-access) for direct runner usage, remote-device
+authorization, the copy-only option, and headless-session behavior.
 
 ## Verification
 

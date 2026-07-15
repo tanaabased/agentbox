@@ -50,6 +50,9 @@ launchctl print "gui/$UID/ai.openclaw.gateway" >/dev/null
 openclaw config set gateway.port 19999 --strict-json
 openclaw config set gateway.auth.token stale-agentbox-app-token
 
+# should register stale openclaw gateway tailscale authentication state before rerun
+sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set gateway.auth.allowTailscale false --strict-json
+
 # should stop the existing tailscale identity before rerun
 sudo tailscale down
 sudo tailscale status --json | tee /dev/stderr | jq -e '.BackendState == "Stopped"'
@@ -84,7 +87,11 @@ test "$(stat -f "%Su" /Users/rita)" = "rita"
 
 # should restore permanent openclaw fallback gateway branding on rerun
 test "$(sudo jq -r '.ui.assistant.name' /Users/rita/.openclaw/openclaw.json)" = "MODEL L3-37"
+test "$(sudo jq -r '.ui.seamColor' /Users/rita/.openclaw/openclaw.json)" = "#00c88a"
 sudo jq -r '.ui.assistant.avatar | select(startswith("data:image/png;base64,")) | sub("^data:image/png;base64,"; "")' /Users/rita/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png"
+
+# should restore openclaw gateway tailscale identity authentication on rerun
+test "$(sudo jq -r '.gateway.auth.allowTailscale' /Users/rita/.openclaw/openclaw.json)" = "true"
 
 # should repair the invoking admin openclaw app configuration on rerun
 test "$(stat -f "%Su:%Sg:%Lp" "$HOME/.openclaw")" = "$(id -un):$(id -gn):700"

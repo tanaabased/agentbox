@@ -59,7 +59,11 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 
 # should configure permanent openclaw fallback gateway branding
 test "$(sudo jq -r '.ui.assistant.name' /Users/openclaw/.openclaw/openclaw.json)" = "MODEL L3-37"
+test "$(sudo jq -r '.ui.seamColor' /Users/openclaw/.openclaw/openclaw.json)" = "#00c88a"
 sudo jq -r '.ui.assistant.avatar | select(startswith("data:image/png;base64,")) | sub("^data:image/png;base64,"; "")' /Users/openclaw/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png"
+
+# should allow verified tailscale identities for openclaw gateway authentication
+test "$(sudo jq -r '.gateway.auth.allowTailscale' /Users/openclaw/.openclaw/openclaw.json)" = "true"
 
 # should configure the invoking admin openclaw app for the managed gateway
 test "$(stat -f "%Su:%Sg:%Lp" "$HOME/.openclaw")" = "$(id -un):$(id -gn):700"
