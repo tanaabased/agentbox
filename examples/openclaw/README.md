@@ -57,6 +57,25 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_status_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_ok=1"
 
+# should configure the invoking admin openclaw app for the managed gateway
+test "$(stat -f "%Su:%Sg:%Lp" "$HOME/.openclaw")" = "$(id -un):$(id -gn):700"
+test "$(stat -f "%Su:%Sg:%Lp" "$HOME/.openclaw/disable-launchagent")" = "$(id -un):$(id -gn):600"
+test "$(stat -f "%Su:%Sg:%Lp" "$HOME/.openclaw/openclaw.json")" = "$(id -un):$(id -gn):600"
+test "$(openclaw config get gateway.mode)" = "local"
+test "$(openclaw config get gateway.port)" = "18888"
+test "$(openclaw config get gateway.auth.mode)" = "token"
+test "$(sudo jq -ce '.gateway.auth.token' /Users/openclaw/.openclaw/openclaw.json | /usr/bin/shasum -a 256 | awk '{print $1}')" = "$(jq -ce '.gateway.auth.token' "$HOME/.openclaw/openclaw.json" | /usr/bin/shasum -a 256 | awk '{print $1}')"
+
+# should remove native openclaw gateway launch agents in system service mode
+test ! -e "$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
+sudo test ! -e /Users/openclaw/Library/LaunchAgents/ai.openclaw.gateway.plist
+if launchctl print "gui/$UID/ai.openclaw.gateway" >/dev/null 2>&1; then exit 1; fi
+if sudo launchctl print "gui/$(id -u openclaw)/ai.openclaw.gateway" >/dev/null 2>&1; then exit 1; fi
+
+# should verify openclaw app token synchronization without logging token material
+grep -F "verified openclaw app gateway token synchronization" "$TMPDIR/openclaw.log"
+grep -F "by sha256 equality" "$TMPDIR/openclaw.log"
+
 # should not print the openai api key
 ! grep -F -- "$OPENAI_API_KEY" "$TMPDIR/openclaw.log"
 

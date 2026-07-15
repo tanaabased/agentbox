@@ -34,6 +34,7 @@ AGENTBOX_TAILSCALED_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_TAILSCALED_LAB
 AGENTBOX_OPENCLAW_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
 AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}.plist"
 OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL="ai.openclaw.gateway"
+OPENCLAW_DISABLE_LAUNCH_AGENT_MARKER=".openclaw/disable-launchagent"
 AGENTBOX_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
 HOMEBREW_TAILSCALE_SYSTEM_PLIST_PATH="/Library/LaunchDaemons/${HOMEBREW_TAILSCALE_LABEL}.plist"
@@ -3279,7 +3280,8 @@ plan_wrapper_execution() {
     plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, tailscale serve prerequisites, and scoped magicdns resolver"
   fi
   if openclaw_service_mode_is_system; then
-    plan_action "${tty_tp}remove${tty_reset} openclaw native user gateway service ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} if present"
+    plan_action "${tty_tp}remove${tty_reset} openclaw native user gateway service ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} or invoking admin ${tty_ts}${ADMIN_USER}${tty_reset} if present"
+    plan_action "${tty_tp}configure${tty_reset} the openclaw app for invoking admin ${tty_ts}${ADMIN_USER}${tty_reset} to attach to the agentbox-managed gateway without managing launchd"
   else
     plan_action "${tty_tp}remove${tty_reset} agentbox openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset} if present"
   fi
@@ -4014,6 +4016,17 @@ openclaw_runner_home_required() {
   printf "%s" "${home}"
 }
 
+invoking_admin_home_required() {
+  local home
+
+  home="$(user_home_dir "${ADMIN_USER}")"
+  if [[ -z "${home}" || ! -d "${home}" ]]; then
+    abort "invoking admin user ${tty_ts}${ADMIN_USER}${tty_reset} must have a usable home directory before openclaw app configuration."
+  fi
+
+  printf "%s" "${home}"
+}
+
 openclaw_runner_path() {
   printf "%s/bin:%s/sbin:/usr/bin:/bin:/usr/sbin:/sbin" "${BREW_PREFIX_VALUE}" "${BREW_PREFIX_VALUE}"
 }
@@ -4080,6 +4093,17 @@ run_as_openclaw_runner() {
   else
     sudo -u "${OPENCLAW_USER}" env "${env_args[@]}" "$@"
   fi
+}
+
+run_as_invoking_admin() {
+  local home
+  local path_value
+
+  home="$(invoking_admin_home_required)"
+  path_value="$(openclaw_runner_path)"
+
+  debug "${tty_tp}running${tty_reset}" /usr/bin/env -i "HOME=${home}" "USER=${ADMIN_USER}" "LOGNAME=${ADMIN_USER}" "PATH=${path_value}" "$@"
+  /usr/bin/env -i "HOME=${home}" "USER=${ADMIN_USER}" "LOGNAME=${ADMIN_USER}" "PATH=${path_value}" "$@"
 }
 
 execute_as_openclaw_runner() {
@@ -4223,7 +4247,15 @@ agentbox_openclaw_gateway_launchd_loaded() {
 }
 
 openclaw_native_gateway_launch_agent_plist_path() {
-  printf "%s/Library/LaunchAgents/%s.plist" "$(openclaw_runner_home_required)" "${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}"
+  local user="$1"
+  local home
+
+  home="$(user_home_dir "${user}")"
+  if [[ -z "${home}" ]]; then
+    abort "could not determine home directory for user ${tty_ts}${user}${tty_reset} while removing the openclaw native gateway service."
+  fi
+
+  printf "%s/Library/LaunchAgents/%s.plist" "${home}" "${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}"
 }
 
 openclaw_native_gateway_launch_agent_loaded() {
@@ -4251,20 +4283,38 @@ remove_agentbox_openclaw_gateway_launchd_service() {
   fi
 }
 
-remove_openclaw_native_gateway_launch_agent() {
+run_openclaw_gateway_uninstall_for_user() {
   local openclaw_bin="$1"
+  local user="$2"
+
+  if [[ "${user}" == "${OPENCLAW_USER}" ]]; then
+    run_as_openclaw_runner "${openclaw_bin}" gateway uninstall
+    return
+  fi
+
+  if [[ "${user}" == "${ADMIN_USER}" ]]; then
+    run_as_invoking_admin "${openclaw_bin}" gateway uninstall
+    return
+  fi
+
+  abort "internal openclaw gateway uninstall requested for unmanaged user ${tty_ts}${user}${tty_reset}."
+}
+
+remove_openclaw_native_gateway_launch_agent_for_user() {
+  local openclaw_bin="$1"
+  local user="$2"
   local plist_path
   local uid
 
-  uid="$(id -u "${OPENCLAW_USER}" 2>/dev/null || true)"
-  plist_path="$(openclaw_native_gateway_launch_agent_plist_path)"
+  uid="$(id -u "${user}" 2>/dev/null || true)"
+  plist_path="$(openclaw_native_gateway_launch_agent_plist_path "${user}")"
 
   if ! openclaw_native_gateway_launch_agent_loaded "${uid}" && ! sudo test -f "${plist_path}"; then
     return 0
   fi
 
-  log "${tty_tp}removing${tty_reset} openclaw native user gateway service ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} because openclaw service mode is ${tty_ts}system${tty_reset}"
-  run_as_openclaw_runner "${openclaw_bin}" gateway uninstall >/dev/null 2>&1 || true
+  log "${tty_tp}removing${tty_reset} openclaw native user gateway service ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} for ${tty_ts}${user}${tty_reset} because openclaw service mode is ${tty_ts}system${tty_reset}"
+  run_openclaw_gateway_uninstall_for_user "${openclaw_bin}" "${user}" >/dev/null 2>&1 || true
   if [[ -n "${uid}" ]]; then
     sudo launchctl bootout "gui/${uid}/${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}" >/dev/null 2>&1 || true
     sudo launchctl bootout "gui/${uid}" "${plist_path}" >/dev/null 2>&1 || true
@@ -4272,6 +4322,126 @@ remove_openclaw_native_gateway_launch_agent() {
   if sudo test -f "${plist_path}"; then
     execute sudo rm -f "${plist_path}"
   fi
+
+  if openclaw_native_gateway_launch_agent_loaded "${uid}" || sudo test -f "${plist_path}"; then
+    abort "openclaw native user gateway service ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} for ${tty_ts}${user}${tty_reset} is still present after removal."
+  fi
+}
+
+remove_openclaw_native_gateway_launch_agents() {
+  local openclaw_bin="$1"
+
+  remove_openclaw_native_gateway_launch_agent_for_user "${openclaw_bin}" "${OPENCLAW_USER}"
+  remove_openclaw_native_gateway_launch_agent_for_user "${openclaw_bin}" "${ADMIN_USER}"
+}
+
+openclaw_admin_app_state_dir() {
+  printf "%s/.openclaw" "$(invoking_admin_home_required)"
+}
+
+openclaw_admin_app_attach_only_marker_path() {
+  printf "%s/%s" "$(invoking_admin_home_required)" "${OPENCLAW_DISABLE_LAUNCH_AGENT_MARKER}"
+}
+
+openclaw_admin_app_config_path() {
+  printf "%s/openclaw.json" "$(openclaw_admin_app_state_dir)"
+}
+
+ensure_openclaw_admin_app_attach_only() {
+  local marker_path
+  local primary_group
+  local state_dir
+
+  primary_group="$(user_primary_group "${ADMIN_USER}")"
+  state_dir="$(openclaw_admin_app_state_dir)"
+  marker_path="$(openclaw_admin_app_attach_only_marker_path)"
+
+  execute sudo /usr/bin/install -d -o "${ADMIN_USER}" -g "${primary_group}" -m 700 "${state_dir}"
+  execute sudo touch "${marker_path}"
+  execute sudo chown "${ADMIN_USER}:${primary_group}" "${marker_path}"
+  execute sudo chmod 600 "${marker_path}"
+  log "${tty_tp}configured${tty_reset} openclaw app attach-only mode for invoking admin ${tty_ts}${ADMIN_USER}${tty_reset}"
+}
+
+file_sha256() {
+  /usr/bin/shasum -a 256 "$1" | awk '{print $1}'
+}
+
+reconcile_openclaw_admin_app_config() {
+  local admin_config
+  local admin_token_json
+  local admin_token_hash
+  local batch_file
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+  local openclaw_bin="$1"
+  local primary_group
+  local runner_config
+  local runner_token_json
+  local runner_token_hash
+
+  runner_config="$(openclaw_gateway_state_dir)/openclaw.json"
+  admin_config="$(openclaw_admin_app_config_path)"
+  runner_token_json="${BOOT_TMPDIR}/openclaw-runner-gateway-token.json"
+  admin_token_json="${BOOT_TMPDIR}/openclaw-admin-gateway-token.json"
+  batch_file="${BOOT_TMPDIR}/openclaw-admin-config.batch.json"
+  primary_group="$(user_primary_group "${ADMIN_USER}")"
+
+  if [[ ! -x "${jq_bin}" ]]; then
+    abort "jq was not found at ${tty_ts}${jq_bin}${tty_reset} while configuring the openclaw app."
+  fi
+
+  /usr/bin/install -m 600 /dev/null "${runner_token_json}"
+  /usr/bin/install -m 600 /dev/null "${admin_token_json}"
+  /usr/bin/install -m 600 /dev/null "${batch_file}"
+
+  if ! run_as_openclaw_runner "${jq_bin}" -ce '.gateway.auth.token | select(type == "string" and length > 0 and (startswith("$") | not) and . != "__OPENCLAW_REDACTED__")' "${runner_config}" > "${runner_token_json}"; then
+    rm -f "${runner_token_json}" "${admin_token_json}" "${batch_file}"
+    warn "skipping openclaw app gateway credential synchronization for invoking admin ${tty_ts}${ADMIN_USER}${tty_reset} because the runner gateway token is not stored as a plaintext config value; attach-only mode remains enabled."
+    return 0
+  fi
+
+  # shellcheck disable=SC2016
+  if ! "${jq_bin}" -n \
+    --slurpfile gateway_token "${runner_token_json}" \
+    --argjson gateway_port "${OPENCLAW_GATEWAY_PORT}" \
+    '[
+      {"path":"gateway.mode","value":"local"},
+      {"path":"gateway.port","value":$gateway_port},
+      {"path":"gateway.auth.mode","value":"token"},
+      {"path":"gateway.auth.token","value":$gateway_token[0]}
+    ]' > "${batch_file}"; then
+    rm -f "${runner_token_json}" "${admin_token_json}" "${batch_file}"
+    abort "failed to prepare the openclaw app configuration update for invoking admin ${tty_ts}${ADMIN_USER}${tty_reset}."
+  fi
+
+  log "${tty_tp}synchronizing${tty_reset} openclaw app gateway configuration for invoking admin ${tty_ts}${ADMIN_USER}${tty_reset}"
+  if ! run_as_invoking_admin "${openclaw_bin}" config set --batch-file "${batch_file}" >/dev/null; then
+    rm -f "${runner_token_json}" "${admin_token_json}" "${batch_file}"
+    abort "failed to synchronize the openclaw app gateway configuration for invoking admin ${tty_ts}${ADMIN_USER}${tty_reset}."
+  fi
+
+  execute sudo chown "${ADMIN_USER}:${primary_group}" "${admin_config}"
+  execute sudo chmod 600 "${admin_config}"
+
+  if ! run_as_invoking_admin "${openclaw_bin}" config validate --json >/dev/null; then
+    rm -f "${runner_token_json}" "${admin_token_json}" "${batch_file}"
+    abort "openclaw app configuration validation failed for invoking admin ${tty_ts}${ADMIN_USER}${tty_reset} after synchronization."
+  fi
+
+  if ! run_as_invoking_admin "${jq_bin}" -ce '.gateway.auth.token | select(type == "string" and length > 0)' "${admin_config}" > "${admin_token_json}"; then
+    rm -f "${runner_token_json}" "${admin_token_json}" "${batch_file}"
+    abort "openclaw app gateway token is missing for invoking admin ${tty_ts}${ADMIN_USER}${tty_reset} after synchronization."
+  fi
+
+  runner_token_hash="$(file_sha256 "${runner_token_json}")"
+  admin_token_hash="$(file_sha256 "${admin_token_json}")"
+  rm -f "${runner_token_json}" "${admin_token_json}" "${batch_file}"
+
+  if [[ -z "${runner_token_hash}" || "${runner_token_hash}" != "${admin_token_hash}" ]]; then
+    abort "openclaw app gateway token verification failed for invoking admin ${tty_ts}${ADMIN_USER}${tty_reset} after synchronization."
+  fi
+
+  debug "${tty_tp}verified${tty_reset}" openclaw app gateway token synchronization for invoking admin "${ADMIN_USER}" by sha256 equality
 }
 
 run_agentbox_openclaw_gateway_launchd_setup() {
@@ -4436,7 +4606,8 @@ run_agentbox_openclaw_gateway_setup() {
   resolve_brew_prefix
   openclaw_bin="$(openclaw_bin_path)"
   if openclaw_service_mode_is_system; then
-    remove_openclaw_native_gateway_launch_agent "${openclaw_bin}"
+    ensure_openclaw_admin_app_attach_only
+    remove_openclaw_native_gateway_launch_agents "${openclaw_bin}"
   else
     remove_agentbox_openclaw_gateway_launchd_service
   fi
@@ -4447,6 +4618,7 @@ run_agentbox_openclaw_gateway_setup() {
   if openclaw_service_mode_is_system; then
     log "${tty_tp}installing${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
     run_agentbox_openclaw_gateway_launchd_setup
+    reconcile_openclaw_admin_app_config "${openclaw_bin}"
   else
     log "${tty_tp}using${tty_reset} openclaw native user service for gateway supervision"
   fi
