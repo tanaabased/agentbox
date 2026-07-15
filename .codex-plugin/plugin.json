@@ -1,0 +1,33 @@
+{
+  "name": "agentbox",
+  "version": "1.0.0-beta.6",
+  "description": "Managed headless OpenClaw hosts for macOS.",
+  "author": {
+    "name": "Tanaab Maneuvering Systems LLC",
+    "email": "emori@tanaab.dev",
+    "url": "https://www.tanaab.dev"
+  },
+  "homepage": "https://agentbox.tanaab.sh",
+  "repository": "https://github.com/tanaabased/agentbox",
+  "license": "MIT",
+  "keywords": ["agentbox", "macos", "openclaw", "codex"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "agentbox",
+    "shortDescription": "Managed headless OpenClaw hosts for macOS",
+    "longDescription": "Codex plugin surface for provisioning and operating managed headless OpenClaw hosts with agentbox.",
+    "developerName": "@tanaabased",
+    "category": "Tanaab-based",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Help me prepare a Mac as a managed headless OpenClaw host with agentbox.",
+      "Review this agentbox health report and recommend focused remediation steps.",
+      "Help me design an agentbox skill for this host-management workflow."
+    ],
+    "brandColor": "#00c88a",
+    "composerIcon": "./assets/composer-icon.svg",
+    "logo": "./assets/icon-large.png",
+    "websiteURL": "https://agentbox.tanaab.sh"
+  }
+}

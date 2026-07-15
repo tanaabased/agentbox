@@ -47,6 +47,9 @@ This is directional guidance, not the current public contract:
 - `Brewfile`: core Homebrew packages; `Brewfile.extras`: optional operator tooling.
 - `bin/health.sh`: source for `/opt/tanaab/agentbox/bin/health.sh` and the machine health contract.
 - `launchd/*.plist.in`: source LaunchDaemon templates rendered by `macos.sh`.
+- `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`: Codex plugin metadata, MCP registry, and
+  installable skill surface.
+- `assets/composer-icon.svg`, `assets/icon-large.png`: Codex plugin interface assets.
 - `README.md`: main setup and usage entrypoint; `ADVANCED.md`: deeper operator reference.
 - `examples/**/README.md`: Leia-backed executable CI contracts.
 - `site/llms.txt`, `scripts/build-dist.js`, `netlify.toml`: hosted-script and metadata publishing
@@ -64,6 +67,10 @@ This is directional guidance, not the current public contract:
 - Do not run `bun run build` locally unless the user explicitly asks for generated-output
   verification. Preserve the single top-level `SCRIPT_VERSION` assignment in `macos.sh`.
 - Keep `/llms.txt` concise in `site/llms.txt`; `scripts/build-dist.js` copies it into `dist/`.
+- Keep the source versions in `package.json` and `.codex-plugin/plugin.json` aligned. Release
+  workflows must stamp both `dist/macos.sh` and the plugin manifest from the same release tag.
+- GitHub Releases publish `agentbox-<tag>.tar.gz` from the complete release-shaped repository. Keep
+  the plugin manifest, MCP registry, skills, plugin assets, and runtime payload files in that archive.
 - Keep `--help` as the public CLI contract. Public option, env-var, help, status, debug, or
   failure-text changes must check `README.md`, `ADVANCED.md`, and affected examples.
 - Do not add user documentation for small interaction, presentation, or internal orchestration
