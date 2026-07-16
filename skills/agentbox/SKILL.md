@@ -39,12 +39,14 @@ the doctor workflow for verification.
 
 ## Preconditions
 
-- Explanation and command planning may happen elsewhere. Before execution, run on the macOS host
-  being prepared or reconciled.
+- General explanations may use the bundled repository guidance without running on the target host.
+  Before execution, run on the macOS host being prepared or reconciled.
 - Before execution, require macOS 26.x on `arm64` or `x86_64`, a sudo-capable administrator, network
   access, and physical or administrator recovery access.
 - Run the shared [plugin runtime preflight](../../scripts/check-plugin-runtime.sh) before consulting
-  installation config. If it fails, stop and relay its bare-Mac or existing-host guidance.
+  installation config for exact option guidance, command planning, or execution. General
+  explanations do not require Bun or installation config. If preflight fails when required, stop and
+  relay its bare-Mac or existing-host guidance.
 - Treat the agentbox installation config as the sole executable authority. Never fall back to a
   command found on `PATH`, a source checkout, another configured key, or the hosted script.
 - Keep passwords and auth keys out of chat, command literals, debug output, and displayed plans.
@@ -105,26 +107,30 @@ the doctor workflow for verification.
 ### Execution
 
 1. Classify the request as explanation, command planning, first bootstrap, or reconciliation rerun.
-2. Resolve and validate the executable through **Executable Resolution**.
-3. If the user explicitly requests a Tanaab-based installation, load
+2. For a general explanation that does not require the selected executable's exact option contract,
+   use the bundled repository guidance and do not run runtime preflight or consult installation
+   config. Load the Tanaab-based reference only when that profile was explicitly requested.
+3. For exact option guidance, command planning, first bootstrap, or reconciliation, resolve and
+   validate the executable through **Executable Resolution**.
+4. If the user explicitly requests a Tanaab-based installation, load
    [Tanaab-based installation](references/tanaab-installation.md). Otherwise, do not read or apply
    that reference.
-4. Gather only unresolved choices from **Input Decisions** and verify secret presence without
+5. Gather only unresolved choices from **Input Decisions** and verify secret presence without
    exposing values.
-5. Assemble one command using the exact resolved executable path. Preserve repeated options such as
+6. Assemble one command using the exact resolved executable path. Preserve repeated options such as
    `--authorized-key` and `--brewfile` in user-specified order.
-6. Present the command with secret environment-variable references intact. Summarize consequential
+7. Present the command with secret environment-variable references intact. Summarize consequential
    behavior: account creation, SSH hardening, Tailscale enrollment, Homebrew group changes, OpenClaw
    service ownership, and any nondefault authentication or port choice.
-7. For a normal interactive run, launch agentbox and use its own displayed plan as the final
+8. For a normal interactive run, launch agentbox and use its own displayed plan as the final
    confirmation gate. Do not add `--yes` merely to avoid terminal interaction.
-8. For a user-requested `--yes` run, obtain explicit confirmation of the assembled command and
+9. For a user-requested `--yes` run, obtain explicit confirmation of the assembled command and
    summarized mutations before launching it.
-9. Let agentbox own sudo and hidden password prompts. Never attempt to supply either password on the
-   user's behalf.
-10. Preserve the complete exit status and actionable failure text. Do not claim success from partial
+10. Let agentbox own sudo and hidden password prompts. Never attempt to supply either password on the
+    user's behalf.
+11. Preserve the complete exit status and actionable failure text. Do not claim success from partial
     output.
-11. After a successful run, use `$tanaab-agentbox-doctor` for installed-host verification. Do not
+12. After a successful run, use `$tanaab-agentbox-doctor` for installed-host verification. Do not
     substitute this skill's own ad hoc health checks.
 
 ### Tanaab-Based Boundary
@@ -152,7 +158,8 @@ the doctor workflow for verification.
 
 - The requested explanation or command plan is complete, or agentbox exited successfully after the
   user accepted its plan.
-- The executable came from the requested configured key or configured `default` without fallback.
+- When executable resolution was required, it came from the requested configured key or configured
+  `default` without fallback.
 - Every explicit input is represented exactly once, except intentionally repeatable options.
 - No secret value or administrator password was printed, persisted, or passed through chat.
 - A successful host run is handed to `$tanaab-agentbox-doctor` for verification.
