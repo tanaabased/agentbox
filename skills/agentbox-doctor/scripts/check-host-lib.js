@@ -154,7 +154,11 @@ export function evaluateHealth(values, options = {}) {
 
   const installedVersion = values.agentbox_version || null;
   const pluginVersion = options.pluginVersion || null;
-  if (installedVersion && pluginVersion && installedVersion !== pluginVersion) {
+  if (
+    installedVersion &&
+    pluginVersion &&
+    normalizeVersion(installedVersion) !== normalizeVersion(pluginVersion)
+  ) {
     warnings.push({
       severity: 'warning',
       key: 'agentbox_version_mismatch',

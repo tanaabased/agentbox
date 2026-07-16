@@ -147,6 +147,16 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     assert.ok(report.warnings.some((warning) => warning.key === 'agentbox_version_mismatch'));
   });
 
+  it('should treat a release tag prefix as the same plugin and host version', () => {
+    const report = evaluateHealth(
+      { ...healthyValues, agentbox_version: 'v1.0.0-beta.6' },
+      { pluginVersion: '1.0.0-beta.6' },
+    );
+
+    assert.equal(report.status, 'healthy');
+    assert.ok(!report.warnings.some((warning) => warning.key === 'agentbox_version_mismatch'));
+  });
+
   it('should not recommend a system launchd repair for native user service mode', () => {
     const report = evaluateHealth({
       ...healthyValues,
