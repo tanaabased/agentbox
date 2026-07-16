@@ -279,6 +279,19 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     assert.deepEqual(missingRemediations, []);
   });
 
+  it('should use the health-reported Homebrew prefix for formula commands', () => {
+    assert.equal(
+      remediationCatalog.openclaw_cli_ok.command,
+      '{{brew_prefix}}/bin/brew reinstall openclaw-cli',
+    );
+    assert.equal(remediationCatalog.node_cli_ok.command, '{{brew_prefix}}/bin/brew install node');
+    assert.equal(remediationCatalog.ripgrep_ok.command, '{{brew_prefix}}/bin/brew install ripgrep');
+    assert.equal(
+      remediationCatalog.tailscale_operator_ok.command,
+      'sudo {{brew_prefix}}/bin/tailscale set --operator={{openclaw_user}}',
+    );
+  });
+
   it('should keep every remediation command syntactically valid', () => {
     for (const [key, remediation] of Object.entries(remediationCatalog)) {
       const candidates = [remediation, ...(remediation.variants || [])];

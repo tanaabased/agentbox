@@ -82,17 +82,17 @@
   "openclaw_cli_ok": {
     "kind": "command",
     "summary": "Reinstall the OpenClaw CLI formula.",
-    "command": "brew reinstall openclaw-cli"
+    "command": "{{brew_prefix}}/bin/brew reinstall openclaw-cli"
   },
   "node_cli_ok": {
     "kind": "command",
     "summary": "Install or repair the Node.js formula required by OpenClaw.",
-    "command": "brew install node"
+    "command": "{{brew_prefix}}/bin/brew install node"
   },
   "ripgrep_ok": {
     "kind": "command",
     "summary": "Install or repair ripgrep.",
-    "command": "brew install ripgrep"
+    "command": "{{brew_prefix}}/bin/brew install ripgrep"
   },
   "openclaw_gateway_launchd_loaded_ok": {
     "kind": "command",
@@ -152,7 +152,7 @@
   "tailscale_operator_ok": {
     "kind": "command",
     "summary": "Set the OpenClaw runner as the Tailscale operator.",
-    "command": "sudo tailscale set --operator={{openclaw_user}}"
+    "command": "sudo {{brew_prefix}}/bin/tailscale set --operator={{openclaw_user}}"
   },
   "tailscale_magicdns_enabled": {
     "kind": "manual",
