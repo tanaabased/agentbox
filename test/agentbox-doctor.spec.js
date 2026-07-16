@@ -327,6 +327,40 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     );
   });
 
+  it('should remove persistent Homebrew tailscaled launchd conflicts', () => {
+    const report = evaluateHealth({
+      ...healthyValues,
+      tailscale_expected: '1',
+      tailscaled_launchd_loaded_ok: '1',
+      tailscaled_launchd_running_ok: '1',
+      tailscaled_homebrew_launchd_absent_ok: '0',
+      tailscaled_homebrew_user_launchd_absent_ok: '0',
+      tailscaled_official_launchd_absent_ok: '1',
+      tailscaled_state_file_ok: '1',
+      tailscale_operator_ok: '1',
+      tailscale_ok: '0',
+      agentbox_ok: '0',
+    });
+    const systemIssue = report.issues.find(
+      (issue) => issue.key === 'tailscaled_homebrew_launchd_absent_ok',
+    );
+    const userIssue = report.issues.find(
+      (issue) => issue.key === 'tailscaled_homebrew_user_launchd_absent_ok',
+    );
+
+    assert.match(
+      systemIssue?.remediation.command || '',
+      /rm -f \/Library\/LaunchDaemons\/homebrew[.]mxcl[.]tailscale[.]plist/,
+    );
+    assert.match(userIssue?.remediation.command || '', /admin_user='pirog'/);
+    assert.match(userIssue?.remediation.command || '', /NFSHomeDirectory/);
+    assert.match(
+      userIssue?.remediation.command || '',
+      /rm -f .*Library\/LaunchAgents\/homebrew[.]mxcl[.]tailscale[.]plist/,
+    );
+    assert.doesNotMatch(userIssue?.remediation.command || '', /\{\{/);
+  });
+
   it('should keep every remediation command syntactically valid', () => {
     for (const [key, remediation] of Object.entries(remediationCatalog)) {
       const candidates = [remediation, ...(remediation.variants || [])];

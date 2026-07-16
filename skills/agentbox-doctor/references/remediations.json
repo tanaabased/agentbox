@@ -133,13 +133,13 @@
   },
   "tailscaled_homebrew_launchd_absent_ok": {
     "kind": "command",
-    "summary": "Boot out the conflicting Homebrew system tailscaled service.",
-    "command": "sudo /bin/launchctl bootout system/homebrew.mxcl.tailscale"
+    "summary": "Boot out the conflicting Homebrew system tailscaled service and remove its persistent plist.",
+    "command": "sudo /bin/launchctl bootout system/homebrew.mxcl.tailscale >/dev/null 2>&1 || true; sudo /bin/launchctl bootout system /Library/LaunchDaemons/homebrew.mxcl.tailscale.plist >/dev/null 2>&1 || true; sudo /bin/rm -f /Library/LaunchDaemons/homebrew.mxcl.tailscale.plist"
   },
   "tailscaled_homebrew_user_launchd_absent_ok": {
     "kind": "command",
-    "summary": "Boot out the conflicting Homebrew user tailscaled service for the invoking user.",
-    "command": "/bin/launchctl bootout gui/$(/usr/bin/id -u {{admin_user}})/homebrew.mxcl.tailscale"
+    "summary": "Boot out the conflicting Homebrew user tailscaled service and remove its persistent plist.",
+    "command": "admin_user={{admin_user}}; admin_uid=$(/usr/bin/id -u \"$admin_user\") || exit 1; admin_home=$(/usr/bin/dscl . -read \"/Users/$admin_user\" NFSHomeDirectory | /usr/bin/awk '{$1=\"\"; sub(/^ /, \"\"); print}') || exit 1; test -n \"$admin_home\" || exit 1; /bin/launchctl bootout \"gui/${admin_uid}/homebrew.mxcl.tailscale\" >/dev/null 2>&1 || true; /bin/launchctl bootout \"gui/${admin_uid}\" \"$admin_home/Library/LaunchAgents/homebrew.mxcl.tailscale.plist\" >/dev/null 2>&1 || true; sudo /bin/rm -f \"$admin_home/Library/LaunchAgents/homebrew.mxcl.tailscale.plist\""
   },
   "tailscaled_official_launchd_absent_ok": {
     "kind": "manual",
