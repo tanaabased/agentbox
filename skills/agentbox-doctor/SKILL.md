@@ -53,14 +53,16 @@ remediation without changing the host.
 3. If the result status is `not_installed`, stop and report that this host does not expose the
    installed agentbox health contract.
 4. Present the overall status and the installed agentbox version first.
-5. Present one line for each group: Host, Access and accounts, Dependencies, OpenClaw, Tailscale, and
+5. When installer metadata is configured, present its selected key, path, and version as the
+   preferred executable for later reconciliation. Never use it as the health probe.
+6. Present one line for each group: Host, Access and accounts, Dependencies, OpenClaw, Tailscale, and
    Monitoring.
-6. Omit passing leaf checks unless the user asks for detail. List every returned issue and warning
+7. Omit passing leaf checks unless the user asks for detail. List every returned issue and warning
    with its explanation and remediation.
-7. Render remediation commands as code, but do not execute them. Manual and reconcile remediations
+8. Render remediation commands as code, but do not execute them. Manual and reconcile remediations
    are intentional when a direct command would require unavailable secrets or original install
    inputs.
-8. If the report contains a contract mismatch or plugin/host version warning, say that the installed
+9. If the report contains a contract mismatch or plugin/host version warning, say that the installed
    health contract may be newer than this skill's check catalog and avoid claiming the host is fully
    healthy.
 
@@ -85,13 +87,12 @@ remediation without changing the host.
 
 - [Health probe](scripts/check-host.js): runs the installed health report and emits normalized JSON.
 - [Probe library](scripts/check-host-lib.js): parses and evaluates health output.
-- [Probe tests](scripts/check-host-lib.test.js): covers grouping, conditions, warnings, and contract
-  drift.
+- Repository unit tests under `test/`: cover grouping, conditions, warnings, and contract drift.
 - [Check catalog](references/checks.json): maps installed checks to user-facing groups.
 - [Remediation catalog](references/remediations.json): owns focused repair recommendations.
 
 ## Validation
 
-- Run `bun test scripts/check-host-lib.test.js` from this skill directory.
+- Run `bun run test` from the repository root.
 - Run the Tanaab skill validator with `--skill-dir . --type workflow`.
 - Run the repository's `bun run lint` and `git diff --check` checks.

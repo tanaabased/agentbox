@@ -1,14 +1,23 @@
-import { describe, expect, test } from 'bun:test';
+import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
-import { evaluateHealth, parseHealthReport } from './check-host-lib.js';
+import {
+  evaluateHealth,
+  parseHealthReport,
+} from '../skills/agentbox-doctor/scripts/check-host-lib.js';
 
 const checkCatalog = JSON.parse(
-  readFileSync(new URL('../references/checks.json', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../skills/agentbox-doctor/references/checks.json', import.meta.url),
+    'utf8',
+  ),
 );
 const remediationCatalog = JSON.parse(
-  readFileSync(new URL('../references/remediations.json', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../skills/agentbox-doctor/references/remediations.json', import.meta.url),
+    'utf8',
+  ),
 );
 
 const healthyValues = {
@@ -61,30 +70,27 @@ const healthyValues = {
   agentbox_ok: '1',
 };
 
-describe('parseHealthReport', () => {
-  test('keeps the latest key and preserves equals signs in values', () => {
+describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
+  it('should keep the latest key and preserve equals signs in values', () => {
     const values = parseHealthReport('agentbox_ok=0\nignored line\nnote=a=b\n---\nagentbox_ok=1\n');
 
-    expect(values).toEqual({ agentbox_ok: '1', note: 'a=b' });
+    assert.deepEqual(values, { agentbox_ok: '1', note: 'a=b' });
   });
-});
 
-describe('evaluateHealth', () => {
-  test('groups a healthy base report without activating Tailscale checks', () => {
+  it('should group a healthy base report without activating Tailscale checks', () => {
     const report = evaluateHealth(healthyValues, {
       healthScript: '/opt/tanaab/agentbox/bin/health.sh',
       pluginVersion: '1.0.0-beta.6',
     });
+    const tailscaleGroup = report.groups.find((group) => group.id === 'tailscale');
 
-    expect(report.status).toBe('healthy');
-    expect(report.issues).toHaveLength(0);
-    expect(report.groups.find((group) => group.id === 'tailscale')).toMatchObject({
-      status: 'healthy',
-      passed: 0,
-    });
+    assert.equal(report.status, 'healthy');
+    assert.equal(report.issues.length, 0);
+    assert.equal(tailscaleGroup?.status, 'healthy');
+    assert.equal(tailscaleGroup?.passed, 0);
   });
 
-  test('surfaces a conditional Tailscale Serve failure with a rendered repair', () => {
+  it('should surface a conditional Tailscale Serve failure with a rendered repair', () => {
     const values = {
       ...healthyValues,
       openclaw_gateway_tailscale_mode: 'serve',
@@ -109,37 +115,39 @@ describe('evaluateHealth', () => {
       (candidate) => candidate.key === 'tailscale_magicdns_resolver_ok',
     );
 
-    expect(report.status).toBe('unhealthy');
-    expect(report.groups.find((group) => group.id === 'tailscale').status).toBe('unhealthy');
-    expect(issue.remediation.command).toContain("'/etc/resolver/example.ts.net'");
-    expect(issue.remediation.command).not.toContain('{{');
+    assert.equal(report.status, 'unhealthy');
+    assert.equal(report.groups.find((group) => group.id === 'tailscale')?.status, 'unhealthy');
+    assert.match(issue?.remediation.command || '', /'\/etc\/resolver\/example[.]ts[.]net'/);
+    assert.doesNotMatch(issue?.remediation.command || '', /\{\{/);
   });
 
-  test('does not emit a partial command when a report value is missing', () => {
-    const values = {
+  it('should not emit a partial command when a report value is missing', () => {
+    const report = evaluateHealth({
       ...healthyValues,
       expected_hostname: '',
       macos_identity_ok: '0',
       agentbox_ok: '0',
-    };
-    const report = evaluateHealth(values);
+    });
     const issue = report.issues.find((candidate) => candidate.key === 'macos_identity_ok');
 
-    expect(issue.remediation).toMatchObject({
-      kind: 'investigate',
-      command: null,
-      requiresConfirmation: false,
-    });
+    assert.deepEqual(
+      {
+        kind: issue?.remediation.kind,
+        command: issue?.remediation.command,
+        requiresConfirmation: issue?.remediation.requiresConfirmation,
+      },
+      { kind: 'investigate', command: null, requiresConfirmation: false },
+    );
   });
 
-  test('warns when plugin and installed host versions differ', () => {
+  it('should warn when plugin and installed host versions differ', () => {
     const report = evaluateHealth(healthyValues, { pluginVersion: '1.0.0-beta.7' });
 
-    expect(report.status).toBe('warning');
-    expect(report.warnings.map((warning) => warning.key)).toContain('agentbox_version_mismatch');
+    assert.equal(report.status, 'warning');
+    assert.ok(report.warnings.some((warning) => warning.key === 'agentbox_version_mismatch'));
   });
 
-  test('does not recommend a system launchd repair for native user service mode', () => {
+  it('should not recommend a system launchd repair for native user service mode', () => {
     const report = evaluateHealth({
       ...healthyValues,
       openclaw_service_mode: 'user',
@@ -149,27 +157,79 @@ describe('evaluateHealth', () => {
     });
     const issue = report.issues.find((candidate) => candidate.key === 'openclaw_gateway_status_ok');
 
-    expect(issue.remediation).toMatchObject({
-      kind: 'reconcile',
-      command: null,
-      requiresConfirmation: false,
-    });
+    assert.deepEqual(
+      {
+        kind: issue?.remediation.kind,
+        command: issue?.remediation.command,
+        requiresConfirmation: issue?.remediation.requiresConfirmation,
+      },
+      { kind: 'reconcile', command: null, requiresConfirmation: false },
+    );
   });
 
-  test('does not hide health-contract drift behind a healthy catalog', () => {
+  it('should attach the configured default installer only to reconcile remediation', () => {
+    const installer = {
+      status: 'available',
+      default: 'source',
+      installation: {
+        key: 'source',
+        kind: 'source',
+        path: '/Users/example/agentbox/macos.sh',
+        version: 'v1.0.0-beta.6',
+      },
+    };
+    const report = evaluateHealth(
+      {
+        ...healthyValues,
+        openclaw_service_mode: 'user',
+        openclaw_gateway_status_ok: '0',
+        openclaw_gateway_ok: '0',
+        agentbox_ok: '0',
+      },
+      { installer },
+    );
+    const issue = report.issues.find((candidate) => candidate.key === 'openclaw_gateway_status_ok');
+
+    assert.deepEqual(issue?.remediation.installer, {
+      key: 'source',
+      path: '/Users/example/agentbox/macos.sh',
+      version: 'v1.0.0-beta.6',
+    });
+    assert.equal(report.source.installer.key, 'source');
+  });
+
+  it('should warn when the configured default would change the installed host version', () => {
+    const report = evaluateHealth(healthyValues, {
+      installer: {
+        status: 'available',
+        default: 'source',
+        installation: {
+          key: 'source',
+          kind: 'source',
+          path: '/Users/example/agentbox/macos.sh',
+          version: 'v1.0.0-beta.7',
+        },
+      },
+    });
+
+    assert.equal(report.status, 'warning');
+    assert.ok(
+      report.warnings.some((warning) => warning.key === 'agentbox_installer_version_mismatch'),
+    );
+  });
+
+  it('should not hide health-contract drift behind a healthy catalog', () => {
     const report = evaluateHealth(
       { ...healthyValues, agentbox_ok: '0' },
       { pluginVersion: '1.0.0-beta.6' },
     );
 
-    expect(report.status).toBe('unhealthy');
-    expect(report.issues.map((issue) => issue.key)).toContain('health_contract_mismatch');
+    assert.equal(report.status, 'unhealthy');
+    assert.ok(report.issues.some((issue) => issue.key === 'health_contract_mismatch'));
   });
-});
 
-describe('doctor catalogs', () => {
-  test('cover every health check marked required by the installed contract source', () => {
-    const healthSource = readFileSync(new URL('../../../bin/health.sh', import.meta.url), 'utf8');
+  it('should cover every health check marked required by the installed contract source', () => {
+    const healthSource = readFileSync(new URL('../bin/health.sh', import.meta.url), 'utf8');
     const requiredKeys = [...healthSource.matchAll(/mark_required +([a-z][a-z0-9_]*)/g)].map(
       (match) => match[1],
     );
@@ -177,19 +237,22 @@ describe('doctor catalogs', () => {
       checkCatalog.groups.flatMap((group) => group.checks.map((check) => check.key)),
     );
 
-    expect([...new Set(requiredKeys)].filter((key) => !catalogKeys.has(key))).toEqual([]);
+    assert.deepEqual(
+      [...new Set(requiredKeys)].filter((key) => !catalogKeys.has(key)),
+      [],
+    );
   });
 
-  test('provide remediation metadata for every surfaced leaf check', () => {
+  it('should provide remediation metadata for every surfaced leaf check', () => {
     const missingRemediations = checkCatalog.groups
       .flatMap((group) => group.checks)
       .filter((check) => check.issue !== false && !remediationCatalog[check.key])
       .map((check) => check.key);
 
-    expect(missingRemediations).toEqual([]);
+    assert.deepEqual(missingRemediations, []);
   });
 
-  test('keep every remediation command syntactically valid', () => {
+  it('should keep every remediation command syntactically valid', () => {
     for (const [key, remediation] of Object.entries(remediationCatalog)) {
       const candidates = [remediation, ...(remediation.variants || [])];
       for (const candidate of candidates) {

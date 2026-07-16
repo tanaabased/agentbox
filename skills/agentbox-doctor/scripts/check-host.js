@@ -5,6 +5,8 @@ import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { inspectConfiguredAgentboxInstallation } from '../../../lib/agentbox-installations.js';
+
 import { evaluateHealth, parseHealthReport, unavailableReport } from './check-host-lib.js';
 
 const skillRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -12,27 +14,15 @@ const pluginRoot = resolve(skillRoot, '..', '..');
 const defaultHealthScript = '/opt/tanaab/agentbox/bin/health.sh';
 
 function usage() {
-  return `Usage: check-host.js [--report-file PATH]\n\nOptions:\n  --report-file PATH  Evaluate a saved health report without sudo.\n  --help              Show this help.\n`;
+  return `Usage: check-host.js [--help]\n`;
 }
 
 function parseArgs(argv) {
-  const options = {
-    healthScript: defaultHealthScript,
-    reportFile: null,
-  };
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
-    if (argument === '--help') return { ...options, help: true };
-    if (argument !== '--report-file') throw new Error(`unknown argument: ${argument}`);
-
-    const value = argv[index + 1];
-    if (!value) throw new Error(`${argument} requires a path`);
-    options.reportFile = resolve(value);
-    index += 1;
+  if (argv.length === 0) return { healthScript: defaultHealthScript, help: false };
+  if (argv.length === 1 && argv[0] === '--help') {
+    return { healthScript: defaultHealthScript, help: true };
   }
-
-  return options;
+  throw new Error(`unknown argument: ${argv[0]}`);
 }
 
 function readPluginVersion() {
@@ -75,68 +65,54 @@ if (options.help) {
 }
 
 const pluginVersion = readPluginVersion();
-let rawReport;
-
-if (options.reportFile) {
-  try {
-    rawReport = readFileSync(options.reportFile, 'utf8');
-  } catch (error) {
-    printJson(
-      unavailableReport('unavailable', `Could not read report file: ${error.message}`, {
-        pluginVersion,
-      }),
-    );
-    process.exit(2);
-  }
-} else {
-  if (!existsSync(options.healthScript)) {
-    printJson(
-      unavailableReport('not_installed', 'The installed agentbox health script was not found.', {
-        healthScript: options.healthScript,
-        pluginVersion,
-      }),
-    );
-    process.exit(2);
-  }
-
-  const result = runHealthScript(options.healthScript);
-  if (result.error) {
-    printJson(
-      unavailableReport(
-        'unavailable',
-        `Could not execute the health script: ${result.error.message}`,
-        {
-          healthScript: options.healthScript,
-          pluginVersion,
-        },
-      ),
-    );
-    process.exit(2);
-  }
-  if (result.status !== 0) {
-    const authorizationRequired =
-      /(password is required|no password was provided|a terminal is required)/i.test(
-        result.stderr || '',
-      );
-    printJson(
-      unavailableReport(
-        authorizationRequired ? 'authorization_required' : 'unavailable',
-        authorizationRequired
-          ? 'Reusable sudo authorization is not available in this terminal.'
-          : `The installed health script exited with status ${result.status}.`,
-        {
-          healthScript: options.healthScript,
-          pluginVersion,
-        },
-      ),
-    );
-    process.exit(2);
-  }
-  rawReport = result.stdout;
+if (!existsSync(options.healthScript)) {
+  printJson(
+    unavailableReport('not_installed', 'The installed agentbox health script was not found.', {
+      healthScript: options.healthScript,
+      pluginVersion,
+    }),
+  );
+  process.exit(2);
 }
 
-const report = evaluateHealth(parseHealthReport(rawReport), {
-  healthScript: options.reportFile ? null : options.healthScript,
+const result = runHealthScript(options.healthScript);
+if (result.error) {
+  printJson(
+    unavailableReport(
+      'unavailable',
+      `Could not execute the health script: ${result.error.message}`,
+      {
+        healthScript: options.healthScript,
+        pluginVersion,
+      },
+    ),
+  );
+  process.exit(2);
+}
+if (result.status !== 0) {
+  const authorizationRequired =
+    /(password is required|no password was provided|a terminal is required)/i.test(
+      result.stderr || '',
+    );
+  printJson(
+    unavailableReport(
+      authorizationRequired ? 'authorization_required' : 'unavailable',
+      authorizationRequired
+        ? 'Reusable sudo authorization is not available in this terminal.'
+        : `The installed health script exited with status ${result.status}.`,
+      {
+        healthScript: options.healthScript,
+        pluginVersion,
+      },
+    ),
+  );
+  process.exit(2);
+}
+
+const installer = await inspectConfiguredAgentboxInstallation();
+const report = evaluateHealth(parseHealthReport(result.stdout), {
+  healthScript: options.healthScript,
+  installer,
   pluginVersion,
 });
 printJson(report);

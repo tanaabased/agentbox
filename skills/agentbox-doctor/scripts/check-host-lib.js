@@ -29,7 +29,7 @@ function renderCommand(template, values) {
   return missingValue ? null : command;
 }
 
-function remediationFor(key, values) {
+function remediationFor(key, values, installer) {
   const remediation = remediationCatalog[key];
   if (!remediation) {
     return {
@@ -48,7 +48,7 @@ function remediationFor(key, values) {
   const command = selected.command ? renderCommand(selected.command, values) : null;
   const missingCommandInput = Boolean(selected.command) && !command;
 
-  return {
+  const result = {
     kind: missingCommandInput ? 'investigate' : selected.kind,
     summary: missingCommandInput
       ? `${selected.summary} The installed report omitted a value required to render the command.`
@@ -56,6 +56,14 @@ function remediationFor(key, values) {
     command,
     requiresConfirmation: Boolean(command),
   };
+  if (result.kind === 'reconcile' && installer?.status === 'available') {
+    result.installer = {
+      key: installer.installation.key,
+      path: installer.installation.path,
+      version: installer.installation.version,
+    };
+  }
+  return result;
 }
 
 function addGroupWarning(groups, groupId) {
@@ -124,7 +132,7 @@ export function evaluateHealth(values, options = {}) {
           check.value === null
             ? `The installed health report omitted ${check.key}.`
             : `${check.label} reported ${check.value}.`,
-        remediation: remediationFor(check.key, values),
+        remediation: remediationFor(check.key, values, options.installer),
       })),
   );
   const warnings = [];
@@ -139,7 +147,7 @@ export function evaluateHealth(values, options = {}) {
       label: 'macOS application firewall',
       group: 'tailscale',
       detail: 'The application firewall is enabled while Tailscale Serve is configured.',
-      remediation: remediationFor('tailscale_firewall_warning', values),
+      remediation: remediationFor('tailscale_firewall_warning', values, options.installer),
     });
     addGroupWarning(groups, 'tailscale');
   }
@@ -157,6 +165,49 @@ export function evaluateHealth(values, options = {}) {
         kind: 'manual',
         summary:
           'Align the plugin and installed host versions before relying on version-specific remediation details.',
+        command: null,
+        requiresConfirmation: false,
+      },
+    });
+    addGroupWarning(groups, 'monitoring');
+  }
+
+  const installer = options.installer || null;
+  if (installer?.status === 'available') {
+    const installerVersion = installer.installation.version;
+    if (
+      installedVersion &&
+      installerVersion &&
+      normalizeVersion(installedVersion) !== normalizeVersion(installerVersion)
+    ) {
+      warnings.push({
+        severity: 'warning',
+        key: 'agentbox_installer_version_mismatch',
+        label: 'Default installer and host versions differ',
+        group: 'monitoring',
+        detail: `The installed host reports agentbox ${installedVersion}, while the configured ${installer.installation.key} installer is ${installerVersion}.`,
+        remediation: {
+          kind: 'manual',
+          summary:
+            'Confirm whether the next reconciliation should preserve the installed version or intentionally update the host.',
+          command: null,
+          requiresConfirmation: false,
+        },
+      });
+      addGroupWarning(groups, 'monitoring');
+    }
+  } else if (installer && !['unconfigured'].includes(installer.status)) {
+    warnings.push({
+      severity: 'warning',
+      key: 'agentbox_installer_unavailable',
+      label: 'Configured installer unavailable',
+      group: 'monitoring',
+      detail:
+        installer.error?.detail || 'The configured default agentbox installer is unavailable.',
+      remediation: {
+        kind: 'manual',
+        summary:
+          'Repair the agentbox installation config before using installer-backed remediation.',
         command: null,
         requiresConfirmation: false,
       },
@@ -199,6 +250,19 @@ export function evaluateHealth(values, options = {}) {
       healthTimestamp: values.timestamp || null,
       installedVersion,
       pluginVersion,
+      installer:
+        installer?.status === 'available'
+          ? {
+              status: installer.status,
+              default: installer.default,
+              key: installer.installation.key,
+              kind: installer.installation.kind,
+              path: installer.installation.path,
+              version: installer.installation.version,
+            }
+          : installer
+            ? { status: installer.status }
+            : null,
     },
     summary: {
       groups: groups.length,
@@ -242,6 +306,10 @@ export function evaluateHealth(values, options = {}) {
       },
     },
   };
+}
+
+function normalizeVersion(value) {
+  return value.replace(/^v/, '');
 }
 
 export function unavailableReport(status, detail, options = {}) {

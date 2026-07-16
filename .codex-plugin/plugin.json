@@ -22,6 +22,7 @@
     "capabilities": ["Interactive", "Write"],
     "defaultPrompt": [
       "Help me prepare a Mac as a managed headless OpenClaw host with agentbox.",
+      "Use $tanaab-agentbox-installer to install or select a stable or source agentbox executable.",
       "Use $tanaab-agentbox-doctor to review this agentbox host and recommend focused remediation steps.",
       "Help me design an agentbox skill for this host-management workflow."
     ],

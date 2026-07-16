@@ -118,11 +118,24 @@ This is directional guidance, not the current public contract:
   every input spelling.
 - See `examples/AGENTS.md` before editing examples.
 
+## JavaScript And Plugin Skills
+
+- Keep skill-owned JavaScript entrypoints and support modules under the owning
+  `skills/<skill>/scripts/` directory. Do not hoist them merely because the full repository ships in
+  the plugin archive.
+- Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
+- Reserve root `bin/` for a real package-level CLI. Hoist runtime modules to root `lib/` only after
+  reuse across at least two live skills or when they become a repo-wide contract.
+- Keep agentbox doctor bound to `/opt/tanaab/agentbox/bin/health.sh`. If that installed health script
+  is absent, report that agentbox is not installed; never fall back to a source or configured
+  installer copy.
+
 ## Validation
 
 - Prefer the narrowest reliable checks for the touched area.
 - For routine local validation, use `bun run lint`; run `git diff --check` when whitespace or
   generated text churn is plausible.
+- Run `bun run test` for JavaScript runtime changes.
 - Run `bun install` when dependencies are missing before linting; keep `bun.lock` when Bun updates
   it.
 - Do not delete local `node_modules/` after validation; it is ignored and local-only.

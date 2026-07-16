@@ -20,6 +20,7 @@
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.1",
     "globals": "^17.7.0",
+    "mocha": "^11.7.6",
     "prettier": "^3.9.5",
     "shellcheck": "^4.1.0"
   },
@@ -31,6 +32,7 @@
     "lint": "bun run lint:eslint && bun run format:check && bun run lint:shellcheck",
     "lint:eslint": "eslint .",
     "lint:shellcheck": "shellcheck *.sh bin/*.sh",
-    "test": "bun test skills/agentbox-doctor/scripts/check-host-lib.test.js"
+    "test": "bun run test:unit",
+    "test:unit": "mocha \"test/**/*.spec.js\""
   }
 }
