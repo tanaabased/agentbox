@@ -37,6 +37,7 @@ jobs:
           sync: false
           commands: |
             bun run lint
+            bun run codex:validate
             bun run build
             version-injector dist/macos.sh --style sh --version "${{ env.STAMPED_VERSION }}"
             version-injector .codex-plugin/plugin.json --style json --version "${{ env.STAMPED_VERSION }}"

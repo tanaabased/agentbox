@@ -123,6 +123,8 @@ This is directional guidance, not the current public contract:
   `skills/<skill>/scripts/` directory. Do not hoist them merely because the full repository ships in
   the plugin archive.
 - Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
+- Keep the repo-owned Codex plugin contract in `lib/plugin-validation.js` and run it through
+  `bun run codex:validate`; do not expand it into plugin cache synchronization or installation.
 - Reserve root `bin/` for a real package-level CLI. Hoist runtime modules to root `lib/` only after
   reuse across at least two live skills or when they become a repo-wide contract.
 - Require Bun-dependent plugin skills to run `scripts/check-plugin-runtime.sh` before invoking their
@@ -143,6 +145,8 @@ This is directional guidance, not the current public contract:
 - For routine local validation, use `bun run lint`; run `git diff --check` when whitespace or
   generated text churn is plausible.
 - Run `bun run test` for JavaScript runtime changes.
+- Run `bun run codex:validate` for plugin manifest, skill metadata, plugin asset, or plugin workflow
+  changes.
 - Run `bun install` when dependencies are missing before linting; keep `bun.lock` when Bun updates
   it.
 - Do not delete local `node_modules/` after validation; it is ignored and local-only.

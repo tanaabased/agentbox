@@ -26,6 +26,7 @@
   },
   "scripts": {
     "build": "bun ./scripts/build-dist.js",
+    "codex:validate": "bun ./scripts/validate-plugin.js",
     "format:check": "prettier . --check --ignore-unknown",
     "format:write": "prettier . --write --ignore-unknown",
     "leia": "leia",
