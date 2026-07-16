@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import {
   access,
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
@@ -197,6 +198,9 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
       fetchImpl,
       now: new Date('2026-07-16T12:00:00Z'),
     });
+    const configBefore = await readFile(first.configPath, 'utf8');
+    const configStatBefore = await stat(first.configPath);
+    const shimBefore = await lstat(first.binPath);
     const second = await installStableAgentbox({
       env,
       fetchImpl,
@@ -206,9 +210,21 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     const status = await statusAgentboxInstallations({ env });
 
     assert.equal(first.status, 'installed');
+    assert.equal(first.changed, true);
+    assert.equal(first.payloadChanged, true);
+    assert.equal(first.configChanged, true);
+    assert.equal(first.shimChanged, true);
     assert.equal(second.status, 'current');
+    assert.equal(second.changed, false);
+    assert.equal(second.payloadChanged, false);
+    assert.equal(second.configChanged, false);
+    assert.equal(second.shimChanged, false);
+    assert.equal(await readFile(second.configPath, 'utf8'), configBefore);
+    assert.equal((await stat(second.configPath)).ino, configStatBefore.ino);
+    assert.equal((await lstat(second.binPath)).ino, shimBefore.ino);
     assert.equal(loaded.config.default, 'stable');
     assert.equal(loaded.config.installations.stable.path, await realpath(first.path));
+    assert.equal(loaded.config.installations.stable.updatedAt, '2026-07-16T12:00:00.000Z');
     assert.equal(await readlink(loaded.config.binPath), first.path);
     assert.equal(status.shim.status, 'current');
     assert.equal(status.path.configured, true);
@@ -217,6 +233,51 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
       installationKey: 'stable',
       defaultKey: 'stable',
     });
+  });
+
+  it('should reconcile a missing stable command without rewriting config', async () => {
+    const fetchImpl = await createReleaseFetch(home);
+    const installed = await installStableAgentbox({
+      env,
+      fetchImpl,
+      now: new Date('2026-07-16T12:00:00Z'),
+    });
+    const configBefore = await readFile(installed.configPath, 'utf8');
+    await rm(installed.binPath);
+
+    const reconciled = await installStableAgentbox({
+      env,
+      fetchImpl,
+      now: new Date('2026-07-16T12:01:00Z'),
+    });
+
+    assert.equal(reconciled.status, 'reconciled');
+    assert.equal(reconciled.changed, true);
+    assert.equal(reconciled.payloadChanged, false);
+    assert.equal(reconciled.configChanged, false);
+    assert.equal(reconciled.shimChanged, true);
+    assert.equal(await readFile(reconciled.configPath, 'utf8'), configBefore);
+    assert.equal(await readlink(reconciled.binPath), installed.path);
+  });
+
+  it('should report reconciliation when an existing stable payload is newly registered', async () => {
+    const fetchImpl = await createReleaseFetch(home);
+    const installed = await installStableAgentbox({ env, fetchImpl });
+    await rm(installed.configPath);
+    await rm(installed.binPath);
+
+    const reconciled = await installStableAgentbox({
+      env,
+      fetchImpl,
+      now: new Date('2026-07-16T12:01:00Z'),
+    });
+
+    assert.equal(reconciled.status, 'reconciled');
+    assert.equal(reconciled.changed, true);
+    assert.equal(reconciled.payloadChanged, false);
+    assert.equal(reconciled.configChanged, true);
+    assert.equal(reconciled.shimChanged, true);
+    assert.equal(await readlink(reconciled.binPath), installed.path);
   });
 
   it('should preserve a requested non-default selector in the handoff', async () => {

@@ -14,6 +14,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
 import {
   AgentboxInstallationError,
@@ -352,7 +353,10 @@ async function prepareShimMigration(previousConfig, nextConfig) {
 }
 
 async function persistConfig(config, options = {}) {
-  const prepared = config.default ? await prepareAgentboxShim(config, options) : null;
+  const prepared =
+    config.default && options.synchronizeShim !== false
+      ? await prepareAgentboxShim(config, options)
+      : null;
   const migration = await prepareShimMigration(options.previousConfig, config);
   let configPath = null;
   let migrationStaged = false;
@@ -422,6 +426,16 @@ async function existingReleasePayload(destination, release, options) {
   return payload;
 }
 
+function stableInstallationMatches(current, payload, release) {
+  return Boolean(
+    current &&
+    current.kind === 'release' &&
+    current.path === payload.path &&
+    normalizeVersion(current.version) === normalizeVersion(payload.version) &&
+    normalizeVersion(current.releaseTag) === normalizeVersion(release.tag),
+  );
+}
+
 export async function repairInvalidAgentboxInstallationConfig(options = {}) {
   const env = options.env || process.env;
   const paths = resolveAgentboxInstallationPaths({ env });
@@ -481,7 +495,7 @@ export async function installStableAgentbox(options = {}) {
   const installRoot = stableInstallRoot(loaded, { ...options, env });
   const destination = join(installRoot, release.tag);
   let payload = await existingReleasePayload(destination, release, { env });
-  let changed = false;
+  let payloadChanged = false;
 
   if (!payload) {
     const archivePath = await downloadArchive(release, loaded.paths.cacheDir, options);
@@ -502,34 +516,53 @@ export async function installStableAgentbox(options = {}) {
         await rm(stagingDir, { recursive: true, force: true });
       }
       payload = await validateAgentboxPayload(join(destination, 'dist', 'macos.sh'), { env });
-      changed = true;
+      payloadChanged = true;
     } catch (error) {
       await rm(stagingDir, { recursive: true, force: true });
       throw error;
     }
   }
 
-  const nextConfig = withAgentboxInstallation(
-    loaded.config,
-    'stable',
-    {
-      kind: 'release',
-      version: payload.version,
-      path: payload.path,
-      releaseTag: release.tag,
-      updatedAt: (options.now || new Date()).toISOString(),
-    },
-    { binPath: configuredBinPath(loaded.config, { ...options, env }) },
-  );
-  const configPath = await persistConfig(nextConfig, {
-    env,
-    previousConfig: loaded.config,
-    previousConfigExists: loaded.exists,
+  const currentInstallation = loaded.config.installations.stable;
+  const installation = stableInstallationMatches(currentInstallation, payload, release)
+    ? currentInstallation
+    : {
+        kind: 'release',
+        version: payload.version,
+        path: payload.path,
+        releaseTag: release.tag,
+        updatedAt: (options.now || new Date()).toISOString(),
+      };
+  const nextConfig = withAgentboxInstallation(loaded.config, 'stable', installation, {
+    binPath: configuredBinPath(loaded.config, { ...options, env }),
   });
+  const configChanged = !loaded.exists || !isDeepStrictEqual(nextConfig, loaded.config);
+  const binPathChanged = resolve(nextConfig.binPath) !== resolve(loaded.config.binPath);
+  const shimChanged = nextConfig.default
+    ? binPathChanged || (await inspectShim(nextConfig)).status !== 'current'
+    : false;
+  let configPath = loaded.paths.configFile;
+
+  if (configChanged) {
+    configPath = await persistConfig(nextConfig, {
+      env,
+      previousConfig: loaded.config,
+      previousConfigExists: loaded.exists,
+      synchronizeShim: shimChanged,
+    });
+  } else if (shimChanged) {
+    await synchronizeAgentboxShim(nextConfig, { env });
+  }
+
+  const changed = payloadChanged || configChanged || shimChanged;
+  const status = payloadChanged ? 'installed' : changed ? 'reconciled' : 'current';
 
   return {
-    status: changed ? 'installed' : 'current',
+    status,
     changed,
+    payloadChanged,
+    configChanged,
+    shimChanged,
     key: 'stable',
     version: payload.version,
     path: payload.path,
