@@ -106,5 +106,5 @@ remediation without changing the host.
 ## Validation
 
 - Run `bun run test` from the repository root.
-- Run the Tanaab skill validator with `--skill-dir . --type workflow`.
+- Run the Tanaab skill validator with `--skill-dir skills/agentbox-doctor --type workflow`.
 - Run the repository's `bun run lint` and `git diff --check` checks.

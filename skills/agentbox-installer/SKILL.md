@@ -58,6 +58,9 @@ without running the host bootstrap itself.
 3. For `install stable` or `update stable`, explain the release destination, config path, command
    shim, network access, and GitHub digest requirement. Get confirmation, then run
    `bun scripts/manage-installations.js install stable` or the equivalent `update stable` command.
+   Retain older verified release payloads and downloads as inert rollback cache. Do not expose them as
+   installation keys, use them as fallback executables, or remove them without an explicit cleanup
+   request.
 4. For source registration, resolve the requested checkout and explain that it remains a moving
    external path. Get confirmation, then run
    `bun scripts/manage-installations.js register source <path>`.
