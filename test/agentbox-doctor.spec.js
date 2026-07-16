@@ -238,6 +238,23 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     assert.ok(report.issues.some((issue) => issue.key === 'health_contract_mismatch'));
   });
 
+  it('should not report healthy when an aggregate fails without a leaf failure', () => {
+    const report = evaluateHealth(
+      {
+        ...healthyValues,
+        openclaw_gateway_ok: '0',
+        agentbox_ok: '0',
+      },
+      { pluginVersion: '1.0.0-beta.6' },
+    );
+
+    assert.equal(report.status, 'unhealthy');
+    assert.equal(report.ok, false);
+    assert.equal(report.summary.failed, 1);
+    assert.equal(report.groups.find((group) => group.id === 'openclaw')?.status, 'unhealthy');
+    assert.ok(report.issues.some((issue) => issue.key === 'health_contract_mismatch'));
+  });
+
   it('should cover every health check marked required by the installed contract source', () => {
     const healthSource = readFileSync(new URL('../bin/health.sh', import.meta.url), 'utf8');
     const requiredKeys = [...healthSource.matchAll(/mark_required +([a-z][a-z0-9_]*)/g)].map(

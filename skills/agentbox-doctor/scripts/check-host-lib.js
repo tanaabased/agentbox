@@ -139,6 +139,11 @@ export function evaluateHealth(values, options = {}) {
   const failedChecks = groups.reduce((total, group) => total + group.failed, 0);
   const passedChecks = groups.reduce((total, group) => total + group.passed, 0);
   const skippedChecks = groups.reduce((total, group) => total + group.skipped, 0);
+  const unexplainedAggregateFailures = groups.flatMap((group) => {
+    const failed = group.checks.filter((check) => check.active && check.status === 'unhealthy');
+    if (failed.some((check) => check.issue)) return [];
+    return failed.filter((check) => !check.issue);
+  });
 
   if (values.tailscale_firewall_warning === '1') {
     warnings.push({
@@ -221,16 +226,23 @@ export function evaluateHealth(values, options = {}) {
 
   const aggregateHealthy = values.agentbox_ok === '1';
   const catalogHealthy = failedChecks === 0;
-  if (values.agentbox_ok === undefined || aggregateHealthy !== catalogHealthy) {
+  let contractMismatchDetail = null;
+  if (values.agentbox_ok === undefined) {
+    contractMismatchDetail = 'The installed report omitted agentbox_ok.';
+  } else if (aggregateHealthy !== catalogHealthy) {
+    contractMismatchDetail = `The installed aggregate is ${values.agentbox_ok}, but the plugin catalog found ${failedChecks} failing checks.`;
+  } else if (unexplainedAggregateFailures.length > 0) {
+    contractMismatchDetail = `The plugin catalog found failing aggregate checks without failing leaf checks: ${unexplainedAggregateFailures
+      .map((check) => check.key)
+      .join(', ')}.`;
+  }
+  if (contractMismatchDetail) {
     issues.push({
       severity: 'failure',
       key: 'health_contract_mismatch',
       label: 'Health contract mismatch',
       group: 'monitoring',
-      detail:
-        values.agentbox_ok === undefined
-          ? 'The installed report omitted agentbox_ok.'
-          : `The installed aggregate is ${values.agentbox_ok}, but the plugin catalog found ${failedChecks} failing checks.`,
+      detail: contractMismatchDetail,
       remediation: {
         kind: 'investigate',
         summary:
@@ -243,7 +255,12 @@ export function evaluateHealth(values, options = {}) {
     if (monitoring) monitoring.status = 'unhealthy';
   }
 
-  const status = issues.length > 0 ? 'unhealthy' : warnings.length > 0 ? 'warning' : 'healthy';
+  const status =
+    failedChecks > 0 || issues.length > 0
+      ? 'unhealthy'
+      : warnings.length > 0
+        ? 'warning'
+        : 'healthy';
 
   return {
     schemaVersion: 1,
