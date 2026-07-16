@@ -198,28 +198,68 @@ async function assertShimReplaceable(shimPath) {
   }
 }
 
-export async function synchronizeAgentboxShim(config) {
+async function prepareAgentboxShim(config, options = {}) {
   const selected = selectAgentboxInstallation(config);
-  await validateAgentboxPayload(selected.path);
+  await validateAgentboxPayload(selected.path, options);
   await assertShimReplaceable(config.binPath);
   await mkdir(dirname(config.binPath), { recursive: true, mode: 0o755 });
   const tempPath = join(dirname(config.binPath), `.agentbox.${randomUUID()}.tmp`);
 
   try {
     await symlink(selected.path, tempPath);
-    await rename(tempPath, config.binPath);
   } catch (error) {
     await rm(tempPath, { force: true });
     throw error;
   }
-  return config.binPath;
+  return { shimPath: config.binPath, tempPath };
+}
+
+async function commitAgentboxShim(prepared) {
+  try {
+    await assertShimReplaceable(prepared.shimPath);
+    await rename(prepared.tempPath, prepared.shimPath);
+  } catch (error) {
+    await rm(prepared.tempPath, { force: true });
+    throw error;
+  }
+}
+
+export async function synchronizeAgentboxShim(config, options = {}) {
+  const prepared = await prepareAgentboxShim(config, options);
+  await commitAgentboxShim(prepared);
+  return prepared.shimPath;
+}
+
+async function restorePreviousConfig(configPath, options) {
+  if (options.previousConfigExists) {
+    await writeAgentboxInstallationConfig(options.previousConfig, options);
+    return;
+  }
+  await rm(configPath, { force: true });
 }
 
 async function persistConfig(config, options = {}) {
-  if (config.default) await assertShimReplaceable(config.binPath);
-  const configPath = await writeAgentboxInstallationConfig(config, options);
-  if (config.default) await synchronizeAgentboxShim(config);
-  return configPath;
+  const prepared = config.default ? await prepareAgentboxShim(config, options) : null;
+  let configPath = null;
+
+  try {
+    configPath = await writeAgentboxInstallationConfig(config, options);
+    if (prepared) await commitAgentboxShim(prepared);
+    return configPath;
+  } catch (error) {
+    if (prepared) await rm(prepared.tempPath, { force: true });
+    if (configPath) {
+      try {
+        await restorePreviousConfig(configPath, options);
+      } catch (rollbackError) {
+        throw operationError(
+          'state_inconsistent',
+          `agentbox command shim update failed (${error.message}) and config rollback failed (${rollbackError.message}).`,
+        );
+      }
+    }
+    throw error;
+  }
 }
 
 function configuredBinPath(config, options) {
@@ -294,7 +334,11 @@ export async function installStableAgentbox(options = {}) {
     },
     { binPath: configuredBinPath(loaded.config, { ...options, env }) },
   );
-  const configPath = await persistConfig(nextConfig, { env });
+  const configPath = await persistConfig(nextConfig, {
+    env,
+    previousConfig: loaded.config,
+    previousConfigExists: loaded.exists,
+  });
 
   return {
     status: changed ? 'installed' : 'current',
@@ -324,7 +368,11 @@ export async function registerSourceAgentbox(inputPath, options = {}) {
     },
     { binPath: configuredBinPath(loaded.config, { ...options, env }) },
   );
-  const configPath = await persistConfig(nextConfig, { env });
+  const configPath = await persistConfig(nextConfig, {
+    env,
+    previousConfig: loaded.config,
+    previousConfigExists: loaded.exists,
+  });
 
   return {
     status: 'registered',
@@ -344,7 +392,11 @@ export async function useAgentboxInstallation(key, options = {}) {
   let nextConfig = withDefaultAgentboxInstallation(loaded.config, key);
   nextConfig = { ...nextConfig, binPath: configuredBinPath(nextConfig, { ...options, env }) };
   await validateAgentboxPayload(selectAgentboxInstallation(nextConfig).path, { env });
-  const configPath = await persistConfig(nextConfig, { env });
+  const configPath = await persistConfig(nextConfig, {
+    env,
+    previousConfig: loaded.config,
+    previousConfigExists: loaded.exists,
+  });
 
   return {
     status: 'selected',

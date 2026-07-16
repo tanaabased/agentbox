@@ -217,4 +217,19 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     const loaded = await loadAgentboxInstallationConfig({ env });
     assert.equal(loaded.exists, false);
   });
+
+  it('should leave config untouched when the command shim cannot be staged', async () => {
+    const binDir = join(home, '.local', 'bin');
+    const sourcePath = await createPayload(join(home, 'source'), 'v1.3.0-dev');
+    await mkdir(binDir, { recursive: true });
+    await chmod(binDir, 0o500);
+
+    try {
+      await assert.rejects(registerSourceAgentbox(sourcePath, { env }), { code: 'EACCES' });
+    } finally {
+      await chmod(binDir, 0o700);
+    }
+    const loaded = await loadAgentboxInstallationConfig({ env });
+    assert.equal(loaded.exists, false);
+  });
 });
