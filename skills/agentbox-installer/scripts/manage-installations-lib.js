@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  chmod,
   lstat,
   mkdir,
   readFile,
@@ -16,9 +17,11 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import {
   AgentboxInstallationError,
+  createAgentboxInstallationConfig,
   inspectConfiguredAgentboxInstallation,
   isDirectoryOnPath,
   loadAgentboxInstallationConfig,
+  resolveAgentboxInstallationPaths,
   resolveConfiguredAgentboxInstallation,
   selectAgentboxInstallation,
   validateAgentboxPayload,
@@ -344,6 +347,58 @@ async function existingReleasePayload(destination, release, options) {
   return payload;
 }
 
+export async function repairInvalidAgentboxInstallationConfig(options = {}) {
+  const env = options.env || process.env;
+  const paths = resolveAgentboxInstallationPaths({ env });
+  let invalidError = null;
+
+  try {
+    await loadAgentboxInstallationConfig({ env });
+  } catch (error) {
+    if (error.code !== 'config_invalid') throw error;
+    invalidError = error;
+  }
+  if (!invalidError) {
+    throw operationError(
+      'config_valid',
+      `refusing to reset valid agentbox installation config at ${paths.configFile}.`,
+    );
+  }
+
+  const configStat = await lstat(paths.configFile);
+  if (!configStat.isFile()) {
+    throw operationError(
+      'config_repair_unsupported',
+      `refusing to repair non-file agentbox installation config at ${paths.configFile}.`,
+    );
+  }
+  const timestamp = (options.now || new Date()).toISOString().replaceAll(':', '-');
+  const backupPath = `${paths.configFile}.invalid-${timestamp}-${randomUUID()}.bak`;
+  await rename(paths.configFile, backupPath);
+  try {
+    await chmod(backupPath, 0o600);
+    await writeAgentboxInstallationConfig(createAgentboxInstallationConfig(paths), { env });
+  } catch (error) {
+    try {
+      await rm(paths.configFile, { force: true });
+      await rename(backupPath, paths.configFile);
+    } catch (rollbackError) {
+      throw operationError(
+        'state_inconsistent',
+        `agentbox config repair failed (${error.message}) and rollback failed (${rollbackError.message}).`,
+      );
+    }
+    throw error;
+  }
+
+  return {
+    status: 'reset',
+    configPath: paths.configFile,
+    backupPath,
+    previousError: { code: invalidError.code, detail: invalidError.message },
+  };
+}
+
 export async function installStableAgentbox(options = {}) {
   const env = options.env || process.env;
   const loaded = await loadAgentboxInstallationConfig({ env, binDir: options.binDir });
@@ -490,7 +545,18 @@ async function inspectShim(config) {
 
 export async function statusAgentboxInstallations(options = {}) {
   const env = options.env || process.env;
-  const loaded = await loadAgentboxInstallationConfig({ env, binDir: options.binDir });
+  const paths = resolveAgentboxInstallationPaths({ env, binDir: options.binDir });
+  let loaded;
+  try {
+    loaded = await loadAgentboxInstallationConfig({ env, binDir: options.binDir });
+  } catch (error) {
+    if (error.code !== 'config_invalid') throw error;
+    return {
+      status: 'invalid_config',
+      configPath: paths.configFile,
+      error: { code: error.code, detail: error.message },
+    };
+  }
   const installations = {};
 
   for (const [key, installation] of Object.entries(loaded.config.installations)) {

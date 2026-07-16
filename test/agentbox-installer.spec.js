@@ -9,6 +9,7 @@ import {
   readlink,
   realpath,
   rm,
+  stat,
   symlink,
   writeFile,
 } from 'node:fs/promises';
@@ -18,6 +19,7 @@ import { join } from 'node:path';
 import { loadAgentboxInstallationConfig } from '../lib/agentbox-installations.js';
 import {
   installStableAgentbox,
+  repairInvalidAgentboxInstallationConfig,
   registerSourceAgentbox,
   resolveLatestStableRelease,
   statusAgentboxInstallations,
@@ -229,6 +231,29 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
       skill: '$tanaab-agentbox',
       installationKey: 'source',
       defaultKey: 'source',
+    });
+  });
+
+  it('should report and repair invalid config without discarding the original', async () => {
+    const configDir = join(home, '.config', 'agentbox');
+    const configPath = join(configDir, 'config.json');
+    await mkdir(configDir, { recursive: true });
+    await writeFile(configPath, '{invalid json\n');
+
+    const status = await statusAgentboxInstallations({ env });
+    const repaired = await repairInvalidAgentboxInstallationConfig({
+      env,
+      now: new Date('2026-07-16T12:00:00Z'),
+    });
+    const loaded = await loadAgentboxInstallationConfig({ env });
+
+    assert.equal(status.status, 'invalid_config');
+    assert.equal(repaired.status, 'reset');
+    assert.equal(await readFile(repaired.backupPath, 'utf8'), '{invalid json\n');
+    assert.equal((await stat(repaired.backupPath)).mode & 0o777, 0o600);
+    assert.equal(loaded.config.default, null);
+    await assert.rejects(repairInvalidAgentboxInstallationConfig({ env }), {
+      code: 'config_valid',
     });
   });
 

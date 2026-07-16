@@ -222,9 +222,14 @@ export function evaluateHealth(values, options = {}) {
       remediation: {
         kind: 'manual',
         summary:
-          'Repair the agentbox installation config before using installer-backed remediation.',
+          'Repair the agentbox installation state before using installer-backed remediation.',
         command: null,
         requiresConfirmation: false,
+        handoff: {
+          skill: '$tanaab-agentbox-installer',
+          intent: 'repair_installation_state',
+          status: installer.status,
+        },
       },
     });
     addGroupWarning(groups, 'monitoring');

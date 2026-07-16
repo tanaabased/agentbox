@@ -62,16 +62,18 @@ remediation without changing the host.
 5. Present the overall status and the installed agentbox version first.
 6. When installer metadata is configured, present its selected key, path, and version as the
    preferred executable for later reconciliation. Never use it as the health probe.
-7. Present one line for each group: Host, Access and accounts, Dependencies, OpenClaw, Tailscale, and
+7. When installer metadata is invalid or unavailable, use the warning remediation handoff to
+   `$tanaab-agentbox-installer`. Do not improvise config edits in the doctor workflow.
+8. Present one line for each group: Host, Access and accounts, Dependencies, OpenClaw, Tailscale, and
    Monitoring.
-8. Omit passing leaf checks unless the user asks for detail. List every returned issue and warning
+9. Omit passing leaf checks unless the user asks for detail. List every returned issue and warning
    with its explanation and remediation.
-9. Render remediation commands as code, but do not execute them. Manual and reconcile remediations
+10. Render remediation commands as code, but do not execute them. Manual and reconcile remediations
    are intentional when a direct command would require unavailable secrets or original install
    inputs.
-10. For a `reconcile` remediation, use its handoff to `$tanaab-agentbox` and preserve the returned
+11. For a `reconcile` remediation, use its handoff to `$tanaab-agentbox` and preserve the returned
     installation key when present. Do not run reconciliation without separate user confirmation.
-11. If the report contains a contract mismatch or plugin/host version warning, say that the installed
+12. If the report contains a contract mismatch or plugin/host version warning, say that the installed
     health contract may be newer than this skill's check catalog and avoid claiming the host is fully
     healthy.
 

@@ -245,6 +245,24 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     );
   });
 
+  it('should hand unavailable installer state to the installer workflow', () => {
+    const report = evaluateHealth(healthyValues, {
+      installer: {
+        status: 'invalid_config',
+        error: { detail: 'could not parse config.json' },
+      },
+    });
+    const warning = report.warnings.find(
+      (candidate) => candidate.key === 'agentbox_installer_unavailable',
+    );
+
+    assert.deepEqual(warning?.remediation.handoff, {
+      skill: '$tanaab-agentbox-installer',
+      intent: 'repair_installation_state',
+      status: 'invalid_config',
+    });
+  });
+
   it('should not hide health-contract drift behind a healthy catalog', () => {
     const report = evaluateHealth(
       { ...healthyValues, agentbox_ok: '0' },

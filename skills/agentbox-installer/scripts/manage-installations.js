@@ -2,6 +2,7 @@
 
 import {
   installStableAgentbox,
+  repairInvalidAgentboxInstallationConfig,
   registerSourceAgentbox,
   resolveAgentboxExecutable,
   statusAgentboxInstallations,
@@ -17,6 +18,7 @@ Commands:
   update stable [--install-root PATH] [--bin-dir PATH]
   register source PATH [--bin-dir PATH]
   use <stable|source> [--bin-dir PATH]
+  repair config
   resolve [stable|source]
 
 Options:
@@ -84,6 +86,13 @@ async function main(argv) {
       throw new Error('use requires stable or source');
     }
     printJson(await useAgentboxInstallation(positionals[0], options));
+    return 0;
+  }
+  if (command === 'repair') {
+    if (rest.length !== 1 || rest[0] !== 'config') {
+      throw new Error('repair requires config');
+    }
+    printJson(await repairInvalidAgentboxInstallationConfig());
     return 0;
   }
   if (command === 'resolve') {

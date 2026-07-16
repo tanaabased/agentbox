@@ -57,17 +57,20 @@ the doctor workflow for verification.
 
 1. Run `../../scripts/check-plugin-runtime.sh` from this skill directory. Stop when it fails.
 2. Run `bun ../agentbox-installer/scripts/manage-installations.js status` from this skill directory.
-3. If the user explicitly requests `stable` or `source`, run
+3. If status is `invalid_config`, offer to use `$tanaab-agentbox-installer` for its backup-and-reset
+   recovery workflow. Do not attempt resolution or edit config directly. Preserve the requested
+   selector and gathered inputs when resuming after repair.
+4. If the user explicitly requests `stable` or `source`, run
    `bun ../agentbox-installer/scripts/manage-installations.js resolve <key>`.
-4. Otherwise, run `bun ../agentbox-installer/scripts/manage-installations.js resolve` to select the
+5. Otherwise, run `bun ../agentbox-installer/scripts/manage-installations.js resolve` to select the
    configured `default`.
-5. If config is absent, `default` is unset, or the requested key is unavailable, offer to use
+6. If config is absent, `default` is unset, or the requested key is unavailable, offer to use
    `$tanaab-agentbox-installer`. Do not run that mutating workflow without confirmation. When the
    user approves it, preserve the requested selector and gathered inputs, complete the installer
    workflow, then rerun resolution and resume this workflow.
-6. Treat `stable` and `source` as the only supported installation selectors. Do not interpret an
+7. Treat `stable` and `source` as the only supported installation selectors. Do not interpret an
    arbitrary semantic version as a configured installation key.
-7. Use only the returned absolute `installation.path`. Before planning a run, execute that path with
+8. Use only the returned absolute `installation.path`. Before planning a run, execute that path with
    `--version` and `--help`; stop if either command fails.
 
 ### Input Decisions
