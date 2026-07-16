@@ -52,16 +52,13 @@ jobs:
           plugin_version="v$(bun --eval 'const plugin = JSON.parse(await Bun.file(".codex-plugin/plugin.json").text()); console.log(plugin.version)')"
           printf 'plugin=%s\n' "$plugin_version"
           test "$plugin_version" = "${{ env.STAMPED_VERSION }}"
-      - name: Install production dependencies
-        run: |
-          rm -rf node_modules
-          bun install --production --frozen-lockfile --ignore-scripts
       - name: Package release archive
         env:
           RELEASE_ARCHIVE: agentbox-${{ env.STAMPED_VERSION }}.tar.gz
         run: |
           tar \
             --exclude-vcs \
+            --exclude='./node_modules' \
             -czf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" \
             -C "${GITHUB_WORKSPACE}" \
             .
@@ -79,7 +76,7 @@ jobs:
           tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'assets/composer-icon.svg'
           tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'assets/icon-large.png'
           tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'dist/macos.sh'
-          if tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -E '(^|/)node_modules/(@eslint/js|@lando/leia|eslint|eslint-config-prettier|globals|mocha|prettier|shellcheck)/'; then
-            echo 'release archive must not include dev dependencies' >&2
+          if tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -E '(^|/)node_modules(/|$)'; then
+            echo 'release archive must not include node_modules' >&2
             exit 1
           fi

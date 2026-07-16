@@ -172,7 +172,7 @@ the doctor workflow for verification.
 ## Bundled Resources
 
 - [Tanaab-based installation](references/tanaab-installation.md): explicit-only personal installation
-  profile migrated from the former root `TANAAB.md`.
+  profile.
 - [Plugin runtime preflight](../../scripts/check-plugin-runtime.sh): non-mutating Bun availability
   gate shared by Bun-dependent skills.
 - [Installer manager](../agentbox-installer/scripts/manage-installations.js): authoritative config
