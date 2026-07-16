@@ -13,6 +13,9 @@
   },
   "private": true,
   "type": "module",
+  "bin": {
+    "codexsync": "./bin/codexsync.js"
+  },
   "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -26,7 +29,9 @@
   },
   "scripts": {
     "build": "bun ./scripts/build-dist.js",
-    "codex:validate": "bun ./scripts/validate-plugin.js",
+    "codex:check": "bun ./bin/codexsync.js check",
+    "codex:sync": "bun ./bin/codexsync.js sync",
+    "codex:validate": "bun ./bin/codexsync.js validate",
     "format:check": "prettier . --check --ignore-unknown",
     "format:write": "prettier . --write --ignore-unknown",
     "leia": "leia",

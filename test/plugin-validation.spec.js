@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const validatorPath = join(repoRoot, 'scripts', 'validate-plugin.js');
+const validatorPath = join(repoRoot, 'bin', 'codexsync.js');
 const fixtureEntries = [
   '.codex-plugin',
   '.github',
@@ -20,7 +20,7 @@ const fixtureEntries = [
 ];
 
 function runValidator(cwd) {
-  return spawnSync('bun', [validatorPath], {
+  return spawnSync('bun', [validatorPath, 'validate', '--repo-root', cwd], {
     cwd,
     encoding: 'utf8',
   });

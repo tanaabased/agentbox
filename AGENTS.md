@@ -49,6 +49,8 @@ This is directional guidance, not the current public contract:
 - `launchd/*.plist.in`: source LaunchDaemon templates rendered by `macos.sh`.
 - `.codex-plugin/plugin.json`, `skills/`: Codex plugin metadata and installable skill surface.
 - `assets/composer-icon.svg`, `assets/icon-large.png`: Codex plugin interface assets.
+- `bin/codexsync.js`, `lib/codexsync-*.js`: package-level plugin validation and installed cache
+  comparison or refresh tooling.
 - `README.md`: main setup and usage entrypoint; `ADVANCED.md`: deeper operator reference.
 - `examples/**/README.md`: Leia-backed executable CI contracts.
 - `site/llms.txt`, `scripts/build-dist.js`, `netlify.toml`: hosted-script and metadata publishing
@@ -124,7 +126,13 @@ This is directional guidance, not the current public contract:
   the plugin archive.
 - Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
 - Keep the repo-owned Codex plugin contract in `lib/plugin-validation.js` and run it through
-  `bun run codex:validate`; do not expand it into plugin cache synchronization or installation.
+  `bun run codex:validate`. Keep validation read-only and separate from cache synchronization.
+- Treat `.codex-plugin/`, `.mcp.json`, `AGENTS.md`, `ADVANCED.md`, `README.md`, `assets/`,
+  `bin/codexsync.js`, `lib/`, `package.json`, `scripts/check-plugin-runtime.sh`, and `skills/` as the
+  managed Codex plugin cache surface for `bun run codex:check` and `bun run codex:sync`.
+- Keep plugin cache refresh installation-aware. `codex:check` must report an absent exact-version
+  cache as neutral `not_installed`; `codex:sync` must refuse to create it. A source symlink or an
+  older cached version does not authorize initialization of the current cache.
 - Reserve root `bin/` for a real package-level CLI. Hoist runtime modules to root `lib/` only after
   reuse across at least two live skills or when they become a repo-wide contract.
 - Require Bun-dependent plugin skills to run `scripts/check-plugin-runtime.sh` before invoking their
@@ -150,13 +158,20 @@ This is directional guidance, not the current public contract:
 - Run `bun run test` for JavaScript runtime changes.
 - Run `bun run codex:validate` for plugin manifest, skill metadata, plugin asset, or plugin workflow
   changes.
+- For managed plugin changes, run `bun run codex:check`. If it reports drift, run
+  `bun run codex:sync` and then `bun run codex:check` again before committing. If it reports
+  `not_installed`, do not sync; report that cache refresh was skipped because the plugin is not
+  installed.
+- Repeat the cache check after a rebase, cherry-pick, amendment, conflict resolution, or commit-time
+  edit changes managed plugin files. A commit that does not change file content does not require a
+  redundant post-commit sync.
 - Run `bun install` when dependencies are missing before linting; keep `bun.lock` when Bun updates
   it.
 - Do not delete local `node_modules/` after validation; it is ignored and local-only.
 - Do not run `macos.sh`, `dist/macos.sh`, mutating Leia examples, or `bun run build` as routine local
   validation unless the user explicitly asks.
-- If `macos.sh`, Leia, or `bun run build` is intentionally skipped because of task scope or repo
-  policy, say so plainly.
+- If plugin cache sync, a Codex restart, `macos.sh`, Leia, or `bun run build` is intentionally skipped
+  because of task scope, installation state, or repo policy, say so plainly.
 
 ## References
 
