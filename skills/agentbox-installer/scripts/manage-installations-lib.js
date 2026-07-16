@@ -17,6 +17,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import {
   AgentboxInstallationError,
+  assertAgentboxInstallationMatchesPayload,
   createAgentboxInstallationConfig,
   inspectConfiguredAgentboxInstallation,
   isDirectoryOnPath,
@@ -259,7 +260,8 @@ async function assertShimReplaceable(shimPath) {
 
 async function prepareAgentboxShim(config, options = {}) {
   const selected = selectAgentboxInstallation(config);
-  await validateAgentboxPayload(selected.path, options);
+  const payload = await validateAgentboxPayload(selected.path, options);
+  assertAgentboxInstallationMatchesPayload(selected, payload);
   await assertShimReplaceable(config.binPath);
   await mkdir(dirname(config.binPath), { recursive: true, mode: 0o755 });
   const tempPath = join(dirname(config.binPath), `.agentbox.${randomUUID()}.tmp`);
@@ -505,7 +507,9 @@ export async function useAgentboxInstallation(key, options = {}) {
   const loaded = await loadAgentboxInstallationConfig({ env, binDir: options.binDir });
   let nextConfig = withDefaultAgentboxInstallation(loaded.config, key);
   nextConfig = { ...nextConfig, binPath: configuredBinPath(nextConfig, { ...options, env }) };
-  await validateAgentboxPayload(selectAgentboxInstallation(nextConfig).path, { env });
+  const selected = selectAgentboxInstallation(nextConfig);
+  const payload = await validateAgentboxPayload(selected.path, { env });
+  assertAgentboxInstallationMatchesPayload(selected, payload);
   const configPath = await persistConfig(nextConfig, {
     env,
     previousConfig: loaded.config,
@@ -516,7 +520,8 @@ export async function useAgentboxInstallation(key, options = {}) {
     status: 'selected',
     key,
     path: nextConfig.installations[key].path,
-    version: nextConfig.installations[key].version,
+    configuredVersion: nextConfig.installations[key].version,
+    version: payload.version,
     configPath,
     binPath: nextConfig.binPath,
     pathWarning: !isDirectoryOnPath(dirname(nextConfig.binPath), env.PATH || ''),
@@ -562,10 +567,12 @@ export async function statusAgentboxInstallations(options = {}) {
   for (const [key, installation] of Object.entries(loaded.config.installations)) {
     try {
       const payload = await validateAgentboxPayload(installation.path, { env });
+      assertAgentboxInstallationMatchesPayload({ key, ...installation }, payload);
       installations[key] = {
         ...installation,
         status: 'available',
         path: payload.path,
+        configuredVersion: installation.version,
         version: payload.version,
       };
     } catch (error) {

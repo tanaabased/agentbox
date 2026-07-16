@@ -144,6 +144,22 @@ describe('lib/agentbox-installations', () => {
     assert.equal(payload.root, await realpath(payloadRoot));
   });
 
+  it('should reject observed stable versions that differ from config', async () => {
+    const paths = resolveAgentboxInstallationPaths({ env });
+    const payloadPath = await createPayload(join(home, 'stable'), 'v1.2.2');
+    const config = withAgentboxInstallation(createAgentboxInstallationConfig(paths), 'stable', {
+      kind: 'release',
+      version: 'v1.2.1',
+      releaseTag: 'v1.2.1',
+      path: payloadPath,
+    });
+    await writeAgentboxInstallationConfig(config, { env });
+
+    await assert.rejects(resolveConfiguredAgentboxInstallation({ env }), {
+      code: 'installation_version_mismatch',
+    });
+  });
+
   it('should report a stale configured payload without throwing', async () => {
     const paths = resolveAgentboxInstallationPaths({ env });
     const config = withAgentboxInstallation(createAgentboxInstallationConfig(paths), 'source', {

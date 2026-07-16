@@ -221,11 +221,17 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     const sourcePath = await createPayload(join(home, 'source'), 'v1.3.0-dev');
     const registered = await registerSourceAgentbox(sourcePath, { env });
     const loaded = await loadAgentboxInstallationConfig({ env });
+    await writeFile(
+      sourcePath,
+      '#!/bin/sh\nif [ "${1:-}" = "--version" ]; then printf "%s\\n" "v1.4.0-dev"; exit 0; fi\nexit 2\n',
+    );
     const selected = await useAgentboxInstallation('source', { env });
 
     assert.equal(registered.default, 'source');
     assert.equal(loaded.config.installations.source.path, await realpath(sourcePath));
     assert.equal(selected.key, 'source');
+    assert.equal(selected.configuredVersion, 'v1.3.0-dev');
+    assert.equal(selected.version, 'v1.4.0-dev');
     assert.equal(await readlink(selected.binPath), await realpath(sourcePath));
     assert.deepEqual(selected.handoff, {
       skill: '$tanaab-agentbox',
