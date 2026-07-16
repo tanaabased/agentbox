@@ -56,12 +56,18 @@ function remediationFor(key, values, installer) {
     command,
     requiresConfirmation: Boolean(command),
   };
-  if (result.kind === 'reconcile' && installer?.status === 'available') {
-    result.installer = {
-      key: installer.installation.key,
-      path: installer.installation.path,
-      version: installer.installation.version,
+  if (result.kind === 'reconcile') {
+    result.handoff = {
+      skill: '$tanaab-agentbox',
+      installationKey: installer?.status === 'available' ? installer.installation.key : null,
     };
+    if (installer?.status === 'available') {
+      result.installer = {
+        key: installer.installation.key,
+        path: installer.installation.path,
+        version: installer.installation.version,
+      };
+    }
   }
   return result;
 }
@@ -344,6 +350,14 @@ export function unavailableReport(status, detail, options = {}) {
     },
     error: {
       detail,
+      ...(status === 'not_installed'
+        ? {
+            handoff: {
+              skill: '$tanaab-agentbox',
+              intent: 'bootstrap_or_reconcile',
+            },
+          }
+        : {}),
       remediation:
         status === 'authorization_required'
           ? {

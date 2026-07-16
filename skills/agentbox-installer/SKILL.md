@@ -29,7 +29,8 @@ without running the host bootstrap itself.
 
 ## When Not to Use
 
-- Do not use this skill to bootstrap or mutate an agentbox host.
+- Do not use this skill to bootstrap or mutate an agentbox host; use `$tanaab-agentbox` after an
+  executable is configured.
 - Do not use it to diagnose the installed host health contract; use `$tanaab-agentbox-doctor`.
 - Do not treat `latest` or `edge` as installation keys. `update stable` is the explicit latest-release
   operation, and `source` is the moving development choice.
@@ -68,6 +69,9 @@ without running the host bootstrap itself.
    deterministic executable path. Omitting the key resolves `default`.
 8. Present the returned JSON status. If `pathWarning` is true, explain that installation succeeded
    but the command directory is not currently on `PATH`; do not edit shell startup files.
+9. When the user is preparing or reconciling a host, use the returned `handoff` to resume
+   `$tanaab-agentbox` with the configured default key. Do not start host bootstrap automatically when
+   executable management was the complete request.
 
 ## Checkpoints
 
@@ -87,6 +91,7 @@ without running the host bootstrap itself.
 - `~/.local/bin/agentbox`, or the requested alternative, is a symlink to the selected executable.
 - Stable payloads remain complete release directories under a versioned location.
 - No sudo command or agentbox host bootstrap was run.
+- Any requested host follow-up was handed to `$tanaab-agentbox` with the configured default key.
 
 ## Bundled Resources
 

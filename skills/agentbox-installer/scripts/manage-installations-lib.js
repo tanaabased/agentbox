@@ -33,6 +33,13 @@ function operationError(code, message) {
   return new AgentboxInstallationError(code, message);
 }
 
+function agentboxHandoff(installationKey) {
+  return {
+    skill: '$tanaab-agentbox',
+    installationKey,
+  };
+}
+
 function normalizeVersion(value) {
   return value.replace(/^v/, '');
 }
@@ -350,6 +357,7 @@ export async function installStableAgentbox(options = {}) {
     configPath,
     binPath: nextConfig.binPath,
     pathWarning: !isDirectoryOnPath(dirname(nextConfig.binPath), env.PATH || ''),
+    handoff: agentboxHandoff(nextConfig.default),
   };
 }
 
@@ -383,6 +391,7 @@ export async function registerSourceAgentbox(inputPath, options = {}) {
     configPath,
     binPath: nextConfig.binPath,
     pathWarning: !isDirectoryOnPath(dirname(nextConfig.binPath), env.PATH || ''),
+    handoff: agentboxHandoff(nextConfig.default),
   };
 }
 
@@ -406,6 +415,7 @@ export async function useAgentboxInstallation(key, options = {}) {
     configPath,
     binPath: nextConfig.binPath,
     pathWarning: !isDirectoryOnPath(dirname(nextConfig.binPath), env.PATH || ''),
+    handoff: agentboxHandoff(nextConfig.default),
   };
 }
 

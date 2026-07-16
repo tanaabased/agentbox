@@ -181,6 +181,10 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     assert.equal(await readlink(loaded.config.binPath), first.path);
     assert.equal(status.shim.status, 'current');
     assert.equal(status.path.configured, true);
+    assert.deepEqual(first.handoff, {
+      skill: '$tanaab-agentbox',
+      installationKey: 'stable',
+    });
   });
 
   it('should register source and switch the default without copying it', async () => {
@@ -193,6 +197,10 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     assert.equal(loaded.config.installations.source.path, await realpath(sourcePath));
     assert.equal(selected.key, 'source');
     assert.equal(await readlink(selected.binPath), await realpath(sourcePath));
+    assert.deepEqual(selected.handoff, {
+      skill: '$tanaab-agentbox',
+      installationKey: 'source',
+    });
   });
 
   it('should leave config untouched when digest verification fails', async () => {

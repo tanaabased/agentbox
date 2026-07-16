@@ -29,7 +29,8 @@ remediation without changing the host.
 
 ## When Not to Use
 
-- Do not use this skill to install, upgrade, or rerun agentbox.
+- Do not use this skill to install, upgrade, or rerun agentbox; hand bootstrap or reconciliation to
+  `$tanaab-agentbox`.
 - Do not use it for remote fleet inventory; it owns one local macOS host.
 - Do not use it for general OpenClaw or Tailscale troubleshooting that is unrelated to the agentbox
   health contract.
@@ -54,8 +55,10 @@ remediation without changing the host.
 3. If the result status is `authorization_required`, explain that the health state is root-readable,
    ask before running `/usr/bin/sudo -v`, and then rerun the probe. Do not silently fall back to a
    partial report.
-4. If the result status is `not_installed`, stop and report that this host does not expose the
-   installed agentbox health contract.
+4. If the result status is `not_installed`, stop the doctor workflow and use the returned handoff to
+   direct the user to `$tanaab-agentbox` for bootstrap or reconciliation. Do not route directly to the
+   installer solely because the installed health script is missing; the primary workflow will use
+   `$tanaab-agentbox-installer` if executable config is also absent.
 5. Present the overall status and the installed agentbox version first.
 6. When installer metadata is configured, present its selected key, path, and version as the
    preferred executable for later reconciliation. Never use it as the health probe.
@@ -66,7 +69,9 @@ remediation without changing the host.
 9. Render remediation commands as code, but do not execute them. Manual and reconcile remediations
    are intentional when a direct command would require unavailable secrets or original install
    inputs.
-10. If the report contains a contract mismatch or plugin/host version warning, say that the installed
+10. For a `reconcile` remediation, use its handoff to `$tanaab-agentbox` and preserve the returned
+    installation key when present. Do not run reconciliation without separate user confirmation.
+11. If the report contains a contract mismatch or plugin/host version warning, say that the installed
     health contract may be newer than this skill's check catalog and avoid claiming the host is fully
     healthy.
 
@@ -84,6 +89,7 @@ remediation without changing the host.
 - Every active health group is represented in the summary.
 - Every surfaced failure or warning includes a focused remediation or an explicit manual recovery
   boundary.
+- Every bootstrap or reconcile outcome identifies `$tanaab-agentbox` as the owning workflow.
 - No password, token, auth key, or raw secret-bearing configuration was printed.
 - No host mutation was performed by the doctor workflow.
 

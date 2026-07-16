@@ -61,8 +61,10 @@ the doctor workflow for verification.
    `bun ../agentbox-installer/scripts/manage-installations.js resolve <key>`.
 4. Otherwise, run `bun ../agentbox-installer/scripts/manage-installations.js resolve` to select the
    configured `default`.
-5. If config is absent, `default` is unset, or the requested key is unavailable, stop and direct the
-   user to `$tanaab-agentbox-installer`. Do not run that mutating workflow without confirmation.
+5. If config is absent, `default` is unset, or the requested key is unavailable, offer to use
+   `$tanaab-agentbox-installer`. Do not run that mutating workflow without confirmation. When the
+   user approves it, preserve the requested selector and gathered inputs, complete the installer
+   workflow, then rerun resolution and resume this workflow.
 6. Treat `stable` and `source` as the only supported installation selectors. Do not interpret an
    arbitrary semantic version as a configured installation key.
 7. Use only the returned absolute `installation.path`. Before planning a run, execute that path with

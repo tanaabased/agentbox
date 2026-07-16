@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import {
   evaluateHealth,
   parseHealthReport,
+  unavailableReport,
 } from '../skills/agentbox-doctor/scripts/check-host-lib.js';
 
 const checkCatalog = JSON.parse(
@@ -205,7 +206,23 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
       path: '/Users/example/agentbox/macos.sh',
       version: 'v1.0.0-beta.6',
     });
+    assert.deepEqual(issue?.remediation.handoff, {
+      skill: '$tanaab-agentbox',
+      installationKey: 'source',
+    });
     assert.equal(report.source.installer.key, 'source');
+  });
+
+  it('should hand an uninstalled host to the primary agentbox workflow', () => {
+    const report = unavailableReport(
+      'not_installed',
+      'The installed agentbox health script was not found.',
+    );
+
+    assert.deepEqual(report.error.handoff, {
+      skill: '$tanaab-agentbox',
+      intent: 'bootstrap_or_reconcile',
+    });
   });
 
   it('should warn when the configured default would change the installed host version', () => {
