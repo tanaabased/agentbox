@@ -1,0 +1,7 @@
+interface:
+  display_name: 'agentbox'
+  short_description: 'Tanaab-based configured agentbox execution workflow'
+  icon_small: './assets/icon-small.svg'
+  icon_large: './assets/icon-large.png'
+  brand_color: '#00c88a'
+  default_prompt: 'Use $tanaab-agentbox to plan and run agentbox with explicit, secret-safe inputs.'

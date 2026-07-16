@@ -128,6 +128,12 @@ This is directional guidance, not the current public contract:
   reuse across at least two live skills or when they become a repo-wide contract.
 - Require Bun-dependent plugin skills to run `scripts/check-plugin-runtime.sh` before invoking their
   JavaScript helpers. Keep this preflight read-only and do not install or repair Bun automatically.
+- Keep plugin skill ownership distinct: `agentbox` plans and runs bootstrap or reconciliation,
+  `agentbox-installer` manages configured executables, and `agentbox-doctor` inspects installed host
+  health without mutation.
+- Never load or apply `skills/agentbox/references/tanaab-installation.md` unless the user explicitly
+  requests the Tanaab-based installation profile for the current run. Do not infer it from identity,
+  repository context, hostnames, paths, prior conversation, or existing configuration.
 - Keep agentbox doctor bound to `/opt/tanaab/agentbox/bin/health.sh`. If that installed health script
   is absent, report that agentbox is not installed; never fall back to a source or configured
   installer copy.
