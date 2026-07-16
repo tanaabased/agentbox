@@ -38,7 +38,9 @@ remediation without changing the host.
 ## Preconditions
 
 - Run on the macOS host being diagnosed.
-- Require Bun and the installed health script at `/opt/tanaab/agentbox/bin/health.sh`.
+- Run the shared [plugin runtime preflight](../../scripts/check-plugin-runtime.sh) and require it to
+  succeed before invoking Bun. If it fails, stop, relay its explanation, and do not install Bun.
+- Require the installed health script at `/opt/tanaab/agentbox/bin/health.sh`.
 - Prefer an existing sudo timestamp. The probe uses `sudo -n` and never opens its own password
   prompt.
 - Treat the installed health script as authoritative for that host version. Do not substitute the
@@ -46,25 +48,27 @@ remediation without changing the host.
 
 ## Workflow
 
-1. Run `bun scripts/check-host.js` from this skill directory.
-2. If the result status is `authorization_required`, explain that the health state is root-readable,
+1. Run `../../scripts/check-plugin-runtime.sh` from this skill directory. Stop without invoking Bun
+   when it fails.
+2. Run `bun scripts/check-host.js` from this skill directory.
+3. If the result status is `authorization_required`, explain that the health state is root-readable,
    ask before running `/usr/bin/sudo -v`, and then rerun the probe. Do not silently fall back to a
    partial report.
-3. If the result status is `not_installed`, stop and report that this host does not expose the
+4. If the result status is `not_installed`, stop and report that this host does not expose the
    installed agentbox health contract.
-4. Present the overall status and the installed agentbox version first.
-5. When installer metadata is configured, present its selected key, path, and version as the
+5. Present the overall status and the installed agentbox version first.
+6. When installer metadata is configured, present its selected key, path, and version as the
    preferred executable for later reconciliation. Never use it as the health probe.
-6. Present one line for each group: Host, Access and accounts, Dependencies, OpenClaw, Tailscale, and
+7. Present one line for each group: Host, Access and accounts, Dependencies, OpenClaw, Tailscale, and
    Monitoring.
-7. Omit passing leaf checks unless the user asks for detail. List every returned issue and warning
+8. Omit passing leaf checks unless the user asks for detail. List every returned issue and warning
    with its explanation and remediation.
-8. Render remediation commands as code, but do not execute them. Manual and reconcile remediations
+9. Render remediation commands as code, but do not execute them. Manual and reconcile remediations
    are intentional when a direct command would require unavailable secrets or original install
    inputs.
-9. If the report contains a contract mismatch or plugin/host version warning, say that the installed
-   health contract may be newer than this skill's check catalog and avoid claiming the host is fully
-   healthy.
+10. If the report contains a contract mismatch or plugin/host version warning, say that the installed
+    health contract may be newer than this skill's check catalog and avoid claiming the host is fully
+    healthy.
 
 ## Checkpoints
 
@@ -87,6 +91,8 @@ remediation without changing the host.
 
 - [Health probe](scripts/check-host.js): runs the installed health report and emits normalized JSON.
 - [Probe library](scripts/check-host-lib.js): parses and evaluates health output.
+- [Plugin runtime preflight](../../scripts/check-plugin-runtime.sh): non-mutating Bun availability
+  gate shared by Bun-dependent skills.
 - Repository unit tests under `test/`: cover grouping, conditions, warnings, and contract drift.
 - [Check catalog](references/checks.json): maps installed checks to user-facing groups.
 - [Remediation catalog](references/remediations.json): owns focused repair recommendations.

@@ -126,6 +126,8 @@ This is directional guidance, not the current public contract:
 - Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
 - Reserve root `bin/` for a real package-level CLI. Hoist runtime modules to root `lib/` only after
   reuse across at least two live skills or when they become a repo-wide contract.
+- Require Bun-dependent plugin skills to run `scripts/check-plugin-runtime.sh` before invoking their
+  JavaScript helpers. Keep this preflight read-only and do not install or repair Bun automatically.
 - Keep agentbox doctor bound to `/opt/tanaab/agentbox/bin/health.sh`. If that installed health script
   is absent, report that agentbox is not installed; never fall back to a source or configured
   installer copy.

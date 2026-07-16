@@ -38,7 +38,9 @@ without running the host bootstrap itself.
 
 ## Preconditions
 
-- Require Bun, `tar`, HTTPS access to GitHub Releases for stable operations, and a writable user home.
+- Run the shared [plugin runtime preflight](../../scripts/check-plugin-runtime.sh) and require it to
+  succeed before invoking Bun. If it fails, stop, relay its explanation, and do not install Bun.
+- Require `tar`, HTTPS access to GitHub Releases for stable operations, and a writable user home.
 - Use `${XDG_CONFIG_HOME:-~/.config}/agentbox/config.json` for configuration.
 - Use `${XDG_DATA_HOME:-~/.local/share}/agentbox/releases/` for stable payloads unless the user chooses
   another install root.
@@ -48,21 +50,23 @@ without running the host bootstrap itself.
 
 ## Workflow
 
-1. Run `bun scripts/manage-installations.js status` from this skill directory before deciding on a
+1. Run `../../scripts/check-plugin-runtime.sh` from this skill directory. Stop without invoking Bun
+   when it fails.
+2. Run `bun scripts/manage-installations.js status` from this skill directory before deciding on a
    mutation. This command is offline and read-only.
-2. For `install stable` or `update stable`, explain the release destination, config path, command
+3. For `install stable` or `update stable`, explain the release destination, config path, command
    shim, network access, and GitHub digest requirement. Get confirmation, then run
    `bun scripts/manage-installations.js install stable` or the equivalent `update stable` command.
-3. For source registration, resolve the requested checkout and explain that it remains a moving
+4. For source registration, resolve the requested checkout and explain that it remains a moving
    external path. Get confirmation, then run
    `bun scripts/manage-installations.js register source <path>`.
-4. For default changes, verify the requested key is already available, get confirmation, then run
+5. For default changes, verify the requested key is already available, get confirmation, then run
    `bun scripts/manage-installations.js use <stable|source>`.
-5. Use `--install-root <path>` only when the user requests a nonstandard release location. Use
+6. Use `--install-root <path>` only when the user requests a nonstandard release location. Use
    `--bin-dir <path>` only when they request a nonstandard command directory.
-6. Use `bun scripts/manage-installations.js resolve [stable|source]` when another skill needs the
+7. Use `bun scripts/manage-installations.js resolve [stable|source]` when another skill needs the
    deterministic executable path. Omitting the key resolves `default`.
-7. Present the returned JSON status. If `pathWarning` is true, explain that installation succeeded
+8. Present the returned JSON status. If `pathWarning` is true, explain that installation succeeded
    but the command directory is not currently on `PATH`; do not edit shell startup files.
 
 ## Checkpoints
@@ -91,6 +95,8 @@ without running the host bootstrap itself.
   orchestration.
 - [Shared installation contract](../../lib/agentbox-installations.js): XDG paths, config schema,
   atomic writes, payload validation, and resolution shared with other skills.
+- [Plugin runtime preflight](../../scripts/check-plugin-runtime.sh): non-mutating Bun availability
+  gate shared by Bun-dependent skills.
 - Repository unit tests under `test/`: cover stable/source management and the shared contract.
 
 ## Validation
