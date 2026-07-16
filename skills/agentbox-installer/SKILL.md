@@ -16,15 +16,15 @@ metadata:
 ## Overview
 
 Manage a deterministic user-level agentbox installation contract. Install the latest stable release,
-register a source checkout, select the default, recover invalid installer config, and maintain the
-lowercase `agentbox` command shim without running the host bootstrap itself.
+register a source checkout, select the default, recover invalid installer config, and optionally
+maintain a lowercase `agentbox` command link without running the host bootstrap itself.
 
 ## When to Use
 
 - Install or update the locally pinned stable agentbox release.
 - Register an existing agentbox source checkout without copying it.
 - Switch the default executable between `stable` and `source`.
-- Inspect installation, command-shim, or PATH readiness.
+- Inspect installation, managed-command, or PATH collision status.
 - Back up and reset invalid agentbox installation config.
 - Resolve the exact executable another agentbox skill should use.
 
@@ -47,42 +47,51 @@ lowercase `agentbox` command shim without running the host bootstrap itself.
 - Use `${XDG_DATA_HOME:-~/.local/share}/agentbox/releases/` for stable payloads unless the user chooses
   another install root.
 - Use `${XDG_CACHE_HOME:-~/.cache}/agentbox/` for verified download caching.
-- Default the command shim to `~/.local/bin/agentbox`; warn rather than editing shell configuration
-  when that directory is not on `PATH`.
+- Do not create an `agentbox` command link by default. When explicitly requested, place it at
+  `~/.local/bin/agentbox` unless the user chooses another directory, and warn rather than editing
+  shell configuration when that directory is not on `PATH`.
 
 ## Workflow
 
 1. Run `../../scripts/check-plugin-runtime.sh` from this skill directory. Stop without invoking Bun
    when it fails.
 2. Run `bun scripts/manage-installations.js status` from this skill directory before deciding on a
-   mutation. This command is offline and read-only.
+   mutation. This command is offline and read-only. Report every returned `commandsOnPath` entry in
+   PATH order, identify the effective first command, and distinguish managed, registered, and
+   external entries without executing them.
 3. If status is `invalid_config`, explain that no install, update, registration, or selection can
    safely proceed. Show the config path, explain that repair preserves the invalid file as a private
    backup and resets installer state, get confirmation, run
    `bun scripts/manage-installations.js repair config`, and then rerun status.
 4. For valid config, interpret recoverable status narrowly:
-   - For a missing or stale shim with an available default, offer `use <default>` to regenerate it.
-   - For a shim conflict, stop and do not overwrite the non-symlink command.
+   - When `linkCommand` is enabled, offer `use <default>` for a missing or stale managed link.
+   - For a managed-link conflict, stop and do not overwrite the non-symlink command.
    - For unavailable stable, offer `update stable`; for unavailable source, offer to re-register the
      intended checkout.
-5. For `install stable` or `update stable`, explain the release destination, config path, command
-   shim, network access, and GitHub digest requirement. Get confirmation, then run
-   `bun scripts/manage-installations.js install stable` or the equivalent `update stable` command.
+5. Before a first install or registration when `linkCommand` is false, ask whether the user wants a
+   managed `agentbox` command on PATH. Explain any existing `commandsOnPath` entries first. Add
+   `--link-command` only when the user opts in; omission must install or register without creating,
+   replacing, or removing any PATH command. Preserve an already-enabled link on later operations
+   without asking again.
+6. For `install stable` or `update stable`, explain the release destination, config path, network
+   access, and GitHub digest requirement. Include the command-link path only when linking is enabled
+   or requested. Get confirmation, then run `bun scripts/manage-installations.js install stable` or
+   the equivalent `update stable` command.
    Retain older verified release payloads and downloads as inert rollback cache. Do not expose them as
    installation keys, use them as fallback executables, or remove them without an explicit cleanup
    request.
-6. For source registration, resolve the requested checkout and explain that it remains a moving
+7. For source registration, resolve the requested checkout and explain that it remains a moving
    external path. Get confirmation, then run
    `bun scripts/manage-installations.js register source <path>`.
-7. For default changes, verify the requested key is already available, get confirmation, then run
+8. For default changes, verify the requested key is already available, get confirmation, then run
    `bun scripts/manage-installations.js use <stable|source>`.
-8. Use `--install-root <path>` only when the user requests a nonstandard release location. Use
-   `--bin-dir <path>` only when they request a nonstandard command directory.
-9. Use `bun scripts/manage-installations.js resolve [stable|source]` when another skill needs the
-   deterministic executable path. Omitting the key resolves `default`.
-10. Present the returned JSON status. If `pathWarning` is true, explain that installation succeeded
-    but the command directory is not currently on `PATH`; do not edit shell startup files.
-11. When the user is preparing or reconciling a host, use the returned `handoff.installationKey` to
+9. Use `--install-root <path>` only when the user requests a nonstandard release location. Use
+   `--bin-dir <path>` only with `--link-command` when they request a nonstandard command directory.
+10. Use `bun scripts/manage-installations.js resolve [stable|source]` when another skill needs the
+    deterministic executable path. Omitting the key resolves `default`.
+11. Present the returned JSON status. If `pathWarning` is true, explain that installation succeeded
+    but the opted-in command directory is not currently on `PATH`; do not edit shell startup files.
+12. When the user is preparing or reconciling a host, use the returned `handoff.installationKey` to
     resume `$tanaab-agentbox` with the selector that triggered installer work. Treat `defaultKey` as
     informational; do not replace an explicit requested selector with it. Do not start host bootstrap
     automatically when executable management was the complete request.
@@ -90,10 +99,12 @@ lowercase `agentbox` command shim without running the host bootstrap itself.
 ## Checkpoints
 
 - Before any mutation, confirm the exact operation and destination paths.
-- Before replacing the command shim, stop if the destination is a regular file; never overwrite it.
+- Before adding `--link-command`, report existing PATH commands and confirm the exact link path.
+- Before replacing the managed command link, stop if the destination is a regular file; never
+  overwrite it.
 - Before repairing config, require `invalid_config`, show the backup behavior, and get confirmation.
-- Before changing command directories, require the old command to remain the managed current symlink;
-  do not remove an unmanaged or stale command.
+- Before changing command directories, require the old command to remain the managed current
+  symlink; do not remove an unmanaged or stale command.
 - Before registering source, require a complete payload with executable `macos.sh`, Brewfile,
   health script, launchd templates, and bundled assets.
 - Before installing stable, require the matching release archive and a valid GitHub SHA-256 digest.
@@ -105,7 +116,9 @@ lowercase `agentbox` command shim without running the host bootstrap itself.
   version.
 - `default` names a registered installation, never a duplicated raw path.
 - The config was written atomically with private permissions.
-- `~/.local/bin/agentbox`, or the requested alternative, is a symlink to the selected executable.
+- When command linking was requested or already enabled, `~/.local/bin/agentbox`, or the requested
+  alternative, is a symlink to the selected executable. Otherwise no PATH command was created,
+  replaced, or removed.
 - Stable payloads remain complete release directories under a versioned location.
 - No sudo command or agentbox host bootstrap was run.
 - Any requested host follow-up was handed to `$tanaab-agentbox` with the preserved requested key.

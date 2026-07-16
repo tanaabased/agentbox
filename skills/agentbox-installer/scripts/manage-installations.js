@@ -14,16 +14,17 @@ function usage() {
 
 Commands:
   status
-  install stable [--install-root PATH] [--bin-dir PATH]
-  update stable [--install-root PATH] [--bin-dir PATH]
-  register source PATH [--bin-dir PATH]
-  use <stable|source> [--bin-dir PATH]
+  install stable [--install-root PATH] [--link-command [--bin-dir PATH]]
+  update stable [--install-root PATH] [--link-command [--bin-dir PATH]]
+  register source PATH [--link-command [--bin-dir PATH]]
+  use <stable|source> [--link-command [--bin-dir PATH]]
   repair config
   resolve [stable|source]
 
 Options:
   --install-root PATH  Store release payloads under this directory.
-  --bin-dir PATH       Place the agentbox command symlink in this directory.
+  --link-command       Create and maintain an agentbox command symlink.
+  --bin-dir PATH       With --link-command, place the symlink in this directory.
   --help               Show this help.
 `;
 }
@@ -39,10 +40,18 @@ function parseOptions(args, allowed) {
       continue;
     }
     if (!allowed.includes(argument)) throw new Error(`unsupported option: ${argument}`);
+    if (argument === '--link-command') {
+      options.linkCommand = true;
+      continue;
+    }
     const value = args[index + 1];
     if (!value) throw new Error(`${argument} requires a path`);
     options[argument === '--bin-dir' ? 'binDir' : 'installRoot'] = value;
     index += 1;
+  }
+
+  if (options.binDir && !options.linkCommand) {
+    throw new Error('--bin-dir requires --link-command');
   }
 
   return { options, positionals };
@@ -65,7 +74,11 @@ async function main(argv) {
     return 0;
   }
   if (command === 'install' || command === 'update') {
-    const { options, positionals } = parseOptions(rest, ['--install-root', '--bin-dir']);
+    const { options, positionals } = parseOptions(rest, [
+      '--install-root',
+      '--link-command',
+      '--bin-dir',
+    ]);
     if (positionals.length !== 1 || positionals[0] !== 'stable') {
       throw new Error(`${command} requires stable`);
     }
@@ -73,7 +86,7 @@ async function main(argv) {
     return 0;
   }
   if (command === 'register') {
-    const { options, positionals } = parseOptions(rest, ['--bin-dir']);
+    const { options, positionals } = parseOptions(rest, ['--link-command', '--bin-dir']);
     if (positionals.length !== 2 || positionals[0] !== 'source') {
       throw new Error('register requires source PATH');
     }
@@ -81,7 +94,7 @@ async function main(argv) {
     return 0;
   }
   if (command === 'use') {
-    const { options, positionals } = parseOptions(rest, ['--bin-dir']);
+    const { options, positionals } = parseOptions(rest, ['--link-command', '--bin-dir']);
     if (positionals.length !== 1 || !['stable', 'source'].includes(positionals[0])) {
       throw new Error('use requires stable or source');
     }

@@ -132,6 +132,9 @@ This is directional guidance, not the current public contract:
 - Keep plugin skill ownership distinct: `agentbox` plans and runs bootstrap or reconciliation,
   `agentbox-installer` manages configured executables, and `agentbox-doctor` inspects installed host
   health without mutation.
+- Keep the installer-managed `agentbox` command link opt-in. Omission of `--link-command` on a fresh
+  config must not create, replace, or remove PATH commands; status may inspect PATH entries but must
+  not execute discovered commands.
 - Never load or apply `skills/agentbox/references/tanaab-installation.md` unless the user explicitly
   requests the Tanaab-based installation profile for the current run. Do not infer it from identity,
   repository context, hostnames, paths, prior conversation, or existing configuration.

@@ -29,6 +29,11 @@ import {
   validateArchiveEntryNames,
 } from '../skills/agentbox-installer/scripts/manage-installations-lib.js';
 
+const managerPath = new URL(
+  '../skills/agentbox-installer/scripts/manage-installations.js',
+  import.meta.url,
+).pathname;
+
 async function createPayload(root, version, scriptRelativePath = 'macos.sh') {
   const files = [
     'Brewfile',
@@ -124,6 +129,25 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     await rm(home, { recursive: true, force: true });
   });
 
+  it('should expose only the opt-in command-link flag', () => {
+    const result = spawnSync('bun', [managerPath, '--help'], { encoding: 'utf8' });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /--link-command/);
+    assert.doesNotMatch(result.stdout, /--no-link-command/);
+  });
+
+  it('should require command linking for a custom bin directory', () => {
+    const result = spawnSync(
+      'bun',
+      [managerPath, 'use', 'source', '--bin-dir', join(home, 'bin')],
+      { encoding: 'utf8', env: { ...process.env, HOME: home } },
+    );
+
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--bin-dir requires --link-command/);
+  });
+
   it('should require the archive asset for stable releases', async () => {
     const fetchImpl = async () =>
       fakeResponse(
@@ -191,7 +215,7 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     });
   });
 
-  it('should install stable atomically and keep repeated installs current', async () => {
+  it('should install stable atomically without linking a command by default', async () => {
     const fetchImpl = await createReleaseFetch(home);
     const first = await installStableAgentbox({
       env,
@@ -200,7 +224,6 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     });
     const configBefore = await readFile(first.configPath, 'utf8');
     const configStatBefore = await stat(first.configPath);
-    const shimBefore = await lstat(first.binPath);
     const second = await installStableAgentbox({
       env,
       fetchImpl,
@@ -213,7 +236,8 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     assert.equal(first.changed, true);
     assert.equal(first.payloadChanged, true);
     assert.equal(first.configChanged, true);
-    assert.equal(first.shimChanged, true);
+    assert.equal(first.shimChanged, false);
+    assert.equal(first.linkCommand, false);
     assert.equal(second.status, 'current');
     assert.equal(second.changed, false);
     assert.equal(second.payloadChanged, false);
@@ -221,13 +245,15 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     assert.equal(second.shimChanged, false);
     assert.equal(await readFile(second.configPath, 'utf8'), configBefore);
     assert.equal((await stat(second.configPath)).ino, configStatBefore.ino);
-    assert.equal((await lstat(second.binPath)).ino, shimBefore.ino);
+    await assert.rejects(lstat(second.binPath), { code: 'ENOENT' });
     assert.equal(loaded.config.default, 'stable');
     assert.equal(loaded.config.installations.stable.path, await realpath(first.path));
     assert.equal(loaded.config.installations.stable.updatedAt, '2026-07-16T12:00:00.000Z');
-    assert.equal(await readlink(loaded.config.binPath), first.path);
-    assert.equal(status.shim.status, 'current');
-    assert.equal(status.path.configured, true);
+    assert.equal(loaded.config.linkCommand, false);
+    assert.equal(status.shim.status, 'disabled');
+    assert.equal(status.path.configured, false);
+    assert.equal(status.path.directoryOnPath, true);
+    assert.deepEqual(status.commandsOnPath, []);
     assert.deepEqual(first.handoff, {
       skill: '$tanaab-agentbox',
       installationKey: 'stable',
@@ -240,6 +266,7 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     const installed = await installStableAgentbox({
       env,
       fetchImpl,
+      linkCommand: true,
       now: new Date('2026-07-16T12:00:00Z'),
     });
     const configBefore = await readFile(installed.configPath, 'utf8');
@@ -262,13 +289,14 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
 
   it('should report reconciliation when an existing stable payload is newly registered', async () => {
     const fetchImpl = await createReleaseFetch(home);
-    const installed = await installStableAgentbox({ env, fetchImpl });
+    const installed = await installStableAgentbox({ env, fetchImpl, linkCommand: true });
     await rm(installed.configPath);
     await rm(installed.binPath);
 
     const reconciled = await installStableAgentbox({
       env,
       fetchImpl,
+      linkCommand: true,
       now: new Date('2026-07-16T12:01:00Z'),
     });
 
@@ -299,18 +327,25 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     const sourcePath = await createPayload(join(home, 'source'), 'v1.3.0-dev');
     const registered = await registerSourceAgentbox(sourcePath, { env });
     const loaded = await loadAgentboxInstallationConfig({ env });
+    await assert.rejects(lstat(registered.binPath), { code: 'ENOENT' });
     await writeFile(
       sourcePath,
       '#!/bin/sh\nif [ "${1:-}" = "--version" ]; then printf "%s\\n" "v1.4.0-dev"; exit 0; fi\nexit 2\n',
     );
-    const selected = await useAgentboxInstallation('source', { env });
+    const selected = await useAgentboxInstallation('source', { env, linkCommand: true });
+    const status = await statusAgentboxInstallations({ env });
 
     assert.equal(registered.default, 'source');
+    assert.equal(registered.linkCommand, false);
     assert.equal(loaded.config.installations.source.path, await realpath(sourcePath));
     assert.equal(selected.key, 'source');
     assert.equal(selected.configuredVersion, 'v1.3.0-dev');
     assert.equal(selected.version, 'v1.4.0-dev');
+    assert.equal(selected.linkCommand, true);
     assert.equal(await readlink(selected.binPath), await realpath(sourcePath));
+    assert.equal(status.commandsOnPath.length, 1);
+    assert.equal(status.commandsOnPath[0].relation, 'managed-current');
+    assert.equal(status.commandsOnPath[0].effective, true);
     assert.deepEqual(selected.handoff, {
       skill: '$tanaab-agentbox',
       installationKey: 'source',
@@ -322,9 +357,17 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     const sourcePath = await createPayload(join(home, 'source'), 'v1.3.0-dev');
     const firstBin = join(home, 'bin-one');
     const secondBin = join(home, 'bin-two');
-    const registered = await registerSourceAgentbox(sourcePath, { env, binDir: firstBin });
+    const registered = await registerSourceAgentbox(sourcePath, {
+      env,
+      binDir: firstBin,
+      linkCommand: true,
+    });
 
-    const selected = await useAgentboxInstallation('source', { env, binDir: secondBin });
+    const selected = await useAgentboxInstallation('source', {
+      env,
+      binDir: secondBin,
+      linkCommand: true,
+    });
 
     await assert.rejects(access(registered.binPath), { code: 'ENOENT' });
     assert.equal(await readlink(selected.binPath), await realpath(sourcePath));
@@ -363,13 +406,36 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     assert.equal(loaded.exists, false);
   });
 
-  it('should refuse to replace an existing non-symlink command', async () => {
+  it('should preserve and report an existing PATH command when linking is omitted', async () => {
     const binDir = join(home, '.local', 'bin');
     const sourcePath = await createPayload(join(home, 'source'), 'v1.3.0-dev');
     await mkdir(binDir, { recursive: true });
     await writeFile(join(binDir, 'agentbox'), 'not managed\n');
 
-    await assert.rejects(registerSourceAgentbox(sourcePath, { env }), {
+    const registered = await registerSourceAgentbox(sourcePath, { env });
+    const status = await statusAgentboxInstallations({ env });
+
+    assert.equal(registered.linkCommand, false);
+    assert.equal(await readFile(join(binDir, 'agentbox'), 'utf8'), 'not managed\n');
+    assert.deepEqual(status.commandsOnPath, [
+      {
+        path: join(binDir, 'agentbox'),
+        kind: 'file',
+        target: null,
+        resolvedTarget: null,
+        relation: 'external',
+        effective: true,
+      },
+    ]);
+  });
+
+  it('should refuse to replace an existing non-symlink command when linking is requested', async () => {
+    const binDir = join(home, '.local', 'bin');
+    const sourcePath = await createPayload(join(home, 'source'), 'v1.3.0-dev');
+    await mkdir(binDir, { recursive: true });
+    await writeFile(join(binDir, 'agentbox'), 'not managed\n');
+
+    await assert.rejects(registerSourceAgentbox(sourcePath, { env, linkCommand: true }), {
       code: 'shim_conflict',
     });
     const loaded = await loadAgentboxInstallationConfig({ env });
@@ -383,7 +449,9 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     await chmod(binDir, 0o500);
 
     try {
-      await assert.rejects(registerSourceAgentbox(sourcePath, { env }), { code: 'EACCES' });
+      await assert.rejects(registerSourceAgentbox(sourcePath, { env, linkCommand: true }), {
+        code: 'EACCES',
+      });
     } finally {
       await chmod(binDir, 0o700);
     }

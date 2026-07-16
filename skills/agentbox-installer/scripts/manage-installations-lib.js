@@ -13,7 +13,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 
 import {
@@ -283,6 +283,12 @@ async function assertShimReplaceable(shimPath) {
 }
 
 async function prepareAgentboxShim(config, options = {}) {
+  if (!config.linkCommand) {
+    throw operationError(
+      'command_link_disabled',
+      'refusing to create an agentbox command link because linkCommand is disabled.',
+    );
+  }
   const selected = selectAgentboxInstallation(config);
   const payload = await validateAgentboxPayload(selected.path, options);
   assertAgentboxInstallationMatchesPayload(selected, payload);
@@ -324,7 +330,10 @@ async function restorePreviousConfig(configPath, options) {
 }
 
 async function prepareShimMigration(previousConfig, nextConfig) {
-  if (!previousConfig || resolve(previousConfig.binPath) === resolve(nextConfig.binPath))
+  if (
+    !previousConfig?.linkCommand ||
+    resolve(previousConfig.binPath) === resolve(nextConfig.binPath)
+  )
     return null;
   const current = await lstat(previousConfig.binPath).catch((error) => {
     if (error.code === 'ENOENT') return null;
@@ -354,7 +363,7 @@ async function prepareShimMigration(previousConfig, nextConfig) {
 
 async function persistConfig(config, options = {}) {
   const prepared =
-    config.default && options.synchronizeShim !== false
+    config.default && config.linkCommand && options.synchronizeShim !== false
       ? await prepareAgentboxShim(config, options)
       : null;
   const migration = await prepareShimMigration(options.previousConfig, config);
@@ -400,9 +409,27 @@ async function persistConfig(config, options = {}) {
   }
 }
 
-function configuredBinPath(config, options) {
-  if (!options.binDir) return config.binPath;
-  return join(resolveUserPath(options.binDir, options.env || process.env), 'agentbox');
+function configuredCommandOptions(config, options) {
+  if (options.binDir && options.linkCommand !== true) {
+    throw operationError(
+      'link_command_required',
+      '--bin-dir requires --link-command because command linking is otherwise disabled.',
+    );
+  }
+  return {
+    binPath: options.binDir
+      ? join(resolveUserPath(options.binDir, options.env || process.env), 'agentbox')
+      : config.binPath,
+    linkCommand: config.linkCommand || options.linkCommand === true,
+  };
+}
+
+function commandResult(config, env) {
+  return {
+    binPath: config.binPath,
+    linkCommand: config.linkCommand,
+    pathWarning: config.linkCommand && !isDirectoryOnPath(dirname(config.binPath), env.PATH || ''),
+  };
 }
 
 function stableInstallRoot(loaded, options) {
@@ -533,14 +560,18 @@ export async function installStableAgentbox(options = {}) {
         releaseTag: release.tag,
         updatedAt: (options.now || new Date()).toISOString(),
       };
-  const nextConfig = withAgentboxInstallation(loaded.config, 'stable', installation, {
-    binPath: configuredBinPath(loaded.config, { ...options, env }),
-  });
+  const nextConfig = withAgentboxInstallation(
+    loaded.config,
+    'stable',
+    installation,
+    configuredCommandOptions(loaded.config, { ...options, env }),
+  );
   const configChanged = !loaded.exists || !isDeepStrictEqual(nextConfig, loaded.config);
   const binPathChanged = resolve(nextConfig.binPath) !== resolve(loaded.config.binPath);
-  const shimChanged = nextConfig.default
-    ? binPathChanged || (await inspectShim(nextConfig)).status !== 'current'
-    : false;
+  const shimChanged =
+    nextConfig.default && nextConfig.linkCommand
+      ? binPathChanged || (await inspectShim(nextConfig)).status !== 'current'
+      : false;
   let configPath = loaded.paths.configFile;
 
   if (configChanged) {
@@ -568,8 +599,7 @@ export async function installStableAgentbox(options = {}) {
     path: payload.path,
     default: nextConfig.default,
     configPath,
-    binPath: nextConfig.binPath,
-    pathWarning: !isDirectoryOnPath(dirname(nextConfig.binPath), env.PATH || ''),
+    ...commandResult(nextConfig, env),
     handoff: agentboxHandoff('stable', nextConfig.default),
   };
 }
@@ -587,7 +617,7 @@ export async function registerSourceAgentbox(inputPath, options = {}) {
       path: payload.path,
       updatedAt: (options.now || new Date()).toISOString(),
     },
-    { binPath: configuredBinPath(loaded.config, { ...options, env }) },
+    configuredCommandOptions(loaded.config, { ...options, env }),
   );
   const configPath = await persistConfig(nextConfig, {
     env,
@@ -602,8 +632,7 @@ export async function registerSourceAgentbox(inputPath, options = {}) {
     path: payload.path,
     default: nextConfig.default,
     configPath,
-    binPath: nextConfig.binPath,
-    pathWarning: !isDirectoryOnPath(dirname(nextConfig.binPath), env.PATH || ''),
+    ...commandResult(nextConfig, env),
     handoff: agentboxHandoff('source', nextConfig.default),
   };
 }
@@ -611,8 +640,11 @@ export async function registerSourceAgentbox(inputPath, options = {}) {
 export async function useAgentboxInstallation(key, options = {}) {
   const env = options.env || process.env;
   const loaded = await loadAgentboxInstallationConfig({ env, binDir: options.binDir });
-  let nextConfig = withDefaultAgentboxInstallation(loaded.config, key);
-  nextConfig = { ...nextConfig, binPath: configuredBinPath(nextConfig, { ...options, env }) };
+  const nextConfig = withDefaultAgentboxInstallation(
+    loaded.config,
+    key,
+    configuredCommandOptions(loaded.config, { ...options, env }),
+  );
   const selected = selectAgentboxInstallation(nextConfig);
   const payload = await validateAgentboxPayload(selected.path, { env });
   assertAgentboxInstallationMatchesPayload(selected, payload);
@@ -629,13 +661,21 @@ export async function useAgentboxInstallation(key, options = {}) {
     configuredVersion: nextConfig.installations[key].version,
     version: payload.version,
     configPath,
-    binPath: nextConfig.binPath,
-    pathWarning: !isDirectoryOnPath(dirname(nextConfig.binPath), env.PATH || ''),
+    ...commandResult(nextConfig, env),
     handoff: agentboxHandoff(key, nextConfig.default),
   };
 }
 
 async function inspectShim(config) {
+  const expected = config.default ? config.installations[config.default]?.path : null;
+  if (!config.linkCommand) {
+    return {
+      status: 'disabled',
+      path: config.binPath,
+      target: null,
+      expected,
+    };
+  }
   const current = await lstat(config.binPath).catch((error) => {
     if (error.code === 'ENOENT') return null;
     throw error;
@@ -645,13 +685,68 @@ async function inspectShim(config) {
     return { status: 'conflict', path: config.binPath, target: null };
   }
   const target = await readlink(config.binPath);
-  const expected = config.default ? config.installations[config.default]?.path : null;
+  const resolvedTarget = resolve(dirname(config.binPath), target);
   return {
-    status: target === expected ? 'current' : 'stale',
+    status: expected && resolvedTarget === resolve(expected) ? 'current' : 'stale',
     path: config.binPath,
     target,
     expected,
   };
+}
+
+async function inspectCommandsOnPath(config, env) {
+  const commands = [];
+  const seenDirectories = new Set();
+  const registeredTargets = new Set(
+    Object.values(config.installations).map((installation) => resolve(installation.path)),
+  );
+  const expectedTarget = config.default
+    ? resolve(config.installations[config.default]?.path)
+    : null;
+
+  for (const rawDirectory of (env.PATH || '').split(delimiter)) {
+    if (!rawDirectory) continue;
+    const directory = resolve(rawDirectory);
+    if (seenDirectories.has(directory)) continue;
+    seenDirectories.add(directory);
+
+    const commandPath = join(directory, 'agentbox');
+    const commandStat = await lstat(commandPath).catch((error) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (!commandStat) continue;
+
+    const kind = commandStat.isSymbolicLink() ? 'symlink' : commandStat.isFile() ? 'file' : 'other';
+    const target = kind === 'symlink' ? await readlink(commandPath) : null;
+    const resolvedTarget = target ? resolve(dirname(commandPath), target) : null;
+    const configuredPath = resolve(commandPath) === resolve(config.binPath);
+    let relation = 'external';
+
+    if (
+      config.linkCommand &&
+      configuredPath &&
+      resolvedTarget &&
+      resolvedTarget === expectedTarget
+    ) {
+      relation = 'managed-current';
+    } else if (config.linkCommand && configuredPath) {
+      relation = 'managed-conflict';
+    } else if (resolvedTarget && registeredTargets.has(resolvedTarget)) {
+      relation = 'registered';
+    }
+
+    commands.push({
+      path: commandPath,
+      kind,
+      target,
+      resolvedTarget,
+      relation,
+      effective: commands.length === 0,
+    });
+  }
+
+  return commands;
 }
 
 export async function statusAgentboxInstallations(options = {}) {
@@ -668,6 +763,7 @@ export async function statusAgentboxInstallations(options = {}) {
       error: { code: error.code, detail: error.message },
     };
   }
+  const directoryOnPath = isDirectoryOnPath(dirname(loaded.config.binPath), env.PATH || '');
   const installations = {};
 
   for (const [key, installation] of Object.entries(loaded.config.installations)) {
@@ -694,11 +790,14 @@ export async function statusAgentboxInstallations(options = {}) {
     status: loaded.exists ? 'configured' : 'unconfigured',
     configPath: loaded.paths.configFile,
     default: loaded.config.default,
+    linkCommand: loaded.config.linkCommand,
     installations,
     shim: await inspectShim(loaded.config),
+    commandsOnPath: await inspectCommandsOnPath(loaded.config, env),
     path: {
       directory: dirname(loaded.config.binPath),
-      configured: isDirectoryOnPath(dirname(loaded.config.binPath), env.PATH || ''),
+      configured: loaded.config.linkCommand && directoryOnPath,
+      directoryOnPath,
     },
   };
 }

@@ -83,7 +83,18 @@ describe('lib/agentbox-installations', () => {
     assert.equal(loaded.exists, false);
     assert.deepEqual(loaded.config.installations, {});
     assert.equal(loaded.config.default, null);
+    assert.equal(loaded.config.linkCommand, false);
     await assert.rejects(readFile(loaded.paths.configFile), { code: 'ENOENT' });
+  });
+
+  it('should reject configs without an explicit command-link choice', () => {
+    const paths = resolveAgentboxInstallationPaths({ env });
+    const config = createAgentboxInstallationConfig(paths);
+    delete config.linkCommand;
+
+    assert.throws(() => validateAgentboxInstallationConfig(config), {
+      code: 'config_invalid',
+    });
   });
 
   it('should atomically write and reload a private config', async () => {
