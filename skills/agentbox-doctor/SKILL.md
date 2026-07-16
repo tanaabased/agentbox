@@ -55,25 +55,27 @@ remediation without changing the host.
 3. If the result status is `authorization_required`, explain that the health state is root-readable,
    ask before running `/usr/bin/sudo -v`, and then rerun the probe. Do not silently fall back to a
    partial report.
-4. If the result status is `not_installed`, stop the doctor workflow and use the returned handoff to
+4. If the result status is `timeout`, report that the installed health script exceeded its bounded
+   runtime and stop rather than claiming partial health.
+5. If the result status is `not_installed`, stop the doctor workflow and use the returned handoff to
    direct the user to `$tanaab-agentbox` for bootstrap or reconciliation. Do not route directly to the
    installer solely because the installed health script is missing; the primary workflow will use
    `$tanaab-agentbox-installer` if executable config is also absent.
-5. Present the overall status and the installed agentbox version first.
-6. When installer metadata is configured, present its selected key, path, and version as the
+6. Present the overall status and the installed agentbox version first.
+7. When installer metadata is configured, present its selected key, path, and version as the
    preferred executable for later reconciliation. Never use it as the health probe.
-7. When installer metadata is invalid or unavailable, use the warning remediation handoff to
+8. When installer metadata is invalid or unavailable, use the warning remediation handoff to
    `$tanaab-agentbox-installer`. Do not improvise config edits in the doctor workflow.
-8. Present one line for each group: Host, Access and accounts, Dependencies, OpenClaw, Tailscale, and
+9. Present one line for each group: Host, Access and accounts, Dependencies, OpenClaw, Tailscale, and
    Monitoring.
-9. Omit passing leaf checks unless the user asks for detail. List every returned issue and warning
-   with its explanation and remediation.
-10. Render remediation commands as code, but do not execute them. Manual and reconcile remediations
-   are intentional when a direct command would require unavailable secrets or original install
-   inputs.
-11. For a `reconcile` remediation, use its handoff to `$tanaab-agentbox` and preserve the returned
+10. Omit passing leaf checks unless the user asks for detail. List every returned issue and warning
+    with its explanation and remediation.
+11. Render remediation commands as code, but do not execute them. Manual and reconcile remediations
+    are intentional when a direct command would require unavailable secrets or original install
+    inputs.
+12. For a `reconcile` remediation, use its handoff to `$tanaab-agentbox` and preserve the returned
     installation key when present. Do not run reconciliation without separate user confirmation.
-12. If the report contains a contract mismatch or plugin/host version warning, say that the installed
+13. If the report contains a contract mismatch or plugin/host version warning, say that the installed
     health contract may be newer than this skill's check catalog and avoid claiming the host is fully
     healthy.
 

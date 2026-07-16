@@ -169,6 +169,17 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     });
   });
 
+  it('should time out stalled release requests', async () => {
+    const fetchImpl = async (_url, request) =>
+      new Promise((_resolve, reject) => {
+        request.signal.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+
+    await assert.rejects(resolveLatestStableRelease({ fetchImpl, fetchTimeoutMs: 5 }), {
+      code: 'download_timeout',
+    });
+  });
+
   it('should reject links extracted from a release archive', async () => {
     const fetchImpl = await createReleaseFetch(home, 'v1.2.1', null, async (releaseRoot) => {
       await symlink('/tmp', join(releaseRoot, 'unsafe-link'));

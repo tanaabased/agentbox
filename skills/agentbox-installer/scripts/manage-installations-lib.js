@@ -33,6 +33,8 @@ import {
 
 export const AGENTBOX_RELEASE_API_URL =
   'https://api.github.com/repos/tanaabased/agentbox/releases/latest';
+const DEFAULT_METADATA_TIMEOUT_MS = 30_000;
+const DEFAULT_ARCHIVE_TIMEOUT_MS = 120_000;
 
 function operationError(code, message) {
   return new AgentboxInstallationError(code, message);
@@ -62,21 +64,37 @@ function resolveUserPath(value, env) {
   return resolve(value);
 }
 
-async function fetchResponse(fetchImpl, url, responseType) {
-  const response = await fetchImpl(url, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'agentbox-installer',
-      'X-GitHub-Api-Version': '2026-03-10',
-    },
-  });
-  if (!response.ok) {
-    throw operationError(
-      'download_failed',
-      `request failed with status ${response.status}: ${url}.`,
-    );
+async function fetchResponse(fetchImpl, url, responseType, options = {}) {
+  const timeoutMs =
+    options.fetchTimeoutMs ||
+    (responseType === 'arrayBuffer' ? DEFAULT_ARCHIVE_TIMEOUT_MS : DEFAULT_METADATA_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchImpl(url, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'agentbox-installer',
+        'X-GitHub-Api-Version': '2026-03-10',
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw operationError(
+        'download_failed',
+        `request failed with status ${response.status}: ${url}.`,
+      );
+    }
+    return await response[responseType]();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw operationError('download_timeout', `request timed out after ${timeoutMs}ms: ${url}.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  return response[responseType]();
 }
 
 export async function resolveLatestStableRelease(options = {}) {
@@ -85,6 +103,7 @@ export async function resolveLatestStableRelease(options = {}) {
     fetchImpl,
     options.releaseApiUrl || AGENTBOX_RELEASE_API_URL,
     'json',
+    options,
   );
   const tag = metadata.tag_name;
   if (!tag || metadata.draft || metadata.prerelease || !Array.isArray(metadata.assets)) {
@@ -134,7 +153,7 @@ async function downloadArchive(release, cacheDir, options = {}) {
   }
 
   const archiveContent = Buffer.from(
-    await fetchResponse(fetchImpl, release.archiveUrl, 'arrayBuffer'),
+    await fetchResponse(fetchImpl, release.archiveUrl, 'arrayBuffer', options),
   );
   const tempPath = join(downloadsDir, `.${release.archiveName}.${randomUUID()}.tmp`);
   await writeFile(tempPath, archiveContent, { flag: 'wx', mode: 0o600 });
@@ -161,7 +180,11 @@ export function validateArchiveEntryNames(entries) {
 }
 
 function runTar(args, detail) {
-  const result = spawnSync('tar', args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+  const result = spawnSync('tar', args, {
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+    timeout: DEFAULT_ARCHIVE_TIMEOUT_MS,
+  });
   if (result.error || result.status !== 0) {
     throw operationError('archive_invalid', `${detail}: ${result.stderr?.trim() || 'tar failed'}.`);
   }

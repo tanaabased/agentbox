@@ -12,6 +12,7 @@ import { evaluateHealth, parseHealthReport, unavailableReport } from './check-ho
 const skillRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const pluginRoot = resolve(skillRoot, '..', '..');
 const defaultHealthScript = '/opt/tanaab/agentbox/bin/health.sh';
+const healthTimeoutMs = 120_000;
 
 function usage() {
   return `Usage: check-host.js [--help]\n`;
@@ -48,6 +49,7 @@ function runHealthScript(healthScript) {
   return spawnSync(command, args, {
     encoding: 'utf8',
     maxBuffer: 4 * 1024 * 1024,
+    timeout: healthTimeoutMs,
   });
 }
 
@@ -77,10 +79,13 @@ if (!existsSync(options.healthScript)) {
 
 const result = runHealthScript(options.healthScript);
 if (result.error) {
+  const timedOut = result.error.code === 'ETIMEDOUT';
   printJson(
     unavailableReport(
-      'unavailable',
-      `Could not execute the health script: ${result.error.message}`,
+      timedOut ? 'timeout' : 'unavailable',
+      timedOut
+        ? `The installed health script did not finish within ${healthTimeoutMs / 1000} seconds.`
+        : `Could not execute the health script: ${result.error.message}`,
       {
         healthScript: options.healthScript,
         pluginVersion,
