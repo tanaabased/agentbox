@@ -1,0 +1,212 @@
+{
+  "groups": [
+    {
+      "id": "host",
+      "label": "Host",
+      "checks": [
+        { "key": "macos_identity_ok", "label": "macOS identity" },
+        { "key": "headless_power_ok", "label": "Headless power settings" },
+        { "key": "network_time_ok", "label": "Network time" },
+        { "key": "restart_freeze_ok", "label": "Restart after freeze" }
+      ]
+    },
+    {
+      "id": "access",
+      "label": "Access and accounts",
+      "checks": [
+        { "key": "remote_login_ok", "label": "Remote Login" },
+        {
+          "key": "ssh_access_admin_user_ok",
+          "label": "Admin SSH access",
+          "when": [{ "key": "ssh_access_group_exists_ok", "equals": "1" }]
+        },
+        {
+          "key": "ssh_access_openclaw_user_ok",
+          "label": "OpenClaw runner SSH access",
+          "when": [{ "key": "ssh_access_group_exists_ok", "equals": "1" }]
+        },
+        {
+          "key": "ssh_hardening_ok",
+          "label": "SSH hardening",
+          "when": [{ "key": "ssh_hardening_expected", "equals": "1" }]
+        },
+        { "key": "openclaw_user_exists_ok", "label": "OpenClaw runner account" },
+        {
+          "key": "openclaw_user_home_ok",
+          "label": "OpenClaw runner home",
+          "when": [{ "key": "openclaw_user_exists_ok", "equals": "1" }]
+        },
+        {
+          "key": "openclaw_user_non_admin_ok",
+          "label": "OpenClaw runner privilege",
+          "when": [{ "key": "openclaw_user_exists_ok", "equals": "1" }]
+        },
+        {
+          "key": "openclaw_user_ok",
+          "label": "OpenClaw runner account aggregate",
+          "issue": false
+        },
+        {
+          "key": "openclaw_autologin_ok",
+          "label": "OpenClaw runner autologin",
+          "when": [{ "key": "openclaw_autologin_expected", "equals": "1" }]
+        }
+      ]
+    },
+    {
+      "id": "dependencies",
+      "label": "Dependencies",
+      "checks": [
+        {
+          "key": "brewgroup_admin_user_ok",
+          "label": "Admin Homebrew group membership",
+          "when": [{ "key": "brewgroup_enabled", "equals": "1" }]
+        },
+        {
+          "key": "brewgroup_openclaw_user_ok",
+          "label": "OpenClaw Homebrew group membership",
+          "when": [{ "key": "brewgroup_enabled", "equals": "1" }]
+        },
+        {
+          "key": "trusted_brewgroup_nested_ok",
+          "label": "Trusted Homebrew group nesting",
+          "when": [{ "key": "trusted_brewgroup_enabled", "equals": "1" }]
+        },
+        {
+          "key": "brew_prefix_group_ok",
+          "label": "Homebrew prefix group",
+          "issue": false,
+          "when": [{ "key": "brewgroup_enabled", "equals": "1" }]
+        },
+        {
+          "key": "brew_prefix_group_rwx_ok",
+          "label": "Homebrew prefix group permissions",
+          "issue": false,
+          "when": [{ "key": "brewgroup_enabled", "equals": "1" }]
+        },
+        {
+          "key": "brew_prefix_ok",
+          "label": "Homebrew prefix access",
+          "when": [{ "key": "brewgroup_enabled", "equals": "1" }]
+        },
+        { "key": "homebrew_login_path_bin_ok", "label": "Homebrew bin login path", "issue": false },
+        {
+          "key": "homebrew_login_path_sbin_ok",
+          "label": "Homebrew sbin login path",
+          "issue": false
+        },
+        { "key": "homebrew_login_path_file_ok", "label": "Homebrew login path" },
+        { "key": "openclaw_cli_ok", "label": "OpenClaw CLI" },
+        { "key": "node_cli_ok", "label": "Node.js CLI" },
+        { "key": "ripgrep_ok", "label": "ripgrep CLI" }
+      ]
+    },
+    {
+      "id": "openclaw",
+      "label": "OpenClaw",
+      "checks": [
+        {
+          "key": "openclaw_gateway_launchd_loaded_ok",
+          "label": "Gateway launchd service loaded",
+          "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
+        },
+        {
+          "key": "openclaw_gateway_launchd_running_ok",
+          "label": "Gateway launchd service running",
+          "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
+        },
+        {
+          "key": "openclaw_gateway_log_permissions_ok",
+          "label": "Gateway log permissions",
+          "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
+        },
+        { "key": "openclaw_gateway_status_ok", "label": "Gateway readiness" },
+        { "key": "openclaw_gateway_ok", "label": "Gateway aggregate", "issue": false }
+      ]
+    },
+    {
+      "id": "tailscale",
+      "label": "Tailscale",
+      "checks": [
+        {
+          "key": "tailscaled_launchd_loaded_ok",
+          "label": "Managed tailscaled service loaded",
+          "when": [{ "key": "tailscale_expected", "equals": "1" }]
+        },
+        {
+          "key": "tailscaled_launchd_running_ok",
+          "label": "Managed tailscaled service running",
+          "when": [{ "key": "tailscale_expected", "equals": "1" }]
+        },
+        {
+          "key": "tailscaled_homebrew_launchd_absent_ok",
+          "label": "Homebrew system tailscaled conflict absent",
+          "when": [{ "key": "tailscale_expected", "equals": "1" }]
+        },
+        {
+          "key": "tailscaled_homebrew_user_launchd_absent_ok",
+          "label": "Homebrew user tailscaled conflict absent",
+          "when": [{ "key": "tailscale_expected", "equals": "1" }]
+        },
+        {
+          "key": "tailscaled_official_launchd_absent_ok",
+          "label": "Official tailscaled conflict absent",
+          "when": [{ "key": "tailscale_expected", "equals": "1" }]
+        },
+        {
+          "key": "tailscaled_state_file_ok",
+          "label": "Managed tailscaled state",
+          "when": [{ "key": "tailscale_expected", "equals": "1" }]
+        },
+        {
+          "key": "tailscale_operator_ok",
+          "label": "Tailscale operator",
+          "when": [{ "key": "tailscale_expected", "equals": "1" }]
+        },
+        {
+          "key": "tailscale_magicdns_enabled",
+          "label": "MagicDNS",
+          "when": [
+            { "key": "tailscale_expected", "equals": "1" },
+            { "key": "openclaw_gateway_tailscale_mode", "equals": "serve" }
+          ]
+        },
+        {
+          "key": "tailscale_magicdns_resolver_ok",
+          "label": "macOS MagicDNS resolver",
+          "when": [
+            { "key": "tailscale_expected", "equals": "1" },
+            { "key": "openclaw_gateway_tailscale_mode", "equals": "serve" }
+          ]
+        },
+        {
+          "key": "tailscale_https_certificates_enabled",
+          "label": "Tailscale HTTPS certificates",
+          "when": [
+            { "key": "tailscale_expected", "equals": "1" },
+            { "key": "openclaw_gateway_tailscale_mode", "equals": "serve" }
+          ]
+        },
+        {
+          "key": "openclaw_gateway_tailscale_serve_route_ok",
+          "label": "Gateway Tailscale Serve route",
+          "when": [
+            { "key": "tailscale_expected", "equals": "1" },
+            { "key": "openclaw_gateway_tailscale_mode", "equals": "serve" }
+          ]
+        },
+        {
+          "key": "tailscale_ok",
+          "label": "Tailscale aggregate",
+          "issue": false,
+          "when": [{ "key": "tailscale_expected", "equals": "1" }]
+        }
+      ]
+    },
+    {
+      "id": "monitoring",
+      "label": "Monitoring",
+      "checks": [{ "key": "health_launchd_loaded_ok", "label": "agentbox health service" }]
+    }
+  ]
+}

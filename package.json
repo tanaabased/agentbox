@@ -30,6 +30,7 @@
     "leia": "leia",
     "lint": "bun run lint:eslint && bun run format:check && bun run lint:shellcheck",
     "lint:eslint": "eslint .",
-    "lint:shellcheck": "shellcheck *.sh bin/*.sh"
+    "lint:shellcheck": "shellcheck *.sh bin/*.sh",
+    "test": "bun test skills/agentbox-doctor/scripts/check-host-lib.test.js"
   }
 }

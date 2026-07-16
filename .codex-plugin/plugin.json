@@ -22,7 +22,7 @@
     "capabilities": ["Interactive", "Write"],
     "defaultPrompt": [
       "Help me prepare a Mac as a managed headless OpenClaw host with agentbox.",
-      "Review this agentbox health report and recommend focused remediation steps.",
+      "Use $tanaab-agentbox-doctor to review this agentbox host and recommend focused remediation steps.",
       "Help me design an agentbox skill for this host-management workflow."
     ],
     "brandColor": "#00c88a",
