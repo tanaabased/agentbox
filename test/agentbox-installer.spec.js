@@ -184,6 +184,22 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     assert.deepEqual(first.handoff, {
       skill: '$tanaab-agentbox',
       installationKey: 'stable',
+      defaultKey: 'stable',
+    });
+  });
+
+  it('should preserve a requested non-default selector in the handoff', async () => {
+    const sourcePath = await createPayload(join(home, 'source'), 'v1.3.0-dev');
+    await registerSourceAgentbox(sourcePath, { env });
+    const fetchImpl = await createReleaseFetch(home);
+
+    const installed = await installStableAgentbox({ env, fetchImpl });
+
+    assert.equal(installed.default, 'source');
+    assert.deepEqual(installed.handoff, {
+      skill: '$tanaab-agentbox',
+      installationKey: 'stable',
+      defaultKey: 'source',
     });
   });
 
@@ -200,6 +216,7 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     assert.deepEqual(selected.handoff, {
       skill: '$tanaab-agentbox',
       installationKey: 'source',
+      defaultKey: 'source',
     });
   });
 

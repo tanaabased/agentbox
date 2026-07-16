@@ -94,7 +94,7 @@ without running the host bootstrap itself.
 - `~/.local/bin/agentbox`, or the requested alternative, is a symlink to the selected executable.
 - Stable payloads remain complete release directories under a versioned location.
 - No sudo command or agentbox host bootstrap was run.
-- Any requested host follow-up was handed to `$tanaab-agentbox` with the configured default key.
+- Any requested host follow-up was handed to `$tanaab-agentbox` with the preserved requested key.
 
 ## Bundled Resources
 
