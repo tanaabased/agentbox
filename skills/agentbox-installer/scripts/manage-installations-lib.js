@@ -6,12 +6,13 @@ import {
   readFile,
   readdir,
   readlink,
+  realpath,
   rename,
   rm,
   symlink,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import {
   AgentboxInstallationError,
@@ -168,8 +169,55 @@ async function extractArchive(archivePath, stagingDir) {
     .split(/\r?\n/)
     .filter(Boolean);
   validateArchiveEntryNames(entries);
+  const entryDetails = runTar(['-tvzf', archivePath], 'could not inspect agentbox release archive')
+    .split(/\r?\n/)
+    .filter(Boolean);
+  if (entryDetails.some((entry) => !['-', 'd'].includes(entry[0]))) {
+    throw operationError(
+      'archive_unsafe',
+      'agentbox release archive contains links or special files.',
+    );
+  }
   await mkdir(stagingDir, { recursive: true, mode: 0o700 });
   runTar(['-xzf', archivePath, '-C', stagingDir], 'could not extract agentbox release archive');
+  await validateExtractedArchive(stagingDir);
+}
+
+async function validateExtractedArchive(root) {
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const entryPath = join(root, entry.name);
+    const entryStat = await lstat(entryPath);
+    if (entryStat.isSymbolicLink()) {
+      throw operationError(
+        'archive_unsafe',
+        `agentbox release archive contains a link: ${entryPath}.`,
+      );
+    }
+    if (entryStat.isDirectory()) {
+      await validateExtractedArchive(entryPath);
+      continue;
+    }
+    if (!entryStat.isFile() || entryStat.nlink !== 1) {
+      throw operationError(
+        'archive_unsafe',
+        `agentbox release archive contains an unsupported entry: ${entryPath}.`,
+      );
+    }
+  }
+}
+
+async function assertPayloadContained(stagingDir, payloadRoot) {
+  const [resolvedStaging, resolvedPayload] = await Promise.all([
+    realpath(stagingDir),
+    realpath(payloadRoot),
+  ]);
+  const relativePath = relative(resolvedStaging, resolvedPayload);
+  if (relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+    throw operationError(
+      'archive_unsafe',
+      `agentbox release payload resolves outside extraction staging: ${resolvedPayload}.`,
+    );
+  }
 }
 
 async function findExtractedPayload(stagingDir, options = {}) {
@@ -312,6 +360,7 @@ export async function installStableAgentbox(options = {}) {
     try {
       await extractArchive(archivePath, stagingDir);
       const stagedPayload = await findExtractedPayload(stagingDir, { env });
+      await assertPayloadContained(stagingDir, stagedPayload.root);
       if (normalizeVersion(stagedPayload.version) !== normalizeVersion(release.tag)) {
         throw operationError(
           'release_version_mismatch',

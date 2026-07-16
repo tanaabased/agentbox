@@ -9,6 +9,7 @@ import {
   readlink,
   realpath,
   rm,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -66,9 +67,10 @@ function fakeResponse(body, type) {
   };
 }
 
-async function createReleaseFetch(home, tag = 'v1.2.1', digestOverride = null) {
+async function createReleaseFetch(home, tag = 'v1.2.1', digestOverride = null, mutate = null) {
   const releaseRoot = join(home, 'release-fixture');
   await createPayload(releaseRoot, tag, 'dist/macos.sh');
+  if (mutate) await mutate(releaseRoot);
   const archiveName = `agentbox-${tag}.tar.gz`;
   const archivePath = join(home, archiveName);
   const tarResult = spawnSync('tar', ['-czf', archivePath, '-C', releaseRoot, '.'], {
@@ -155,6 +157,16 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
 
   it('should reject archive traversal paths', () => {
     assert.throws(() => validateArchiveEntryNames(['./dist/macos.sh', '../escape']), {
+      code: 'archive_unsafe',
+    });
+  });
+
+  it('should reject links extracted from a release archive', async () => {
+    const fetchImpl = await createReleaseFetch(home, 'v1.2.1', null, async (releaseRoot) => {
+      await symlink('/tmp', join(releaseRoot, 'unsafe-link'));
+    });
+
+    await assert.rejects(installStableAgentbox({ env, fetchImpl }), {
       code: 'archive_unsafe',
     });
   });
