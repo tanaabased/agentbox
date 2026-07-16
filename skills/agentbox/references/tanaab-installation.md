@@ -31,7 +31,7 @@ the installer resolver:
   --authorized-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM+KZCkAQDxca/ukMGMu+AKApN2iowHMKZQ80zsWy3ce mike@tanaab.dev" \
   --brewfile Brewfile.extras \
   --brewgroup brewer:staff \
-  --openclaw-identity "Emori One <emori>" \
+  --openclaw-identity "Emori Wan <emori>" \
   --openclaw-password "$AGENTBOX_OPENCLAW_PASSWORD" \
   --openclaw-service-mode system \
   --openclaw-auth-choice openai \
@@ -43,7 +43,7 @@ the installer resolver:
 - Use `TANAABAGENTBOX1` for the first box, then increment the hostname for additional boxes:
   `TANAABAGENTBOX2`, `TANAABAGENTBOX3`, and so on.
 - `--openclaw-identity` uses the local macOS account syntax `Full Name <shortname>`, so the local
-  runner is `Emori One <emori>`.
+  runner is `Emori Wan <emori>`.
 - `--openclaw-auth-choice openai` is the ChatGPT/Codex subscription route. OpenClaw's default OAuth
   flow uses a browser callback; for headless or callback-hostile setups, use OpenClaw's device-code
   login flow after bootstrap. This follow-up may still be required when `--yes` is present.
