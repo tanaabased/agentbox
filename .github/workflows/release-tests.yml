@@ -65,13 +65,6 @@ jobs:
             -czf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" \
             -C "${GITHUB_WORKSPACE}" \
             .
-      - name: Generate and verify release archive checksum
-        env:
-          RELEASE_ARCHIVE: agentbox-${{ env.STAMPED_VERSION }}.tar.gz
-        run: |
-          cd "${RUNNER_TEMP}"
-          shasum -a 256 "${RELEASE_ARCHIVE}" > "${RELEASE_ARCHIVE}.sha256"
-          shasum -a 256 -c "${RELEASE_ARCHIVE}.sha256"
       - name: Verify release archive contents
         env:
           RELEASE_ARCHIVE: agentbox-${{ env.STAMPED_VERSION }}.tar.gz

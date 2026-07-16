@@ -33,7 +33,8 @@ without running the host bootstrap itself.
 - Do not use it to diagnose the installed host health contract; use `$tanaab-agentbox-doctor`.
 - Do not treat `latest` or `edge` as installation keys. `update stable` is the explicit latest-release
   operation, and `source` is the moving development choice.
-- Do not install an unverified release when its SHA-256 asset is absent or mismatched.
+- Do not install an unverified release when GitHub omits the archive asset's SHA-256 digest or the
+  downloaded bytes do not match it.
 
 ## Preconditions
 
@@ -50,7 +51,7 @@ without running the host bootstrap itself.
 1. Run `bun scripts/manage-installations.js status` from this skill directory before deciding on a
    mutation. This command is offline and read-only.
 2. For `install stable` or `update stable`, explain the release destination, config path, command
-   shim, network access, and checksum requirement. Get confirmation, then run
+   shim, network access, and GitHub digest requirement. Get confirmation, then run
    `bun scripts/manage-installations.js install stable` or the equivalent `update stable` command.
 3. For source registration, resolve the requested checkout and explain that it remains a moving
    external path. Get confirmation, then run
@@ -70,8 +71,8 @@ without running the host bootstrap itself.
 - Before replacing the command shim, stop if the destination is a regular file; never overwrite it.
 - Before registering source, require a complete payload with executable `macos.sh`, Brewfile,
   health script, launchd templates, and bundled assets.
-- Before installing stable, require the matching release archive and `.sha256` asset. A failed
-  download, extraction, version, or checksum check must leave config unchanged.
+- Before installing stable, require the matching release archive and a valid GitHub SHA-256 digest.
+  A failed download, extraction, version, or digest check must leave config unchanged.
 
 ## Completion Criteria
 

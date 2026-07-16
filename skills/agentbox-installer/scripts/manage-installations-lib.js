@@ -54,6 +54,7 @@ async function fetchResponse(fetchImpl, url, responseType) {
     headers: {
       Accept: 'application/vnd.github+json',
       'User-Agent': 'agentbox-installer',
+      'X-GitHub-Api-Version': '2026-03-10',
     },
   });
   if (!response.ok) {
@@ -79,13 +80,18 @@ export async function resolveLatestStableRelease(options = {}) {
   assertReleaseTag(tag);
 
   const archiveName = `agentbox-${tag}.tar.gz`;
-  const checksumName = `${archiveName}.sha256`;
   const archive = metadata.assets.find((asset) => asset.name === archiveName);
-  const checksum = metadata.assets.find((asset) => asset.name === checksumName);
-  if (!archive?.browser_download_url || !checksum?.browser_download_url) {
+  if (!archive?.browser_download_url) {
     throw operationError(
       'release_assets_missing',
-      `agentbox release ${tag} must include ${archiveName} and ${checksumName}.`,
+      `agentbox release ${tag} must include ${archiveName}.`,
+    );
+  }
+  const digestMatch = archive.digest?.match(/^sha256:([a-fA-F0-9]{64})$/);
+  if (!digestMatch) {
+    throw operationError(
+      'release_digest_missing',
+      `agentbox release asset ${archiveName} must include a GitHub SHA-256 digest.`,
     );
   }
 
@@ -93,18 +99,8 @@ export async function resolveLatestStableRelease(options = {}) {
     tag,
     archiveName,
     archiveUrl: archive.browser_download_url,
-    checksumName,
-    checksumUrl: checksum.browser_download_url,
+    archiveDigest: digestMatch[1].toLowerCase(),
   };
-}
-
-export function parseReleaseChecksum(content, archiveName) {
-  const [line = ''] = content.trim().split(/\r?\n/);
-  const match = line.match(/^([a-fA-F0-9]{64})(?:[ \t]+[*]?(.+))?$/);
-  if (!match || (match[2] && match[2] !== archiveName)) {
-    throw operationError('checksum_invalid', `checksum asset does not describe ${archiveName}.`);
-  }
-  return match[1].toLowerCase();
 }
 
 async function fileSha256(path) {
@@ -117,12 +113,10 @@ async function downloadArchive(release, cacheDir, options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   const downloadsDir = join(cacheDir, 'downloads');
   const archivePath = join(downloadsDir, release.archiveName);
-  const checksumContent = await fetchResponse(fetchImpl, release.checksumUrl, 'text');
-  const expectedChecksum = parseReleaseChecksum(checksumContent, release.archiveName);
 
   await mkdir(downloadsDir, { recursive: true, mode: 0o700 });
   if (await lstat(archivePath).catch(() => null)) {
-    if ((await fileSha256(archivePath)) === expectedChecksum) return archivePath;
+    if ((await fileSha256(archivePath)) === release.archiveDigest) return archivePath;
     await rm(archivePath, { force: true });
   }
 
@@ -131,10 +125,10 @@ async function downloadArchive(release, cacheDir, options = {}) {
   );
   const tempPath = join(downloadsDir, `.${release.archiveName}.${randomUUID()}.tmp`);
   await writeFile(tempPath, archiveContent, { flag: 'wx', mode: 0o600 });
-  if ((await fileSha256(tempPath)) !== expectedChecksum) {
+  if ((await fileSha256(tempPath)) !== release.archiveDigest) {
     await rm(tempPath, { force: true });
     throw operationError(
-      'checksum_mismatch',
+      'release_digest_mismatch',
       `downloaded agentbox release ${release.tag} failed SHA-256 verification.`,
     );
   }

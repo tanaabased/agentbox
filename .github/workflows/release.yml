@@ -59,12 +59,6 @@ jobs:
             -czf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" \
             -C "${GITHUB_WORKSPACE}" \
             .
-      - name: Generate release archive checksum
-        env:
-          RELEASE_ARCHIVE: agentbox-${{ github.event.release.tag_name }}.tar.gz
-        run: |
-          cd "${RUNNER_TEMP}"
-          shasum -a 256 "${RELEASE_ARCHIVE}" > "${RELEASE_ARCHIVE}.sha256"
       - name: Upload release archive
         env:
           GH_TOKEN: ${{ github.token }}
@@ -73,5 +67,4 @@ jobs:
           gh release upload \
             "${{ github.event.release.tag_name }}" \
             "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" \
-            "${RUNNER_TEMP}/${RELEASE_ARCHIVE}.sha256" \
             --clobber

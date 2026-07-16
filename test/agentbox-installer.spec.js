@@ -17,7 +17,6 @@ import { join } from 'node:path';
 import { loadAgentboxInstallationConfig } from '../lib/agentbox-installations.js';
 import {
   installStableAgentbox,
-  parseReleaseChecksum,
   registerSourceAgentbox,
   resolveLatestStableRelease,
   statusAgentboxInstallations,
@@ -67,7 +66,7 @@ function fakeResponse(body, type) {
   };
 }
 
-async function createReleaseFetch(home, tag = 'v1.2.1', checksumOverride = null) {
+async function createReleaseFetch(home, tag = 'v1.2.1', digestOverride = null) {
   const releaseRoot = join(home, 'release-fixture');
   await createPayload(releaseRoot, tag, 'dist/macos.sh');
   const archiveName = `agentbox-${tag}.tar.gz`;
@@ -77,25 +76,24 @@ async function createReleaseFetch(home, tag = 'v1.2.1', checksumOverride = null)
   });
   if (tarResult.status !== 0) throw new Error(tarResult.stderr);
   const archive = await readFile(archivePath);
-  const checksum = checksumOverride || createHash('sha256').update(archive).digest('hex');
+  const digest = digestOverride || createHash('sha256').update(archive).digest('hex');
   const archiveUrl = `https://downloads.example/${archiveName}`;
-  const checksumUrl = `${archiveUrl}.sha256`;
   const metadata = {
     tag_name: tag,
     draft: false,
     prerelease: false,
     assets: [
-      { name: archiveName, browser_download_url: archiveUrl },
-      { name: `${archiveName}.sha256`, browser_download_url: checksumUrl },
+      {
+        name: archiveName,
+        browser_download_url: archiveUrl,
+        digest: `sha256:${digest}`,
+      },
     ],
   };
 
   return async (url) => {
     if (url.endsWith('/releases/latest')) return fakeResponse(metadata, 'json');
     if (url === archiveUrl) return fakeResponse(archive, 'buffer');
-    if (url === checksumUrl) {
-      return fakeResponse(`${checksum}  ${archiveName}\n`, 'text');
-    }
     return { ok: false, status: 404 };
   };
 }
@@ -115,7 +113,7 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     await rm(home, { recursive: true, force: true });
   });
 
-  it('should require both archive and checksum assets for stable releases', async () => {
+  it('should require the archive asset for stable releases', async () => {
     const fetchImpl = async () =>
       fakeResponse(
         {
@@ -130,10 +128,29 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     await assert.rejects(resolveLatestStableRelease({ fetchImpl }), {
       code: 'release_assets_missing',
     });
-    assert.equal(
-      parseReleaseChecksum(`${'a'.repeat(64)}  agentbox-v1.2.1.tar.gz\n`, 'agentbox-v1.2.1.tar.gz'),
-      'a'.repeat(64),
-    );
+  });
+
+  it('should require a GitHub SHA-256 digest for the archive asset', async () => {
+    const fetchImpl = async () =>
+      fakeResponse(
+        {
+          tag_name: 'v1.2.1',
+          draft: false,
+          prerelease: false,
+          assets: [
+            {
+              name: 'agentbox-v1.2.1.tar.gz',
+              browser_download_url: 'https://downloads.example/agentbox-v1.2.1.tar.gz',
+              digest: null,
+            },
+          ],
+        },
+        'json',
+      );
+
+    await assert.rejects(resolveLatestStableRelease({ fetchImpl }), {
+      code: 'release_digest_missing',
+    });
   });
 
   it('should reject archive traversal paths', () => {
@@ -178,11 +195,11 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     assert.equal(await readlink(selected.binPath), await realpath(sourcePath));
   });
 
-  it('should leave config untouched when checksum verification fails', async () => {
+  it('should leave config untouched when digest verification fails', async () => {
     const fetchImpl = await createReleaseFetch(home, 'v1.2.1', '0'.repeat(64));
 
     await assert.rejects(installStableAgentbox({ env, fetchImpl }), {
-      code: 'checksum_mismatch',
+      code: 'release_digest_mismatch',
     });
     const loaded = await loadAgentboxInstallationConfig({ env });
     assert.equal(loaded.exists, false);
