@@ -30,7 +30,12 @@ async function createPayload(root, version = 'v1.2.1') {
   for (const file of files) {
     const path = join(root, file);
     await mkdir(join(path, '..'), { recursive: true });
-    await writeFile(path, 'fixture\n');
+    await writeFile(
+      path,
+      file.endsWith('.png')
+        ? Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+        : 'fixture\n',
+    );
   }
   const scriptPath = join(root, 'macos.sh');
   await writeFile(
@@ -110,6 +115,15 @@ describe('lib/agentbox-installations', () => {
     });
   });
 
+  it('should reject an installations array', () => {
+    const paths = resolveAgentboxInstallationPaths({ env });
+    const config = { ...createAgentboxInstallationConfig(paths), installations: [] };
+
+    assert.throws(() => validateAgentboxInstallationConfig(config), {
+      code: 'config_invalid',
+    });
+  });
+
   it('should validate and resolve a complete configured payload', async () => {
     const paths = resolveAgentboxInstallationPaths({ env });
     const payloadPath = await createPayload(join(home, 'source'));
@@ -142,6 +156,27 @@ describe('lib/agentbox-installations', () => {
 
     assert.equal(payload.path, await realpath(distScript));
     assert.equal(payload.root, await realpath(payloadRoot));
+  });
+
+  it('should require payload entries to be regular files', async () => {
+    const payloadRoot = join(home, 'source');
+    await createPayload(payloadRoot);
+    await rm(join(payloadRoot, 'Brewfile'));
+    await mkdir(join(payloadRoot, 'Brewfile'));
+
+    await assert.rejects(validateAgentboxPayload(payloadRoot, { env }), {
+      code: 'payload_invalid',
+    });
+  });
+
+  it('should require valid bundled PNG assets', async () => {
+    const payloadRoot = join(home, 'source');
+    await createPayload(payloadRoot);
+    await writeFile(join(payloadRoot, 'assets', 'profile1.png'), 'not a png\n');
+
+    await assert.rejects(validateAgentboxPayload(payloadRoot, { env }), {
+      code: 'payload_invalid',
+    });
   });
 
   it('should reject observed stable versions that differ from config', async () => {
