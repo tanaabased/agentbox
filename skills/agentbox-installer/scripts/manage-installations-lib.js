@@ -299,25 +299,75 @@ async function restorePreviousConfig(configPath, options) {
   await rm(configPath, { force: true });
 }
 
+async function prepareShimMigration(previousConfig, nextConfig) {
+  if (!previousConfig || resolve(previousConfig.binPath) === resolve(nextConfig.binPath))
+    return null;
+  const current = await lstat(previousConfig.binPath).catch((error) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!current) return null;
+  if (!current.isSymbolicLink() || !previousConfig.default) {
+    throw operationError(
+      'shim_migration_conflict',
+      `refusing to migrate unmanaged agentbox command at ${previousConfig.binPath}.`,
+    );
+  }
+  const target = await readlink(previousConfig.binPath);
+  const resolvedTarget = resolve(dirname(previousConfig.binPath), target);
+  const expectedTarget = resolve(selectAgentboxInstallation(previousConfig).path);
+  if (resolvedTarget !== expectedTarget) {
+    throw operationError(
+      'shim_migration_conflict',
+      `refusing to migrate stale agentbox command at ${previousConfig.binPath}.`,
+    );
+  }
+  return {
+    shimPath: previousConfig.binPath,
+    backupPath: join(dirname(previousConfig.binPath), `.agentbox.${randomUUID()}.migration`),
+  };
+}
+
 async function persistConfig(config, options = {}) {
   const prepared = config.default ? await prepareAgentboxShim(config, options) : null;
+  const migration = await prepareShimMigration(options.previousConfig, config);
   let configPath = null;
+  let migrationStaged = false;
 
   try {
+    if (migration) {
+      await rename(migration.shimPath, migration.backupPath);
+      migrationStaged = true;
+    }
     configPath = await writeAgentboxInstallationConfig(config, options);
     if (prepared) await commitAgentboxShim(prepared);
+    if (migrationStaged) {
+      await rm(migration.backupPath, { force: true }).catch(() => {});
+      migrationStaged = false;
+    }
     return configPath;
   } catch (error) {
     if (prepared) await rm(prepared.tempPath, { force: true });
+    const rollbackErrors = [];
     if (configPath) {
       try {
         await restorePreviousConfig(configPath, options);
       } catch (rollbackError) {
-        throw operationError(
-          'state_inconsistent',
-          `agentbox command shim update failed (${error.message}) and config rollback failed (${rollbackError.message}).`,
-        );
+        rollbackErrors.push(`config rollback failed: ${rollbackError.message}`);
       }
+    }
+    if (migrationStaged) {
+      try {
+        await rename(migration.backupPath, migration.shimPath);
+      } catch (rollbackError) {
+        rollbackErrors.push(`command shim rollback failed: ${rollbackError.message}`);
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw operationError(
+        'state_inconsistent',
+        `agentbox state update failed (${error.message}); ${rollbackErrors.join('; ')}.`,
+      );
     }
     throw error;
   }

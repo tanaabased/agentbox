@@ -92,6 +92,8 @@ lowercase `agentbox` command shim without running the host bootstrap itself.
 - Before any mutation, confirm the exact operation and destination paths.
 - Before replacing the command shim, stop if the destination is a regular file; never overwrite it.
 - Before repairing config, require `invalid_config`, show the backup behavior, and get confirmation.
+- Before changing command directories, require the old command to remain the managed current symlink;
+  do not remove an unmanaged or stale command.
 - Before registering source, require a complete payload with executable `macos.sh`, Brewfile,
   health script, launchd templates, and bundled assets.
 - Before installing stable, require the matching release archive and a valid GitHub SHA-256 digest.

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  access,
   chmod,
   mkdir,
   mkdtemp,
@@ -238,6 +239,18 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
       installationKey: 'source',
       defaultKey: 'source',
     });
+  });
+
+  it('should remove the old managed shim when changing bin directories', async () => {
+    const sourcePath = await createPayload(join(home, 'source'), 'v1.3.0-dev');
+    const firstBin = join(home, 'bin-one');
+    const secondBin = join(home, 'bin-two');
+    const registered = await registerSourceAgentbox(sourcePath, { env, binDir: firstBin });
+
+    const selected = await useAgentboxInstallation('source', { env, binDir: secondBin });
+
+    await assert.rejects(access(registered.binPath), { code: 'ENOENT' });
+    assert.equal(await readlink(selected.binPath), await realpath(sourcePath));
   });
 
   it('should report and repair invalid config without discarding the original', async () => {
