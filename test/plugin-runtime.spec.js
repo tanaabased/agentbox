@@ -44,6 +44,25 @@ describe('scripts/check-plugin-runtime.sh', function () {
     assert.equal(result.stderr, '');
   });
 
+  it('should reject Bun versions outside the declared engine range', async () => {
+    const bunPath = join(root, 'bin', 'bun');
+    await mkdir(join(root, 'bin'), { recursive: true });
+
+    for (const version of ['1.2.23', '1.4.0']) {
+      await writeFile(bunPath, `#!/bin/sh\nprintf "${version}\\n"\n`);
+      await chmod(bunPath, 0o755);
+
+      const result = spawnSync(runtimeCheck, [], {
+        encoding: 'utf8',
+        env: { PATH: join(root, 'bin') },
+      });
+
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, new RegExp(`Bun ${version} .* is unsupported`));
+      assert.match(result.stderr, /requires Bun >=1[.]3[.]0 <1[.]4[.]0/);
+    }
+  });
+
   it('should explain when the discovered Bun executable is broken', async () => {
     const bunPath = join(root, 'bin', 'bun');
     await mkdir(join(root, 'bin'), { recursive: true });
