@@ -1,5 +1,7 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+- Added a Codex plugin with guided agentbox installation, bootstrap or reconciliation, and host-health diagnosis workflows. [#17](https://github.com/tanaabased/agentbox/pull/17)
+
 ## v1.0.0-beta.6 - [July 9, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.6)
 
 ### Breaking Changes

@@ -63,6 +63,9 @@ For the complete option and environment-variable contract, run:
 /bin/bash -c "$(curl -fsSL https://agentbox.tanaab.sh/macos.sh)" agentbox --help
 ```
 
+Codex is optional. For guided executable management, bootstrap or reconciliation, and host-health
+diagnosis, see the [Codex plugin guide](./CODEX.md).
+
 ## Usage
 
 For repeated use, install the hosted script as a local command in a directory you manage on `PATH`:
@@ -128,22 +131,42 @@ At the end of setup, `agentbox` prints a concise health success or failure statu
 check exits nonzero and prints the report command below; `--debug` includes the full health report in
 the setup output.
 
-Reboot the Mac and confirm it returns to the expected network state before any GUI login. Then use
-the installed health script to check or report host state:
+When the optional Codex plugin is installed, the preferred guided verification path is to run Codex
+on the local agentbox host and ask:
+
+```text
+Use $tanaab-agentbox-doctor to inspect this local agentbox host.
+```
+
+The doctor presents grouped status, explains failures and warnings, and recommends focused repairs
+without applying them. Reboot the Mac and confirm it returns to the expected network state before
+any GUI login, then rerun the doctor.
+
+Without Codex, use the installed health script directly:
 
 ```sh
 sudo /opt/tanaab/agentbox/bin/health.sh --check
 sudo /opt/tanaab/agentbox/bin/health.sh --report
 ```
 
-Review the periodic health log when investigating drift:
+`--check` exits nonzero when required checks fail. `--report` prints the same line-oriented report
+without failing so it can be collected for troubleshooting.
 
-```sh
-tail -n 50 /var/log/tanaab/agentbox/health.log
-```
+See [ADVANCED.md#verification-details](./ADVANCED.md#verification-details) for the periodic log,
+manual follow-up checks, and direct report interpretation.
 
-See [ADVANCED.md#verification-details](./ADVANCED.md#verification-details) for health-report field
-interpretation and additional post-bootstrap checks.
+## Optional Codex Plugin
+
+The optional plugin layers three guided workflows over the same bootstrap and installed health
+contracts:
+
+- `$tanaab-agentbox-installer` installs or selects stable and source `agentbox` executables.
+- `$tanaab-agentbox` plans and runs bootstrap or reconciliation with the selected executable.
+- `$tanaab-agentbox-doctor` inspects one local host and recommends focused remediation.
+
+The hosted script remains the primary setup path and does not require Codex. See
+[CODEX.md](./CODEX.md) for plugin installation, example prompts, workflow boundaries, and version
+alignment.
 
 ## Development
 

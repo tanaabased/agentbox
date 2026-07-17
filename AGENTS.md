@@ -51,7 +51,8 @@ This is directional guidance, not the current public contract:
 - `assets/composer-icon.svg`, `assets/icon-large.png`: Codex plugin interface assets.
 - `bin/codexsync.js`, `lib/codexsync-*.js`: package-level plugin validation and installed cache
   comparison or refresh tooling.
-- `README.md`: main setup and usage entrypoint; `ADVANCED.md`: deeper operator reference.
+- `README.md`: main setup and usage entrypoint; `ADVANCED.md`: deeper operator reference;
+  `CODEX.md`: optional Codex plugin installation and workflow guide.
 - `examples/**/README.md`: Leia-backed executable CI contracts.
 - `site/llms.txt`, `scripts/build-dist.js`, `netlify.toml`: hosted-script and metadata publishing
   sources.
@@ -74,6 +75,9 @@ This is directional guidance, not the current public contract:
   the plugin manifest, skills, plugin assets, and runtime payload files in that archive.
 - Keep `--help` as the public CLI contract. Public option, env-var, help, status, debug, or
   failure-text changes must check `README.md`, `ADVANCED.md`, and affected examples.
+- Keep documentation ownership explicit: `README.md` leads with hosted bootstrap and common usage,
+  `ADVANCED.md` owns manual host and operator details, and `CODEX.md` owns the optional plugin surface.
+  Link between them instead of duplicating complete contracts.
 - Do not add user documentation for small interaction, presentation, or internal orchestration
   changes by default. Document behavior needed to choose inputs, complete setup, interpret results,
   or operate and recover the host.
@@ -132,7 +136,7 @@ This is directional guidance, not the current public contract:
   to enforce Tanaab authoring conventions, documentation links, prompt content, release version
   alignment, GitHub workflow wiring, or general dependency and runtime-version policy. Keep
   validation read-only and separate from cache synchronization.
-- Treat `.codex-plugin/`, `.mcp.json`, `AGENTS.md`, `ADVANCED.md`, `README.md`, `assets/`,
+- Treat `.codex-plugin/`, `.mcp.json`, `AGENTS.md`, `ADVANCED.md`, `CODEX.md`, `README.md`, `assets/`,
   `bin/codexsync.js`, `lib/`, `package.json`, `scripts/check-plugin-runtime.sh`, and `skills/` as the
   managed Codex plugin cache surface for `bun run codex:check` and `bun run codex:sync`.
 - Keep plugin cache refresh installation-aware. `codex:check` must report an absent exact-version
@@ -145,6 +149,8 @@ This is directional guidance, not the current public contract:
 - Keep plugin skill ownership distinct: `agentbox` plans and runs bootstrap or reconciliation,
   `agentbox-installer` manages configured executables, and `agentbox-doctor` inspects installed host
   health without mutation.
+- Check `CODEX.md` and `site/llms.txt` when plugin installation, runtime prerequisites, bundled skill
+  ownership, or public invocation guidance changes.
 - Keep the installer-managed `agentbox` command link opt-in. Omission of `--link-command` on a fresh
   config must not create, replace, or remove PATH commands; status may inspect PATH entries but must
   not execute discovered commands.
@@ -180,7 +186,7 @@ This is directional guidance, not the current public contract:
 
 ## References
 
-- `README.md`, `ADVANCED.md`, `CHANGELOG.md`
+- `README.md`, `ADVANCED.md`, `CODEX.md`, `CHANGELOG.md`
 - `examples/`, `examples/AGENTS.md`
 - `bin/health.sh`
 - `site/llms.txt`, `scripts/build-dist.js`

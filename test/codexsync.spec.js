@@ -87,6 +87,7 @@ describe('codexsync cache management', function () {
       context.cachePath,
       '/tmp/example-home/.codex/plugins/cache/pirostore/agentbox/1.0.0-beta.6',
     );
+    assert.ok(context.managedPaths.includes('CODEX.md'));
     assert.equal(overridden.pluginCacheRoot, '/tmp/custom-cache');
   });
 

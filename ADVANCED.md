@@ -1,7 +1,8 @@
 # Advanced
 
 This file keeps the less common `agentbox` details out of the main README while preserving the deeper
-operator reference. Start with [README.md](./README.md) for the main install path.
+operator reference. Start with [README.md](./README.md) for the main install path. For the optional
+Codex plugin, see [CODEX.md](./CODEX.md).
 
 ## Preflight Checks
 
@@ -41,6 +42,10 @@ sudo softwareupdate --install --all --restart
 [`Brewfile`](./Brewfile) is the source of truth for core host packages. It installs the OpenClaw CLI,
 `ripgrep`, Tailscale, and the supporting tools needed by the bootstrap. Homebrew `bin` and `sbin`
 paths are published for login shells through `/etc/paths.d/00-agentbox-homebrew`.
+
+The host Brewfile does not pin a `node@24` formula. The Homebrew `openclaw-cli` formula owns its Node
+dependency; the repository's Node tool version is for development rather than the installed host
+package contract.
 
 [`Brewfile.extras`](./Brewfile.extras) is optional personal/operator tooling, not part of the core
 host contract. Use it when you also want apps such as Codex, Codex App, OpenClaw, and Warp.
@@ -299,6 +304,13 @@ agentbox \
 This is the recommended headless mode because it does not require a GUI login session or autologin.
 On rerun, `system` mode removes OpenClaw's native `ai.openclaw.gateway` user LaunchAgent if it is
 present.
+
+`system` mode also configures the invoking admin's OpenClaw app for attach-only operation so it does
+not start a competing local gateway. When the runner gateway token is stored as a plaintext config
+value, `agentbox` synchronizes the managed gateway port and token into the admin configuration
+without printing the token, then verifies the two token values by SHA-256 equality. When OpenClaw
+stores the runner token indirectly or redacts it, `agentbox` preserves attach-only mode and leaves
+credential synchronization to OpenClaw.
 
 The shared `/var/log/tanaab/agentbox` directory remains `root:wheel` mode `0755`, while the gateway's
 stdout and stderr files are owned by the OpenClaw runner and its primary group at mode `0600`.
@@ -579,108 +591,34 @@ OpenClaw runner passwords, Tailscale auth keys, or provider API keys.
 
 ## Verification Details
 
-Use `--report` for the same line-oriented `key=value` report as `--check`, but without failing on
-drift. The report includes:
+The preferred guided verification path is `$tanaab-agentbox-doctor`, which runs on the local host,
+groups the installed health checks, and recommends focused remediation without applying it. See the
+[Codex plugin guide](./CODEX.md#diagnose-host-health) for the workflow and example prompt.
 
-```ini
-agentbox_version=<version>
+The installed `/opt/tanaab/agentbox/bin/health.sh` remains the authoritative health contract for the
+host version. Use `--check` to print its line-oriented `key=value` report and return nonzero when a
+required check fails:
+
+```sh
+sudo /opt/tanaab/agentbox/bin/health.sh --check
 ```
 
-When Tailscale is enabled, the report should confirm the `agentbox` system daemon is loaded and the
-legacy Homebrew launchd wrapper is not:
+Use `--report` to print the same report without propagating health failures through the command exit
+status:
 
-```ini
-tailscaled_launchd_loaded_ok=1
-tailscaled_launchd_running_ok=1
-tailscaled_homebrew_launchd_absent_ok=1
-tailscaled_official_launchd_absent_ok=1
-tailscaled_state_file_ok=1
+```sh
+sudo /opt/tanaab/agentbox/bin/health.sh --report
 ```
 
-The report should also include the core dependency checks. `agentbox` does not pin `node@24`; the
-Homebrew `openclaw-cli` formula owns its Node dependency.
+Both modes end with `agentbox_ok=1` when all required checks pass and `agentbox_ok=0` when required
+drift is present. Individual checks may be `skipped` when their feature or service mode is not
+active.
 
-```ini
-homebrew_login_path_file_ok=1
-openclaw_cli_ok=1
-node_cli_ok=1
-ripgrep_ok=1
+Review the periodic health log when investigating when drift first appeared:
+
+```sh
+tail -n 50 /var/log/tanaab/agentbox/health.log
 ```
-
-For default system-mode installs, the report should include:
-
-```ini
-openclaw_service_mode=system
-openclaw_gateway_launchd_loaded_ok=1
-openclaw_gateway_launchd_running_ok=1
-openclaw_gateway_log_permissions_ok=1
-openclaw_native_gateway_launch_agents_absent_ok=1
-openclaw_admin_app_attach_only_ok=1
-openclaw_admin_app_gateway_config_expected=1
-openclaw_admin_app_gateway_config_ok=1
-openclaw_gateway_status_ok=1
-openclaw_gateway_ok=1
-```
-
-The admin app gateway configuration check compares the runner and admin token values by SHA-256 and
-reports only the boolean result. When the runner token is not stored as a plaintext configuration
-value, `openclaw_admin_app_gateway_config_expected=0` and
-`openclaw_admin_app_gateway_config_ok=skipped` because agentbox intentionally leaves credential
-synchronization to OpenClaw.
-
-In `user` mode, the gateway check is based on OpenClaw's native `gateway status --require-rpc` check as
-the OpenClaw runner:
-
-```ini
-openclaw_service_mode=user
-openclaw_gateway_launchd_loaded_ok=skipped
-openclaw_gateway_launchd_running_ok=skipped
-openclaw_gateway_log_permissions_ok=skipped
-openclaw_gateway_ok=1
-openclaw_autologin_ok=1
-```
-
-Tailscale-enabled hosts should report:
-
-```ini
-openclaw_gateway_bind=loopback
-openclaw_gateway_tailscale_mode=serve
-openclaw_gateway_tailscale_auth_ok=1
-tailscale_magicdns_enabled=1
-tailscale_magicdns_resolver_ok=1
-tailscale_https_certificates_enabled=1
-openclaw_gateway_tailscale_serve_route_ok=1
-```
-
-Hosts bootstrapped with Tailscale disabled should report:
-
-```ini
-openclaw_gateway_bind=loopback
-openclaw_gateway_tailscale_mode=off
-```
-
-When brewgroup setup is enabled, the report should include:
-
-```ini
-brewgroup_admin_user_ok=1
-brewgroup_openclaw_user_ok=1
-brew_prefix_ok=1
-```
-
-If trusted nesting is enabled, it should also include:
-
-```ini
-trusted_brewgroup_nested_ok=1
-```
-
-If macOS exposes the `com.apple.access_ssh` Remote Login access group, the report should include:
-
-```ini
-ssh_access_admin_user_ok=1
-ssh_access_openclaw_user_ok=1
-```
-
-Otherwise those fields are `skipped`.
 
 If authorized keys were provided, verify key-based SSH over Tailscale or LAN from another machine
 before closing the local/admin recovery session:
