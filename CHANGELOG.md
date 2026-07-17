@@ -1,6 +1,32 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
-- Added a Codex plugin with guided agentbox installation, bootstrap or reconciliation, and host-health diagnosis workflows. [#17](https://github.com/tanaabased/agentbox/pull/17)
+### Breaking Changes
+
+- Changed bootstrap and reconciliation to enforce the `MODEL L3-37` fallback gateway identity, bundled avatar, and Tanaab seam color, replacing any existing custom fallback branding. [#17](https://github.com/tanaabased/agentbox/pull/17)
+- Changed OpenClaw `system` service mode to remove native gateway LaunchAgents for both the runner and invoking administrator, and configure the admin app for attach-only access to the managed gateway. [#17](https://github.com/tanaabased/agentbox/pull/17)
+
+### Codex Plugin
+
+- Added an optional Codex plugin, distributed in GitHub release archives, with `$tanaab-agentbox-installer`, `$tanaab-agentbox`, and `$tanaab-agentbox-doctor` workflows. [#17](https://github.com/tanaabased/agentbox/pull/17)
+- Added grouped, version-aware local host diagnosis with bounded checks and focused repair recommendations that require separate confirmation. [#17](https://github.com/tanaabased/agentbox/pull/17)
+- Added verified stable-release and source-checkout management with private atomic configuration, invalid-config recovery, and opt-in `agentbox` command linking. [#17](https://github.com/tanaabased/agentbox/pull/17)
+
+### New Features
+
+- Added authenticated OpenClaw Dashboard launch guidance after successful setup, including the exact runner command needed to open it. [#17](https://github.com/tanaabased/agentbox/pull/17)
+- Added managed OpenClaw Gateway discovery and access alignment through mDNS hostname matching, explicit Tailscale identity authentication, and system-mode admin-app port and token synchronization when available. [#17](https://github.com/tanaabased/agentbox/pull/17)
+
+### Improvements
+
+- Updated post-bootstrap health with concise status output and broader checks for OpenClaw app and service state, log permissions, Tailscale identity persistence, and gateway authentication. [#17](https://github.com/tanaabased/agentbox/pull/17)
+- Updated OpenClaw reruns to reconcile valid local gateway configuration noninteractively instead of reopening onboarding. [#17](https://github.com/tanaabased/agentbox/pull/17)
+- Updated sudo orchestration to keep the early capability gate nonprompting, authorize interactive runs after Bootbox and Homebrew, and delegate a reusable session through noninteractive Bootbox work. [#17](https://github.com/tanaabased/agentbox/pull/17)
+
+### Bug Fixes
+
+- Fixed managed OpenClaw Gateway log ownership and permissions for the non-admin runner service. [#17](https://github.com/tanaabased/agentbox/pull/17)
+- Fixed managed `tailscaled` state ownership and persistence so its identity survives daemon restarts. [#17](https://github.com/tanaabased/agentbox/pull/17)
+- Fixed stopped, already-authenticated Tailscale identities to resume without requiring a new auth key. [#17](https://github.com/tanaabased/agentbox/pull/17)
 
 ## v1.0.0-beta.6 - [July 9, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.6)
 
