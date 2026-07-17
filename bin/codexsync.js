@@ -20,7 +20,7 @@ Validate the agentbox Codex plugin or refresh an existing installed cache.
 Commands:
   check      Compare source with the exact-version installed plugin cache.
   sync       Refresh an existing exact-version plugin cache from source.
-  validate   Validate plugin metadata, skills, assets, links, and workflows.
+  validate   Validate the plugin manifest, declared resources, and bundled skills.
 
 Options:
   --repo-root PATH   Source repository root. [default: ${context.repoRoot}]
@@ -116,6 +116,14 @@ async function main() {
   } catch (error) {
     writeCodexsyncLine(process.stderr, `error ${error.message}`);
     return false;
+  }
+
+  if (parsed.command === 'validate' && !parsed.help && !parsed.version) {
+    return runValidation({
+      repoRoot: parsed.repoRoot,
+      stderr: process.stderr,
+      stdout: process.stdout,
+    });
   }
 
   const context = await resolveCodexsyncContext(parsed);

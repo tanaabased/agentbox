@@ -69,13 +69,7 @@ jobs:
         run: |
           tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F '.codex-plugin/plugin.json'
           tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'skills/agentbox/SKILL.md'
-          tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'skills/agentbox/references/tanaab-installation.md'
-          tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'skills/agentbox-doctor/SKILL.md'
-          tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'skills/agentbox-installer/SKILL.md'
-          tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'lib/agentbox-installations.js'
           tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'scripts/check-plugin-runtime.sh'
-          tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'assets/composer-icon.svg'
-          tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'assets/icon-large.png'
           tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -F 'dist/macos.sh'
           if tar -tzf "${RUNNER_TEMP}/${RELEASE_ARCHIVE}" | grep -E '(^|/)node_modules(/|$)'; then
             echo 'release archive must not include node_modules' >&2

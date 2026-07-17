@@ -126,7 +126,12 @@ This is directional guidance, not the current public contract:
   the plugin archive.
 - Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
 - Keep the repo-owned Codex plugin contract in `lib/plugin-validation.js` and run it through
-  `bun run codex:validate`. Keep validation read-only and separate from cache synchronization.
+  `bun run codex:validate`. Limit that validator to loader-facing requirements for a valid Codex
+  plugin: a parseable manifest, valid declared local resources, parseable optional app and MCP
+  configuration, and bundled skills with required `name` and `description` frontmatter. Do not use it
+  to enforce Tanaab authoring conventions, documentation links, prompt content, release version
+  alignment, GitHub workflow wiring, or general dependency and runtime-version policy. Keep
+  validation read-only and separate from cache synchronization.
 - Treat `.codex-plugin/`, `.mcp.json`, `AGENTS.md`, `ADVANCED.md`, `README.md`, `assets/`,
   `bin/codexsync.js`, `lib/`, `package.json`, `scripts/check-plugin-runtime.sh`, and `skills/` as the
   managed Codex plugin cache surface for `bun run codex:check` and `bun run codex:sync`.
