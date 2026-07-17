@@ -8,7 +8,9 @@ Linux and Windows are not supported yet. Linux support is planned.
 
 At a high level, `agentbox` installs Homebrew and core dependencies, creates or reuses a non-admin OpenClaw runner user, sets macOS system identity and headless power/time/recovery defaults, enables classic SSH, launches OpenClaw Gateway in `system` or `user` service mode, installs health checks and logs, optionally hardens SSH to key-only access, optionally connects the Mac to a Tailscale tailnet, and optionally configures initial OpenClaw model auth.
 
-The advanced reference covers installed components, the full option and environment-variable contract, brewgroup behavior, OpenClaw service modes, OpenClaw auth environment handling, Tailscale details, health-report fields, and payload resolution.
+The optional Codex plugin adds three guided workflows: `$tanaab-agentbox-installer` manages stable and source executables, `$tanaab-agentbox` plans and runs bootstrap or reconciliation, and `$tanaab-agentbox-doctor` inspects one local installed host and recommends focused remediation. The hosted script remains the primary setup path and does not require Codex.
+
+The advanced reference covers installed components, the full option and environment-variable contract, brewgroup behavior, OpenClaw service modes, OpenClaw auth environment handling, Tailscale details, manual verification, and payload resolution. The Codex guide covers plugin installation, workflow ownership, example prompts, and version alignment.
 
 Agent workspaces layer on top of the host and remain out of scope here: no agent-, persona-, or workspace-specific setup, dotfiles, project credentials, trading services, app-specific workloads, router port forwarding, or public WAN exposure. Tailscale is recommended for remote access, but setup can be explicitly disabled.
 
@@ -17,7 +19,8 @@ Agent workspaces layer on top of the host and remain out of scope here: no agent
 - [Hosted macOS script](https://agentbox.tanaab.sh/macos.sh): The generated shell entrypoint for bootstrapping a Mac.
 - [Hosted unsupported script](https://agentbox.tanaab.sh/unsupported.sh): The generated fallback for unsupported or unknown platforms.
 - [README source](https://raw.githubusercontent.com/tanaabased/agentbox/main/README.md): Main setup path, quickstart, usage, manual setup checklist, verification, and project links.
-- [Advanced source](https://raw.githubusercontent.com/tanaabased/agentbox/main/ADVANCED.md): Installed components, full configuration reference, health-report keys, and payload-resolution details.
+- [Advanced source](https://raw.githubusercontent.com/tanaabased/agentbox/main/ADVANCED.md): Installed components, full configuration reference, manual verification, and payload-resolution details.
+- [Codex plugin source](https://raw.githubusercontent.com/tanaabased/agentbox/main/CODEX.md): Optional plugin installation, bundled workflow ownership, guided diagnosis, and version-alignment details.
 - [GitHub repository](https://github.com/tanaabased/agentbox): Source code, canonical docs, workflows, and examples.
 - [Releases](https://github.com/tanaabased/agentbox/releases): Published release tags for version-pinned installs.
 - [Issues](https://github.com/tanaabased/agentbox/issues): Bug reports, regressions, and feature requests.

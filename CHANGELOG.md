@@ -1,5 +1,7 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+## v1.0.0-beta.7 - [July 17, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.7)
+
 ### Breaking Changes
 
 - Changed bootstrap and reconciliation to enforce the `MODEL L3-37` fallback gateway identity, bundled avatar, and Tanaab seam color, replacing any existing custom fallback branding. [#17](https://github.com/tanaabased/agentbox/pull/17)
