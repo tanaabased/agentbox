@@ -614,9 +614,19 @@ openclaw_service_mode=system
 openclaw_gateway_launchd_loaded_ok=1
 openclaw_gateway_launchd_running_ok=1
 openclaw_gateway_log_permissions_ok=1
+openclaw_native_gateway_launch_agents_absent_ok=1
+openclaw_admin_app_attach_only_ok=1
+openclaw_admin_app_gateway_config_expected=1
+openclaw_admin_app_gateway_config_ok=1
 openclaw_gateway_status_ok=1
 openclaw_gateway_ok=1
 ```
+
+The admin app gateway configuration check compares the runner and admin token values by SHA-256 and
+reports only the boolean result. When the runner token is not stored as a plaintext configuration
+value, `openclaw_admin_app_gateway_config_expected=0` and
+`openclaw_admin_app_gateway_config_ok=skipped` because agentbox intentionally leaves credential
+synchronization to OpenClaw.
 
 In `user` mode, the gateway check is based on OpenClaw's native `gateway status --require-rpc` check as
 the OpenClaw runner:
@@ -635,6 +645,7 @@ Tailscale-enabled hosts should report:
 ```ini
 openclaw_gateway_bind=loopback
 openclaw_gateway_tailscale_mode=serve
+openclaw_gateway_tailscale_auth_ok=1
 tailscale_magicdns_enabled=1
 tailscale_magicdns_resolver_ok=1
 tailscale_https_certificates_enabled=1

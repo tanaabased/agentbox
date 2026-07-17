@@ -120,6 +120,29 @@
           "label": "Gateway log permissions",
           "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
         },
+        {
+          "key": "openclaw_native_gateway_launch_agents_absent_ok",
+          "label": "Native gateway service conflicts absent",
+          "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
+        },
+        {
+          "key": "openclaw_admin_app_attach_only_ok",
+          "label": "Admin OpenClaw app attach-only mode",
+          "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
+        },
+        {
+          "key": "openclaw_admin_app_gateway_config_ok",
+          "label": "Admin OpenClaw app gateway configuration",
+          "when": [
+            { "key": "openclaw_service_mode", "equals": "system" },
+            { "key": "openclaw_admin_app_gateway_config_expected", "equals": "1" }
+          ]
+        },
+        {
+          "key": "openclaw_gateway_tailscale_auth_ok",
+          "label": "Gateway Tailscale identity authentication",
+          "when": [{ "key": "openclaw_gateway_tailscale_mode", "equals": "serve" }]
+        },
         { "key": "openclaw_gateway_status_ok", "label": "Gateway readiness" },
         { "key": "openclaw_gateway_ok", "label": "Gateway aggregate", "issue": false }
       ]

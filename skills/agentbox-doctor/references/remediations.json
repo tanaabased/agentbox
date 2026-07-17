@@ -109,6 +109,22 @@
     "summary": "Restore the managed gateway log directory and private runner-owned log files.",
     "command": "sudo /usr/bin/install -d -o root -g wheel -m 755 /var/log/tanaab/agentbox && sudo /usr/bin/touch /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log && sudo /usr/sbin/chown {{openclaw_user}}:\"$(/usr/bin/id -gn {{openclaw_user}})\" /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log && sudo /bin/chmod 600 /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log"
   },
+  "openclaw_native_gateway_launch_agents_absent_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox in system service mode to remove conflicting native gateway LaunchAgents for the runner and invoking admin."
+  },
+  "openclaw_admin_app_attach_only_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox in system service mode to restore the admin OpenClaw app attach-only marker and private permissions."
+  },
+  "openclaw_admin_app_gateway_config_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox in system service mode to synchronize the managed gateway port and token into the admin OpenClaw app configuration without exposing the credential."
+  },
+  "openclaw_gateway_tailscale_auth_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox to restore verified Tailscale identity authentication in the runner-owned gateway configuration."
+  },
   "openclaw_gateway_status_ok": {
     "kind": "reconcile",
     "summary": "The native user gateway requires a logged-in runner GUI session; restore that session or rerun agentbox in system service mode.",

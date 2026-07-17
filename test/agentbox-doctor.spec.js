@@ -63,6 +63,11 @@ const healthyValues = {
   openclaw_gateway_launchd_loaded_ok: '1',
   openclaw_gateway_launchd_running_ok: '1',
   openclaw_gateway_log_permissions_ok: '1',
+  openclaw_native_gateway_launch_agents_absent_ok: '1',
+  openclaw_admin_app_attach_only_ok: '1',
+  openclaw_admin_app_gateway_config_expected: '1',
+  openclaw_admin_app_gateway_config_ok: '1',
+  openclaw_gateway_tailscale_auth_ok: 'skipped',
   openclaw_gateway_status_ok: '1',
   openclaw_gateway_ok: '1',
   tailscale_expected: '0',
@@ -107,6 +112,7 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
       tailscale_magicdns_resolver_ok: '0',
       tailscale_magicdns_resolver_path: '/etc/resolver/example.ts.net',
       tailscale_https_certificates_enabled: '1',
+      openclaw_gateway_tailscale_auth_ok: '1',
       openclaw_gateway_tailscale_serve_route_ok: '1',
       tailscale_ok: '1',
       agentbox_ok: '0',
@@ -175,6 +181,67 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
         requiresConfirmation: issue?.remediation.requiresConfirmation,
       },
       { kind: 'reconcile', command: null, requiresConfirmation: false },
+    );
+  });
+
+  it('should hand managed admin app drift to agentbox reconciliation', () => {
+    const report = evaluateHealth({
+      ...healthyValues,
+      openclaw_admin_app_gateway_config_ok: '0',
+      openclaw_gateway_ok: '0',
+      agentbox_ok: '0',
+    });
+    const issue = report.issues.find(
+      (candidate) => candidate.key === 'openclaw_admin_app_gateway_config_ok',
+    );
+
+    assert.equal(report.status, 'unhealthy');
+    assert.deepEqual(
+      {
+        kind: issue?.remediation.kind,
+        command: issue?.remediation.command,
+        skill: issue?.remediation.handoff?.skill,
+      },
+      { kind: 'reconcile', command: null, skill: '$tanaab-agentbox' },
+    );
+  });
+
+  it('should require Tailscale identity authentication only for Serve mode', () => {
+    const report = evaluateHealth({
+      ...healthyValues,
+      openclaw_gateway_tailscale_mode: 'serve',
+      openclaw_gateway_tailscale_auth_ok: '0',
+      tailscale_expected: '0',
+      openclaw_gateway_ok: '0',
+      agentbox_ok: '0',
+    });
+    const issue = report.issues.find(
+      (candidate) => candidate.key === 'openclaw_gateway_tailscale_auth_ok',
+    );
+
+    assert.equal(report.status, 'unhealthy');
+    assert.equal(issue?.remediation.kind, 'reconcile');
+  });
+
+  it('should skip system-owned admin app checks in user service mode', () => {
+    const report = evaluateHealth({
+      ...healthyValues,
+      openclaw_service_mode: 'user',
+      openclaw_gateway_launchd_loaded_ok: 'skipped',
+      openclaw_gateway_launchd_running_ok: 'skipped',
+      openclaw_gateway_log_permissions_ok: 'skipped',
+      openclaw_native_gateway_launch_agents_absent_ok: 'skipped',
+      openclaw_admin_app_attach_only_ok: 'skipped',
+      openclaw_admin_app_gateway_config_expected: '0',
+      openclaw_admin_app_gateway_config_ok: 'skipped',
+    });
+    const openclaw = report.groups.find((group) => group.id === 'openclaw');
+
+    assert.equal(report.status, 'healthy');
+    assert.equal(
+      openclaw?.checks.find((check) => check.key === 'openclaw_admin_app_gateway_config_ok')
+        ?.status,
+      'skipped',
     );
   });
 
