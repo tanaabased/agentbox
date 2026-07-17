@@ -36,6 +36,9 @@ export const AGENTBOX_RELEASE_API_URL =
   'https://api.github.com/repos/tanaabased/agentbox/releases/latest';
 const DEFAULT_METADATA_TIMEOUT_MS = 30_000;
 const DEFAULT_ARCHIVE_TIMEOUT_MS = 120_000;
+const DEFAULT_FETCH_RETRIES = 2;
+const DEFAULT_RETRY_DELAY_MS = 250;
+const RETRYABLE_HTTP_STATUSES = new Set([429, 502, 503, 504]);
 
 function operationError(code, message) {
   return new AgentboxInstallationError(code, message);
@@ -65,7 +68,26 @@ function resolveUserPath(value, env) {
   return resolve(value);
 }
 
-async function fetchResponse(fetchImpl, url, responseType, options = {}) {
+function retryDelayMs(error, attempt, options) {
+  if (options.retryDelayMs !== undefined) return options.retryDelayMs;
+
+  const retryAfter = error.retryAfter?.trim();
+  if (/^[0-9]+$/.test(retryAfter || '')) return Number(retryAfter) * 1000;
+  if (retryAfter) {
+    const retryAt = Date.parse(retryAfter);
+    if (Number.isFinite(retryAt)) return Math.max(0, retryAt - Date.now());
+  }
+  return DEFAULT_RETRY_DELAY_MS * 2 ** attempt;
+}
+
+function isRetryableDownloadError(error) {
+  return (
+    error.code === 'download_failed' &&
+    (error.status === undefined || RETRYABLE_HTTP_STATUSES.has(error.status))
+  );
+}
+
+async function fetchResponseOnce(fetchImpl, url, responseType, options) {
   const timeoutMs =
     options.fetchTimeoutMs ||
     (responseType === 'arrayBuffer' ? DEFAULT_ARCHIVE_TIMEOUT_MS : DEFAULT_METADATA_TIMEOUT_MS);
@@ -82,19 +104,38 @@ async function fetchResponse(fetchImpl, url, responseType, options = {}) {
       signal: controller.signal,
     });
     if (!response.ok) {
-      throw operationError(
+      const error = operationError(
         'download_failed',
         `request failed with status ${response.status}: ${url}.`,
       );
+      error.status = response.status;
+      error.retryAfter = response.headers?.get?.('retry-after') || null;
+      throw error;
     }
     return await response[responseType]();
   } catch (error) {
     if (controller.signal.aborted) {
       throw operationError('download_timeout', `request timed out after ${timeoutMs}ms: ${url}.`);
     }
-    throw error;
+    if (error instanceof AgentboxInstallationError) throw error;
+    throw operationError('download_failed', `request failed for ${url}: ${error.message}.`);
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function fetchResponse(fetchImpl, url, responseType, options = {}) {
+  const retries = options.fetchRetries ?? DEFAULT_FETCH_RETRIES;
+  const sleepImpl =
+    options.sleepImpl || ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetchResponseOnce(fetchImpl, url, responseType, options);
+    } catch (error) {
+      if (attempt >= retries || !isRetryableDownloadError(error)) throw error;
+      await sleepImpl(retryDelayMs(error, attempt, options));
+    }
   }
 }
 

@@ -205,6 +205,45 @@ describe('skills/agentbox-installer/scripts/manage-installations-lib', function 
     });
   });
 
+  it('should retry transient release request failures', async () => {
+    let requests = 0;
+    const fetchImpl = async () => {
+      requests += 1;
+      if (requests === 1) return { ok: false, status: 503 };
+      return fakeResponse(
+        {
+          tag_name: 'v1.2.1',
+          draft: false,
+          prerelease: false,
+          assets: [
+            {
+              name: 'agentbox-v1.2.1.tar.gz',
+              browser_download_url: 'https://downloads.example/agentbox-v1.2.1.tar.gz',
+              digest: `sha256:${'a'.repeat(64)}`,
+            },
+          ],
+        },
+        'json',
+      );
+    };
+
+    const release = await resolveLatestStableRelease({ fetchImpl, retryDelayMs: 0 });
+
+    assert.equal(requests, 2);
+    assert.equal(release.tag, 'v1.2.1');
+  });
+
+  it('should classify terminal network failures as download failures', async () => {
+    const fetchImpl = async () => {
+      throw new TypeError('fetch failed');
+    };
+
+    await assert.rejects(
+      resolveLatestStableRelease({ fetchImpl, fetchRetries: 0 }),
+      (error) => error.code === 'download_failed' && /fetch failed/.test(error.message),
+    );
+  });
+
   it('should reject links extracted from a release archive', async () => {
     const fetchImpl = await createReleaseFetch(home, 'v1.2.1', null, async (releaseRoot) => {
       await symlink('/tmp', join(releaseRoot, 'unsafe-link'));
