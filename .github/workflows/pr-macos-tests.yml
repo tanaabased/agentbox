@@ -12,7 +12,7 @@ env:
 
 jobs:
   examples:
-    name: macOS / ${{ matrix.example }}
+    name: ${{ matrix.example }}
     runs-on: macos-26
     strategy:
       fail-fast: false
@@ -28,6 +28,7 @@ jobs:
           - users-custom
           - users-existing
           - source
+          - sudo
     steps:
       - name: Checkout code
         uses: actions/checkout@v7

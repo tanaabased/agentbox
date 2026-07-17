@@ -47,7 +47,12 @@ This is directional guidance, not the current public contract:
 - `Brewfile`: core Homebrew packages; `Brewfile.extras`: optional operator tooling.
 - `bin/health.sh`: source for `/opt/tanaab/agentbox/bin/health.sh` and the machine health contract.
 - `launchd/*.plist.in`: source LaunchDaemon templates rendered by `macos.sh`.
-- `README.md`: main setup and usage entrypoint; `ADVANCED.md`: deeper operator reference.
+- `.codex-plugin/plugin.json`, `skills/`: Codex plugin metadata and installable skill surface.
+- `assets/composer-icon.svg`, `assets/icon-large.png`: Codex plugin interface assets.
+- `bin/codexsync.js`, `lib/codexsync-*.js`: package-level plugin validation and installed cache
+  comparison or refresh tooling.
+- `README.md`: main setup and usage entrypoint; `ADVANCED.md`: deeper operator reference;
+  `CODEX.md`: optional Codex plugin installation and workflow guide.
 - `examples/**/README.md`: Leia-backed executable CI contracts.
 - `site/llms.txt`, `scripts/build-dist.js`, `netlify.toml`: hosted-script and metadata publishing
   sources.
@@ -55,13 +60,27 @@ This is directional guidance, not the current public contract:
 
 ## Critical Rules
 
+- Style the product, repository, and CLI name as lowercase `agentbox` in all prose and user-facing
+  output, including at the start of a sentence. Never render the brand as `AgentBox`; preserve
+  uppercase only where required by case-sensitive identifiers such as `AGENTBOX_*` environment
+  variables, constants, and fixture hostnames.
 - Do not edit, regenerate, stage, or commit `dist/` during routine local work. Change source inputs
   and leave generated output to CI unless the user explicitly asks.
 - Do not run `bun run build` locally unless the user explicitly asks for generated-output
   verification. Preserve the single top-level `SCRIPT_VERSION` assignment in `macos.sh`.
 - Keep `/llms.txt` concise in `site/llms.txt`; `scripts/build-dist.js` copies it into `dist/`.
+- Keep the source versions in `package.json` and `.codex-plugin/plugin.json` aligned. Release
+  workflows must stamp both `dist/macos.sh` and the plugin manifest from the same release tag.
+- GitHub Releases publish `agentbox-<tag>.tar.gz` from the complete release-shaped repository. Keep
+  the plugin manifest, skills, plugin assets, and runtime payload files in that archive.
 - Keep `--help` as the public CLI contract. Public option, env-var, help, status, debug, or
   failure-text changes must check `README.md`, `ADVANCED.md`, and affected examples.
+- Keep documentation ownership explicit: `README.md` leads with hosted bootstrap and common usage,
+  `ADVANCED.md` owns manual host and operator details, and `CODEX.md` owns the optional plugin surface.
+  Link between them instead of duplicating complete contracts.
+- Do not add user documentation for small interaction, presentation, or internal orchestration
+  changes by default. Document behavior needed to choose inputs, complete setup, interpret results,
+  or operate and recover the host.
 - Preserve the public `AGENTBOX_*` namespace. Do not leak upstream Bootbox names into the public
   `agentbox` interface.
 - Never commit Tailscale auth keys, SSH private keys, API tokens, passwords, machine-specific secret
@@ -74,8 +93,13 @@ This is directional guidance, not the current public contract:
 
 ## `macos.sh` Invariants
 
-- Preserve the macOS support gate and sudo preflight before Bootbox download, repo materialization,
-  Brewfile application, or other machine mutation.
+- Preserve the macOS support gate and a non-prompting sudo capability check before Bootbox download,
+  payload materialization, Brewfile application, or other machine mutation. This early check verifies
+  `/usr/bin/sudo` and the invoking admin account without establishing a sudo timestamp.
+- For interactive runs, establish the managed agentbox sudo session after Bootbox applies Brewfiles
+  because Homebrew invalidates prior sudo timestamps. For CI and other non-interactive runs, require
+  reusable non-interactive sudo before Bootbox and delegate that session with
+  `BOOTBOX_EXTERNAL_SUDO=1`.
 - Keep Bootbox delegation noninteractive; the `agentbox` wrapper owns the confirmation gate.
 - Keep payload resolution aligned with the running `macos.sh` and do not fall back to cloning the
   default branch.
@@ -99,22 +123,70 @@ This is directional guidance, not the current public contract:
   every input spelling.
 - See `examples/AGENTS.md` before editing examples.
 
+## JavaScript And Plugin Skills
+
+- Keep skill-owned JavaScript entrypoints and support modules under the owning
+  `skills/<skill>/scripts/` directory. Do not hoist them merely because the full repository ships in
+  the plugin archive.
+- Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
+- Keep the repo-owned Codex plugin contract in `lib/plugin-validation.js` and run it through
+  `bun run codex:validate`. Limit that validator to loader-facing requirements for a valid Codex
+  plugin: a parseable manifest, valid declared local resources, parseable optional app and MCP
+  configuration, and bundled skills with required `name` and `description` frontmatter. Do not use it
+  to enforce Tanaab authoring conventions, documentation links, prompt content, release version
+  alignment, GitHub workflow wiring, or general dependency and runtime-version policy. Keep
+  validation read-only and separate from cache synchronization.
+- Treat `.codex-plugin/`, `.mcp.json`, `AGENTS.md`, `ADVANCED.md`, `CODEX.md`, `README.md`, `assets/`,
+  `bin/codexsync.js`, `lib/`, `package.json`, `scripts/check-plugin-runtime.sh`, and `skills/` as the
+  managed Codex plugin cache surface for `bun run codex:check` and `bun run codex:sync`.
+- Keep plugin cache refresh installation-aware. `codex:check` must report an absent exact-version
+  cache as neutral `not_installed`; `codex:sync` must refuse to create it. A source symlink or an
+  older cached version does not authorize initialization of the current cache.
+- Reserve root `bin/` for a real package-level CLI. Hoist runtime modules to root `lib/` only after
+  reuse across at least two live skills or when they become a repo-wide contract.
+- Require Bun-dependent plugin skills to run `scripts/check-plugin-runtime.sh` before invoking their
+  JavaScript helpers. Keep this preflight read-only and do not install or repair Bun automatically.
+- Keep plugin skill ownership distinct: `agentbox` plans and runs bootstrap or reconciliation,
+  `agentbox-installer` manages configured executables, and `agentbox-doctor` inspects installed host
+  health without mutation.
+- Check `CODEX.md` and `site/llms.txt` when plugin installation, runtime prerequisites, bundled skill
+  ownership, or public invocation guidance changes.
+- Keep the installer-managed `agentbox` command link opt-in. Omission of `--link-command` on a fresh
+  config must not create, replace, or remove PATH commands; status may inspect PATH entries but must
+  not execute discovered commands.
+- Never load or apply `skills/agentbox/references/tanaab-installation.md` unless the user explicitly
+  requests the Tanaab-based installation profile for the current run. Do not infer it from identity,
+  repository context, hostnames, paths, prior conversation, or existing configuration.
+- Keep agentbox doctor bound to `/opt/tanaab/agentbox/bin/health.sh`. If that installed health script
+  is absent, report that agentbox is not installed; never fall back to a source or configured
+  installer copy.
+
 ## Validation
 
 - Prefer the narrowest reliable checks for the touched area.
 - For routine local validation, use `bun run lint`; run `git diff --check` when whitespace or
   generated text churn is plausible.
+- Run `bun run test` for JavaScript runtime changes.
+- Run `bun run codex:validate` for plugin manifest, skill metadata, plugin asset, or plugin workflow
+  changes.
+- For managed plugin changes, run `bun run codex:check`. If it reports drift, run
+  `bun run codex:sync` and then `bun run codex:check` again before committing. If it reports
+  `not_installed`, do not sync; report that cache refresh was skipped because the plugin is not
+  installed.
+- Repeat the cache check after a rebase, cherry-pick, amendment, conflict resolution, or commit-time
+  edit changes managed plugin files. A commit that does not change file content does not require a
+  redundant post-commit sync.
 - Run `bun install` when dependencies are missing before linting; keep `bun.lock` when Bun updates
   it.
 - Do not delete local `node_modules/` after validation; it is ignored and local-only.
 - Do not run `macos.sh`, `dist/macos.sh`, mutating Leia examples, or `bun run build` as routine local
   validation unless the user explicitly asks.
-- If `macos.sh`, Leia, or `bun run build` is intentionally skipped because of task scope or repo
-  policy, say so plainly.
+- If plugin cache sync, a Codex restart, `macos.sh`, Leia, or `bun run build` is intentionally skipped
+  because of task scope, installation state, or repo policy, say so plainly.
 
 ## References
 
-- `README.md`, `ADVANCED.md`, `CHANGELOG.md`
+- `README.md`, `ADVANCED.md`, `CODEX.md`, `CHANGELOG.md`
 - `examples/`, `examples/AGENTS.md`
 - `bin/health.sh`
 - `site/llms.txt`, `scripts/build-dist.js`

@@ -44,8 +44,8 @@ For a more complete look at installed components, see
 
 ## Quickstart
 
-Complete the [Manual Setup Checklist](#manual-setup-checklist) first, then run the hosted bootstrap on
-the Mac you are preparing:
+Complete the [Preflight Checks](./ADVANCED.md#preflight-checks) first, then run the hosted bootstrap
+on the Mac you are preparing:
 
 ```sh
 /bin/bash -c "$(curl -fsSL https://agentbox.tanaab.sh/macos.sh)" agentbox \
@@ -62,6 +62,9 @@ For the complete option and environment-variable contract, run:
 ```sh
 /bin/bash -c "$(curl -fsSL https://agentbox.tanaab.sh/macos.sh)" agentbox --help
 ```
+
+Codex is optional. For guided executable management, bootstrap or reconciliation, and host-health
+diagnosis, see the [Codex plugin guide](./CODEX.md).
 
 ## Usage
 
@@ -102,55 +105,68 @@ Common inputs:
 Use [ADVANCED.md](./ADVANCED.md) for the full option guide, payload-resolution details, brewgroup
 behavior, OpenClaw auth environment handling, and deeper Tailscale notes.
 
-## Manual Setup Checklist
+On rerun, `agentbox` reconciles an existing valid local OpenClaw gateway configuration
+non-interactively instead of reopening the onboarding wizard. See
+[OpenClaw reruns and later configuration](./ADVANCED.md#reruns-and-later-openclaw-configuration).
 
-Before running `agentbox`:
+### Open the OpenClaw Dashboard
 
-- Put the Mac somewhere ventilated, physically safe, and connected to power.
-- Use Mac hardware you physically control; Mac VPS behavior is unverified.
-- Connect Ethernet and reserve its LAN IP in the router by MAC address.
-- Do not add WAN port forwards for SSH, Screen Sharing, local services, or future app ports.
-- Create the initial macOS admin account for human maintenance and recovery.
-- Temporarily enable Remote Login only if you need SSH access before running `agentbox`; the bootstrap
-  enables classic SSH programmatically.
-- Install all macOS updates:
+After setup succeeds, `agentbox` prints the exact command for opening the authenticated OpenClaw
+Dashboard. With the default runner username, that command is:
 
 ```sh
-softwareupdate --list
-sudo softwareupdate --install --all --restart
+sudo -iu openclaw "$(brew --prefix)/bin/openclaw" dashboard
 ```
 
-- Keep automatic/background security updates enabled in System Settings.
-- Decide FileVault deliberately. macOS 26 on Apple silicon supports SSH unlock after restart when
-  Remote Login and network connectivity are available, but physical recovery access is still the
-  safest assumption for a headless `agentbox`.
-- Consider installing an [HDMI dummy plug or headless display adapter](https://www.amazon.com/dp/B0CKKLTWMN?ref=fed_asin_title)
-  for smoother headless display behavior.
-- Create or choose a preauthorized Tailscale auth key with any desired device tags, or decide to skip
-  Tailscale setup.
-- Confirm MagicDNS and HTTPS Certificates are enabled in
-  [Tailscale DNS settings](https://login.tailscale.com/admin/dns) when the OpenClaw Gateway should be
-  exposed through Tailscale Serve.
-- Optionally choose SSH public keys for `agentbox` to install for the admin and OpenClaw runner users.
+Replace `openclaw` with the configured runner short name when using a custom identity. Running the
+command as the runner lets OpenClaw use its runner-owned gateway configuration and token without
+printing the token. Each additional browser profile or device connecting over the tailnet must
+complete its own OpenClaw authorization flow and may need the gateway token on first connection. See
+[Dashboard access](./ADVANCED.md#dashboard-access) for direct runner usage, remote-device
+authorization, the copy-only option, and headless-session behavior.
 
 ## Verification
 
-Reboot the Mac and confirm it returns to the expected network state before any GUI login. Then use the
-installed health script to check or report host state:
+At the end of setup, `agentbox` prints a concise health success or failure status. A failed health
+check exits nonzero and prints the report command below; `--debug` includes the full health report in
+the setup output.
+
+When the optional Codex plugin is installed, the preferred guided verification path is to run Codex
+on the local agentbox host and ask:
+
+```text
+Use $tanaab-agentbox-doctor to inspect this local agentbox host.
+```
+
+The doctor presents grouped status, explains failures and warnings, and recommends focused repairs
+without applying them. Reboot the Mac and confirm it returns to the expected network state before
+any GUI login, then rerun the doctor.
+
+Without Codex, use the installed health script directly:
 
 ```sh
 sudo /opt/tanaab/agentbox/bin/health.sh --check
 sudo /opt/tanaab/agentbox/bin/health.sh --report
 ```
 
-Review the periodic health log when investigating drift:
+`--check` exits nonzero when required checks fail. `--report` prints the same line-oriented report
+without failing so it can be collected for troubleshooting.
 
-```sh
-tail -n 50 /var/log/tanaab/agentbox/health.log
-```
+See [ADVANCED.md#verification-details](./ADVANCED.md#verification-details) for the periodic log,
+manual follow-up checks, and direct report interpretation.
 
-See [ADVANCED.md#verification-details](./ADVANCED.md#verification-details) for health-report field
-interpretation and additional post-bootstrap checks.
+## Optional Codex Plugin
+
+The optional plugin layers three guided workflows over the same bootstrap and installed health
+contracts:
+
+- `$tanaab-agentbox-installer` installs or selects stable and source `agentbox` executables.
+- `$tanaab-agentbox` plans and runs bootstrap or reconciliation with the selected executable.
+- `$tanaab-agentbox-doctor` inspects one local host and recommends focused remediation.
+
+The hosted script remains the primary setup path and does not require Codex. See
+[CODEX.md](./CODEX.md) for plugin installation, example prompts, workflow boundaries, and version
+alignment.
 
 ## Development
 

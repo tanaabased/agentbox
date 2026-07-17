@@ -1,0 +1,208 @@
+{
+  "macos_identity_ok": {
+    "kind": "command",
+    "summary": "Set all three macOS identity values to the configured agentbox hostname.",
+    "command": "sudo /usr/sbin/scutil --set ComputerName {{expected_hostname}} && sudo /usr/sbin/scutil --set HostName {{expected_hostname}} && sudo /usr/sbin/scutil --set LocalHostName {{expected_hostname}}"
+  },
+  "headless_power_ok": {
+    "kind": "command",
+    "summary": "Restore the required headless power and automatic restart settings.",
+    "command": "sudo /usr/bin/pmset -a sleep 0 disksleep 0 displaysleep 0 autorestart 1"
+  },
+  "network_time_ok": {
+    "kind": "command",
+    "summary": "Enable macOS network time.",
+    "command": "sudo /usr/sbin/systemsetup -setusingnetworktime on"
+  },
+  "restart_freeze_ok": {
+    "kind": "command",
+    "summary": "Enable restart after a system freeze.",
+    "command": "sudo /usr/sbin/systemsetup -setrestartfreeze on"
+  },
+  "remote_login_ok": {
+    "kind": "command",
+    "summary": "Enable classic macOS Remote Login.",
+    "command": "sudo /usr/sbin/systemsetup -setremotelogin on"
+  },
+  "ssh_access_admin_user_ok": {
+    "kind": "command",
+    "summary": "Add the invoking admin user to the macOS SSH access group.",
+    "command": "sudo /usr/sbin/dseditgroup -o edit -a {{admin_user}} -t user {{ssh_access_group}}"
+  },
+  "ssh_access_openclaw_user_ok": {
+    "kind": "command",
+    "summary": "Add the OpenClaw runner to the macOS SSH access group.",
+    "command": "sudo /usr/sbin/dseditgroup -o edit -a {{openclaw_user}} -t user {{ssh_access_group}}"
+  },
+  "ssh_hardening_ok": {
+    "kind": "reconcile",
+    "summary": "Reconcile `/etc/ssh/sshd_config.d/agentbox.conf` with the original authorized-key inputs, then validate sshd before reloading it. A generic direct edit is unsafe."
+  },
+  "openclaw_user_exists_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run the matching agentbox version with the original OpenClaw runner inputs. Account creation requires the runner password and cannot be repaired from health state alone."
+  },
+  "openclaw_user_home_ok": {
+    "kind": "reconcile",
+    "summary": "Reconcile the runner home through agentbox so the expected path, ownership, and skeleton files are restored together."
+  },
+  "openclaw_user_non_admin_ok": {
+    "kind": "manual",
+    "summary": "Remove the OpenClaw runner from the admin group only after confirming no unrelated workflow depends on that privilege."
+  },
+  "openclaw_autologin_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run the matching agentbox version with the runner password available; macOS autologin configuration requires that secret input."
+  },
+  "brewgroup_admin_user_ok": {
+    "kind": "command",
+    "summary": "Add the invoking admin user to the configured Homebrew group.",
+    "command": "sudo /usr/sbin/dseditgroup -o edit -a {{admin_user}} -t user {{brewgroup_expected}}"
+  },
+  "brewgroup_openclaw_user_ok": {
+    "kind": "command",
+    "summary": "Add the OpenClaw runner to the configured Homebrew group.",
+    "command": "sudo /usr/sbin/dseditgroup -o edit -a {{openclaw_user}} -t user {{brewgroup_expected}}"
+  },
+  "trusted_brewgroup_nested_ok": {
+    "kind": "command",
+    "summary": "Nest the configured trusted group into the Homebrew group.",
+    "command": "sudo /usr/sbin/dseditgroup -o edit -a {{trusted_brewgroup_expected}} -t group {{brewgroup_expected}}"
+  },
+  "brew_prefix_ok": {
+    "kind": "command",
+    "summary": "Restore group ownership and group read/write/traverse access across the Homebrew prefix.",
+    "command": "sudo /usr/bin/find -x {{brew_prefix}} -exec chgrp -h {{brewgroup_expected}} {} + && sudo /usr/bin/find -x {{brew_prefix}} ! -type l -exec chmod g+rwX {} +"
+  },
+  "homebrew_login_path_file_ok": {
+    "kind": "command",
+    "summary": "Rewrite the managed login-path file with the Homebrew bin and sbin paths.",
+    "command": "printf '%s\\n' {{homebrew_login_path_bin}} {{homebrew_login_path_sbin}} | sudo /usr/bin/tee {{homebrew_login_path_file}} >/dev/null"
+  },
+  "openclaw_cli_ok": {
+    "kind": "command",
+    "summary": "Reinstall the OpenClaw CLI formula.",
+    "command": "{{brew_prefix}}/bin/brew reinstall openclaw-cli"
+  },
+  "node_cli_ok": {
+    "kind": "command",
+    "summary": "Install or repair the Node.js formula required by OpenClaw.",
+    "command": "{{brew_prefix}}/bin/brew install node"
+  },
+  "ripgrep_ok": {
+    "kind": "command",
+    "summary": "Install or repair ripgrep.",
+    "command": "{{brew_prefix}}/bin/brew install ripgrep"
+  },
+  "openclaw_gateway_launchd_loaded_ok": {
+    "kind": "command",
+    "summary": "Bootstrap the existing managed OpenClaw gateway LaunchDaemon plist.",
+    "command": "sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/{{openclaw_gateway_label}}.plist"
+  },
+  "openclaw_gateway_launchd_running_ok": {
+    "kind": "command",
+    "summary": "Restart the managed OpenClaw gateway LaunchDaemon.",
+    "command": "sudo /bin/launchctl kickstart -k system/{{openclaw_gateway_label}}"
+  },
+  "openclaw_gateway_log_permissions_ok": {
+    "kind": "command",
+    "summary": "Restore the managed gateway log directory and private runner-owned log files.",
+    "command": "sudo /usr/bin/install -d -o root -g wheel -m 755 /var/log/tanaab/agentbox && sudo /usr/bin/touch /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log && sudo /usr/sbin/chown {{openclaw_user}}:\"$(/usr/bin/id -gn {{openclaw_user}})\" /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log && sudo /bin/chmod 600 /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log"
+  },
+  "openclaw_native_gateway_launch_agents_absent_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox in system service mode to remove conflicting native gateway LaunchAgents for the runner and invoking admin."
+  },
+  "openclaw_admin_app_attach_only_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox in system service mode to restore the admin OpenClaw app attach-only marker and private permissions."
+  },
+  "openclaw_admin_app_gateway_config_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox in system service mode to synchronize the managed gateway port and token into the admin OpenClaw app configuration without exposing the credential."
+  },
+  "openclaw_gateway_tailscale_auth_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox to restore verified Tailscale identity authentication in the runner-owned gateway configuration."
+  },
+  "openclaw_gateway_status_ok": {
+    "kind": "reconcile",
+    "summary": "The native user gateway requires a logged-in runner GUI session; restore that session or rerun agentbox in system service mode.",
+    "variants": [
+      {
+        "when": [{ "key": "openclaw_service_mode", "equals": "system" }],
+        "kind": "command",
+        "summary": "Restart the managed gateway, then inspect its private stderr log if readiness still fails.",
+        "command": "sudo /bin/launchctl kickstart -k system/{{openclaw_gateway_label}}"
+      }
+    ]
+  },
+  "tailscaled_launchd_loaded_ok": {
+    "kind": "command",
+    "summary": "Bootstrap the existing managed tailscaled LaunchDaemon plist.",
+    "command": "sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/dev.tanaab.agentbox.tailscaled.plist"
+  },
+  "tailscaled_launchd_running_ok": {
+    "kind": "command",
+    "summary": "Restart the managed tailscaled LaunchDaemon.",
+    "command": "sudo /bin/launchctl kickstart -k system/dev.tanaab.agentbox.tailscaled"
+  },
+  "tailscaled_homebrew_launchd_absent_ok": {
+    "kind": "command",
+    "summary": "Boot out the conflicting Homebrew system tailscaled service and remove its persistent plist.",
+    "command": "sudo /bin/launchctl bootout system/homebrew.mxcl.tailscale >/dev/null 2>&1 || true; sudo /bin/launchctl bootout system /Library/LaunchDaemons/homebrew.mxcl.tailscale.plist >/dev/null 2>&1 || true; sudo /bin/rm -f /Library/LaunchDaemons/homebrew.mxcl.tailscale.plist"
+  },
+  "tailscaled_homebrew_user_launchd_absent_ok": {
+    "kind": "command",
+    "summary": "Boot out the conflicting Homebrew user tailscaled service and remove its persistent plist.",
+    "command": "admin_user={{admin_user}}; admin_uid=$(/usr/bin/id -u \"$admin_user\") || exit 1; admin_home=$(/usr/bin/dscl . -read \"/Users/$admin_user\" NFSHomeDirectory | /usr/bin/awk '{$1=\"\"; sub(/^ /, \"\"); print}') || exit 1; test -n \"$admin_home\" || exit 1; /bin/launchctl bootout \"gui/${admin_uid}/homebrew.mxcl.tailscale\" >/dev/null 2>&1 || true; /bin/launchctl bootout \"gui/${admin_uid}\" \"$admin_home/Library/LaunchAgents/homebrew.mxcl.tailscale.plist\" >/dev/null 2>&1 || true; sudo /bin/rm -f \"$admin_home/Library/LaunchAgents/homebrew.mxcl.tailscale.plist\""
+  },
+  "tailscaled_official_launchd_absent_ok": {
+    "kind": "manual",
+    "summary": "Remove the conflicting official Tailscale app daemon and plist only after confirming the formula-based managed daemon is the intended installation."
+  },
+  "tailscaled_state_file_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run Tailscale setup with the original auth key. The managed state file cannot be safely recreated from health output."
+  },
+  "tailscale_operator_ok": {
+    "kind": "command",
+    "summary": "Set the OpenClaw runner as the Tailscale operator.",
+    "command": "sudo {{brew_prefix}}/bin/tailscale set --operator={{openclaw_user}}"
+  },
+  "tailscale_magicdns_enabled": {
+    "kind": "manual",
+    "summary": "Enable MagicDNS in the Tailscale DNS admin page, then rerun the doctor."
+  },
+  "tailscale_magicdns_resolver_ok": {
+    "kind": "command",
+    "summary": "Restore the agentbox-managed scoped macOS resolver for the reported tailnet suffix.",
+    "command": "sudo /bin/mkdir -p /etc/resolver && printf '# Managed by agentbox.\\nnameserver 100.100.100.100\\n' | sudo /usr/bin/tee {{tailscale_magicdns_resolver_path}} >/dev/null && sudo /usr/sbin/chown root:wheel {{tailscale_magicdns_resolver_path}} && sudo /bin/chmod 644 {{tailscale_magicdns_resolver_path}}"
+  },
+  "tailscale_https_certificates_enabled": {
+    "kind": "manual",
+    "summary": "Enable HTTPS certificates in the Tailscale DNS admin page, then rerun the doctor."
+  },
+  "openclaw_gateway_tailscale_serve_route_ok": {
+    "kind": "reconcile",
+    "summary": "Restore the native user gateway's logged-in runner session so OpenClaw can reconcile its Tailscale Serve route.",
+    "variants": [
+      {
+        "when": [{ "key": "openclaw_service_mode", "equals": "system" }],
+        "kind": "command",
+        "summary": "Restart the managed gateway so OpenClaw can reconcile its Tailscale Serve route.",
+        "command": "sudo /bin/launchctl kickstart -k system/{{openclaw_gateway_label}}"
+      }
+    ]
+  },
+  "tailscale_firewall_warning": {
+    "kind": "command",
+    "summary": "Disable the macOS application firewall only if this host follows the agentbox tailnet-only exposure model.",
+    "command": "sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off"
+  },
+  "health_launchd_loaded_ok": {
+    "kind": "command",
+    "summary": "Bootstrap the existing agentbox health LaunchDaemon plist.",
+    "command": "sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist"
+  }
+}

@@ -1,0 +1,7 @@
+interface:
+  display_name: 'agentbox doctor'
+  short_description: 'Tanaab-based grouped health and remediation for a local agentbox host'
+  icon_small: './assets/icon-small.svg'
+  icon_large: './assets/icon-large.png'
+  brand_color: '#00c88a'
+  default_prompt: 'Use $tanaab-agentbox-doctor to inspect this local agentbox host and summarize grouped health with focused remediation recommendations.'
