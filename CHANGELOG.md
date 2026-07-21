@@ -2,20 +2,24 @@
 
 ### Breaking Changes
 
-- Removed `--openclaw-service-mode` and `AGENTBOX_OPENCLAW_SERVICE_MODE`; macOS now supports only OpenClaw's native user LaunchAgent.
+- Removed `--openclaw-service-mode` and `AGENTBOX_OPENCLAW_SERVICE_MODE`; macOS now supports only OpenClaw's native user LaunchAgent. [#19](https://github.com/tanaabased/agentbox/issues/19)
 
 ### New Features
 
-- Added Aqua-only first-login Gateway activation with private retry state, user-owned logs, and native LaunchAgent RPC verification.
-- Added default runtime-user autologin with FileVault and policy preflight checks, plus `--openclaw-autologin off` for manual-login hosts.
+- Added Aqua-only first-login Gateway activation with private retry state, user-owned logs, and native LaunchAgent RPC verification. [#19](https://github.com/tanaabased/agentbox/issues/19)
+- Added default runtime-user autologin with FileVault and policy preflight checks, plus `--openclaw-autologin off` for manual-login hosts. [#19](https://github.com/tanaabased/agentbox/issues/19)
 
 ### Improvements
 
-- Updated agentbox-managed native Gateways with durable mDNS and ownership environment while preserving healthy unmanaged services.
-- Updated Doctor to inspect a root-published periodic health snapshot without sudo.
-- Updated Gateway diagnostics and health to cover the native runtime log and its permissions.
-- Updated Gateway conflict reconciliation to back up administrator state and refuse unexpected port owners.
-- Updated health and doctor output with autologin readiness, GUI and finalizer state, native LaunchAgent status, conflict detection, and state-specific remediation.
+- Updated agentbox-managed native Gateways with durable mDNS and ownership environment while preserving healthy unmanaged services. [#19](https://github.com/tanaabased/agentbox/issues/19)
+- Updated Doctor to inspect a root-published periodic health snapshot without sudo. [#23](https://github.com/tanaabased/agentbox/issues/23)
+- Updated Gateway conflict reconciliation to back up administrator state and refuse unexpected port owners. [#19](https://github.com/tanaabased/agentbox/issues/19)
+- Updated Gateway diagnostics and health to cover the native runtime log and its permissions. [#19](https://github.com/tanaabased/agentbox/issues/19)
+- Updated health and Doctor output with autologin readiness, GUI, finalizer, native LaunchAgent, conflict, and targeted remediation details. [#19](https://github.com/tanaabased/agentbox/issues/19)
+
+### Bug Fixes
+
+- Fixed Homebrew brewgroup access to repair descendant drift on every run and report later drift in health. [#21](https://github.com/tanaabased/agentbox/issues/21)
 
 ## v1.0.0-beta.7 - [July 17, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.7)
 
