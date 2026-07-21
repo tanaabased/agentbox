@@ -3231,8 +3231,12 @@ plan_wrapper_execution() {
     plan_action "${tty_tp}allow${tty_reset} verified tailscale identities for openclaw gateway authentication"
   fi
   plan_action "${tty_tp}configure${tty_reset} permanent openclaw fallback gateway branding as ${tty_ts}${OPENCLAW_UI_ASSISTANT_NAME}${tty_reset} with the bundled default avatar and Tanaab green seam color"
-  plan_action "${tty_tp}stage${tty_reset} an Aqua-only one-time finalizer that installs and verifies native LaunchAgent ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset}"
-  plan_action "${tty_tp}activate and verify${tty_reset} the finalizer immediately when the runtime GUI domain exists; otherwise complete on first graphical login"
+  if user_exists "${OPENCLAW_USER}"; then
+    plan_action "${tty_tp}ensure${tty_reset} native runtime-user openclaw LaunchAgent ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} is installed, current, and healthy, using an Aqua-only one-time finalizer only when installation or repair is required"
+  else
+    plan_action "${tty_tp}stage${tty_reset} an Aqua-only one-time finalizer to install and verify native LaunchAgent ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset}"
+  fi
+  plan_action "${tty_tp}activate and verify${tty_reset} any staged finalizer immediately when the runtime GUI domain exists; otherwise complete on first graphical login"
   plan_action "${tty_tp}install or refresh${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
   plan_action "${tty_tp}print${tty_reset} a nonfatal post-bootstrap health summary"
 }
