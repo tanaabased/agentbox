@@ -90,6 +90,12 @@
           "when": [{ "key": "brewgroup_enabled", "equals": "1" }]
         },
         {
+          "key": "brew_prefix_recursive_access_ok",
+          "label": "Homebrew prefix recursive access",
+          "issue": false,
+          "when": [{ "key": "brewgroup_enabled", "equals": "1" }]
+        },
+        {
           "key": "brew_prefix_ok",
           "label": "Homebrew prefix access",
           "when": [{ "key": "brewgroup_enabled", "equals": "1" }]

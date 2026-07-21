@@ -45,6 +45,9 @@ AGENTBOX_HEALTH_SSH_ALLOWED_USERS=""
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
 STATE_LOADED="0"
 SSH_HARDENING_DIAGNOSTIC=""
+BREW_PREFIX_RECURSIVE_ACCESS_VALUE="0"
+BREW_PREFIX_RECURSIVE_DRIFT_PATH=""
+BREW_PREFIX_RECURSIVE_DRIFT_REASON=""
 HEALTH_REPORT_TEMP=""
 JQ_BIN=""
 TAILSCALE_BIN=""
@@ -202,6 +205,50 @@ path_group_rwx_value() {
     printf '1'
   else
     printf '0'
+  fi
+}
+
+evaluate_brew_prefix_recursive_access() {
+  local prefix="$1"
+  local group="$2"
+  local drift
+  local drift_group
+
+  BREW_PREFIX_RECURSIVE_ACCESS_VALUE="0"
+  BREW_PREFIX_RECURSIVE_DRIFT_PATH=""
+  BREW_PREFIX_RECURSIVE_DRIFT_REASON=""
+
+  if [[ ! -d "${prefix}" ]]; then
+    BREW_PREFIX_RECURSIVE_DRIFT_PATH="${prefix}"
+    BREW_PREFIX_RECURSIVE_DRIFT_REASON="missing_prefix"
+    return 0
+  fi
+
+  if ! drift="$(
+    /usr/bin/find -x "${prefix}" \
+      \( \
+        ! -group "${group}" \
+        -o \( ! -type l ! -perm -060 \) \
+        -o \( -type d ! -perm -010 \) \
+        -o \( ! -type d ! -type l -perm +111 ! -perm -010 \) \
+      \) \
+      -print -quit 2>/dev/null
+  )"; then
+    BREW_PREFIX_RECURSIVE_DRIFT_PATH="${prefix}"
+    BREW_PREFIX_RECURSIVE_DRIFT_REASON="scan_failed"
+    return 0
+  fi
+
+  if [[ -n "${drift}" ]]; then
+    BREW_PREFIX_RECURSIVE_DRIFT_PATH="${drift}"
+    drift_group="$(stat -f "%Sg" "${drift}" 2>/dev/null || true)"
+    if [[ "${drift_group}" != "${group}" ]]; then
+      BREW_PREFIX_RECURSIVE_DRIFT_REASON="group_mismatch"
+    else
+      BREW_PREFIX_RECURSIVE_DRIFT_REASON="mode_missing_group_access"
+    fi
+  else
+    BREW_PREFIX_RECURSIVE_ACCESS_VALUE="1"
   fi
 }
 
@@ -796,6 +843,9 @@ generate_report() {
   local brew_prefix_group=""
   local brew_prefix_group_ok="skipped"
   local brew_prefix_group_rwx_ok="skipped"
+  local brew_prefix_recursive_access_ok="skipped"
+  local brew_prefix_recursive_drift_path="skipped"
+  local brew_prefix_recursive_drift_reason="skipped"
   local brew_prefix_ok="skipped"
   local brewgroup_admin_user_ok="skipped"
   local brewgroup_openclaw_user_ok="skipped"
@@ -1049,7 +1099,13 @@ generate_report() {
   if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" ]]; then
     brew_prefix_group_ok="0"
     brew_prefix_group_rwx_ok="0"
+    brew_prefix_recursive_access_ok="0"
     brew_prefix_ok="0"
+
+    evaluate_brew_prefix_recursive_access "${AGENTBOX_HEALTH_BREW_PREFIX}" "${AGENTBOX_HEALTH_BREWGROUP}"
+    brew_prefix_recursive_access_ok="${BREW_PREFIX_RECURSIVE_ACCESS_VALUE}"
+    brew_prefix_recursive_drift_path="${BREW_PREFIX_RECURSIVE_DRIFT_PATH}"
+    brew_prefix_recursive_drift_reason="${BREW_PREFIX_RECURSIVE_DRIFT_REASON}"
 
     if [[ -d "${AGENTBOX_HEALTH_BREW_PREFIX}" ]]; then
       brew_prefix_group="$(stat -f "%Sg" "${AGENTBOX_HEALTH_BREW_PREFIX}" 2>/dev/null || true)"
@@ -1059,18 +1115,26 @@ generate_report() {
       fi
     fi
 
-    if [[ "${brew_prefix_group_ok}" == "1" && "${brew_prefix_group_rwx_ok}" == "1" ]]; then
+    if [[ "${brew_prefix_group_ok}" == "1" &&
+      "${brew_prefix_group_rwx_ok}" == "1" &&
+      "${brew_prefix_recursive_access_ok}" == "1" ]]; then
       brew_prefix_ok="1"
     fi
 
     print_kv brew_prefix_group "${brew_prefix_group}"
     mark_required brew_prefix_group_ok "${brew_prefix_group_ok}"
     mark_required brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
+    mark_required brew_prefix_recursive_access_ok "${brew_prefix_recursive_access_ok}"
+    print_kv brew_prefix_recursive_drift_path "${brew_prefix_recursive_drift_path}"
+    print_kv brew_prefix_recursive_drift_reason "${brew_prefix_recursive_drift_reason}"
     mark_required brew_prefix_ok "${brew_prefix_ok}"
   else
     print_kv brew_prefix_group "${brew_prefix_group}"
     print_kv brew_prefix_group_ok "${brew_prefix_group_ok}"
     print_kv brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
+    print_kv brew_prefix_recursive_access_ok "${brew_prefix_recursive_access_ok}"
+    print_kv brew_prefix_recursive_drift_path "${brew_prefix_recursive_drift_path}"
+    print_kv brew_prefix_recursive_drift_reason "${brew_prefix_recursive_drift_reason}"
     print_kv brew_prefix_ok "${brew_prefix_ok}"
   fi
 

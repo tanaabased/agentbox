@@ -87,8 +87,8 @@
   },
   "brew_prefix_ok": {
     "kind": "command",
-    "summary": "Restore group ownership and group read/write/traverse access across the Homebrew prefix.",
-    "command": "sudo /usr/bin/find -x {{brew_prefix}} -exec chgrp -h {{brewgroup_expected}} {} + && sudo /usr/bin/find -x {{brew_prefix}} ! -type l -exec chmod g+rwX {} +"
+    "summary": "Restore recursive group ownership and group read/write/traverse access across the Homebrew prefix.",
+    "command": "sudo /usr/bin/find -x {{brew_prefix}} -exec /usr/bin/chgrp -h {{brewgroup_expected}} {} + && sudo /usr/bin/find -x {{brew_prefix}} ! -type l -exec /bin/chmod g+rwX {} +"
   },
   "homebrew_login_path_file_ok": {
     "kind": "command",

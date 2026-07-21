@@ -3490,12 +3490,7 @@ run_agentbox_brewgroup_setup() {
   ensure_brewgroup_openclaw_user
   ensure_trusted_brewgroup_nested
 
-  if brew_prefix_permissions_ok; then
-    log "${tty_tp}skipping${tty_reset} homebrew prefix permissions; ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} is already group-writable by ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
-    return 0
-  fi
-
-  log "${tty_tp}setting${tty_reset} homebrew prefix ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} group write access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  log "${tty_tp}reconciling${tty_reset} recursive homebrew prefix access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
   execute sudo find -x "${BREW_PREFIX_VALUE}" -exec chgrp -h "${BREWGROUP_VALUE}" {} +
   execute sudo find -x "${BREW_PREFIX_VALUE}" ! -type l -exec chmod g+rwX {} +
 
