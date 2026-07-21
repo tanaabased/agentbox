@@ -4,8 +4,11 @@ import { readFileSync } from 'node:fs';
 
 import {
   evaluateHealth,
+  MAX_HEALTH_REPORT_BYTES,
   parseHealthReport,
   unavailableReport,
+  validatePublishedHealthReport,
+  validatePublishedHealthReportMetadata,
 } from '../skills/agentbox-doctor/scripts/check-host-lib.js';
 
 const checkCatalog = JSON.parse(
@@ -91,6 +94,21 @@ const healthyValues = {
   agentbox_ok: '1',
 };
 
+const publishedReport = [
+  'timestamp=2026-07-21T12:00:00Z',
+  'agentbox_version=1.0.0-beta.8',
+  'agentbox_ok=1',
+  '',
+].join('\n');
+const publishedReportMetadata = {
+  gid: 80,
+  isFile: true,
+  isSymbolicLink: false,
+  mode: 0o100640,
+  size: Buffer.byteLength(publishedReport),
+  uid: 0,
+};
+
 describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
   it('should keep the latest key and preserve equals signs in values', () => {
     const values = parseHealthReport('agentbox_ok=0\nignored line\nnote=a=b\n---\nagentbox_ok=1\n');
@@ -98,8 +116,141 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     assert.deepEqual(values, { agentbox_ok: '1', note: 'a=b' });
   });
 
+  it('should accept a complete, fresh, root-published health report', () => {
+    const result = validatePublishedHealthReport(publishedReport, publishedReportMetadata, {
+      nowMs: Date.parse('2026-07-21T12:05:00Z'),
+    });
+
+    assert.equal(result.status, 'fresh');
+    assert.equal(result.healthAgeSeconds, 300);
+    assert.equal(result.healthTimestamp, '2026-07-21T12:00:00Z');
+    assert.equal(result.installedVersion, '1.0.0-beta.8');
+    assert.equal(result.values.agentbox_ok, '1');
+  });
+
+  it('should refuse a health report older than fifteen minutes', () => {
+    const result = validatePublishedHealthReport(publishedReport, publishedReportMetadata, {
+      nowMs: Date.parse('2026-07-21T12:15:01Z'),
+    });
+
+    assert.equal(result.status, 'report_stale');
+    assert.equal(result.healthAgeSeconds, 901);
+  });
+
+  it('should refuse a malformed health report', () => {
+    const content = publishedReport.replace(
+      'agentbox_version=1.0.0-beta.8',
+      'not a key-value line',
+    );
+    const result = validatePublishedHealthReport(
+      content,
+      { ...publishedReportMetadata, size: Buffer.byteLength(content) },
+      { nowMs: Date.parse('2026-07-21T12:05:00Z') },
+    );
+
+    assert.equal(result.status, 'report_unavailable');
+    assert.match(result.detail, /malformed/);
+  });
+
+  it('should refuse an incomplete health report', () => {
+    const content = publishedReport.replace('agentbox_ok=1\n', '');
+    const result = validatePublishedHealthReport(
+      content,
+      { ...publishedReportMetadata, size: Buffer.byteLength(content) },
+      { nowMs: Date.parse('2026-07-21T12:05:00Z') },
+    );
+
+    assert.equal(result.status, 'report_unavailable');
+    assert.match(result.detail, /incomplete/);
+  });
+
+  it('should refuse oversized published report metadata', () => {
+    const result = validatePublishedHealthReportMetadata({
+      ...publishedReportMetadata,
+      size: MAX_HEALTH_REPORT_BYTES + 1,
+    });
+
+    assert.equal(result.status, 'report_unavailable');
+    assert.match(result.detail, /maximum safe size/);
+  });
+
+  it('should refuse a symlinked published report', () => {
+    const result = validatePublishedHealthReportMetadata({
+      ...publishedReportMetadata,
+      isFile: false,
+      isSymbolicLink: true,
+    });
+
+    assert.equal(result.status, 'report_unavailable');
+    assert.match(result.detail, /symbolic link/);
+  });
+
+  it('should refuse a published report not owned by root', () => {
+    const result = validatePublishedHealthReportMetadata({
+      ...publishedReportMetadata,
+      uid: 501,
+    });
+
+    assert.equal(result.status, 'report_unavailable');
+    assert.match(result.detail, /root:admin/);
+  });
+
+  it('should refuse incorrectly permissioned published report metadata', () => {
+    const result = validatePublishedHealthReportMetadata({
+      ...publishedReportMetadata,
+      mode: 0o100644,
+    });
+
+    assert.equal(result.status, 'report_unavailable');
+    assert.match(result.detail, /0640/);
+  });
+
+  it('should never recommend sudo when a published report is unavailable', () => {
+    const report = unavailableReport(
+      'report_unavailable',
+      'The agentbox-published health report was not found.',
+    );
+
+    assert.equal(report.error.remediation.command, null);
+    assert.doesNotMatch(JSON.stringify(report), /sudo/i);
+    assert.equal(report.error.handoff.skill, '$tanaab-agentbox');
+  });
+
+  it('should return only source and error metadata for a stale report', () => {
+    const report = unavailableReport(
+      'report_stale',
+      'The published health report is older than 15 minutes.',
+      {
+        healthAgeSeconds: 901,
+        healthReport: '/var/db/tanaab/agentbox/health-report',
+        healthScript: '/opt/tanaab/agentbox/bin/health.sh',
+        healthTimestamp: '2026-07-21T12:00:00Z',
+        installedVersion: '1.0.0-beta.8',
+        installer: {
+          status: 'available',
+          default: 'source',
+          installation: {
+            key: 'source',
+            kind: 'source',
+            path: '/Users/example/agentbox/macos.sh',
+            version: 'v1.0.0-beta.8',
+          },
+        },
+      },
+    );
+
+    assert.deepEqual(Object.keys(report), ['schemaVersion', 'status', 'ok', 'source', 'error']);
+    assert.equal(report.source.healthAgeSeconds, 901);
+    assert.equal(report.source.healthTimestamp, '2026-07-21T12:00:00Z');
+    assert.equal(report.source.installedVersion, '1.0.0-beta.8');
+    assert.equal(report.source.installer.key, 'source');
+    assert.doesNotMatch(JSON.stringify(report), /sudo/i);
+  });
+
   it('should group a healthy base report without activating Tailscale checks', () => {
     const report = evaluateHealth(healthyValues, {
+      healthAgeSeconds: 60,
+      healthReport: '/var/db/tanaab/agentbox/health-report',
       healthScript: '/opt/tanaab/agentbox/bin/health.sh',
       pluginVersion: '1.0.0-beta.6',
     });
@@ -109,6 +260,8 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     assert.equal(report.issues.length, 0);
     assert.equal(tailscaleGroup?.status, 'healthy');
     assert.equal(tailscaleGroup?.passed, 0);
+    assert.equal(report.source.healthReport, '/var/db/tanaab/agentbox/health-report');
+    assert.equal(report.source.healthAgeSeconds, 60);
     assert.ok(!('serviceMode' in report.facts.openclaw));
   });
 

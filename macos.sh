@@ -2564,7 +2564,8 @@ run_agentbox_launchd_health_setup() {
   fi
 
   execute sudo mkdir -p "${AGENTBOX_OPT_DIR}/bin" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
-  execute sudo chown -R root:wheel "${AGENTBOX_OPT_DIR}" "${AGENTBOX_STATE_DIR}"
+  execute sudo chown -R root:wheel "${AGENTBOX_OPT_DIR}"
+  execute sudo chown root:wheel "${AGENTBOX_STATE_DIR}"
   execute sudo chown root:wheel "${AGENTBOX_LOG_DIR}"
   execute sudo chmod 755 "${AGENTBOX_OPT_DIR}" "${AGENTBOX_OPT_DIR}/bin" "${AGENTBOX_LOG_DIR}" "${AGENTBOX_STATE_DIR}"
   write_agentbox_health_state

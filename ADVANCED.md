@@ -54,7 +54,8 @@ host contract. Use it when you also want apps such as Codex, Codex App, OpenClaw
 
 `agentbox` applies the host-level macOS configuration before OpenClaw Gateway setup. It sets the system
 identity, applies headless power, time, and recovery defaults, enables classic SSH, and installs
-`/opt/tanaab/agentbox/bin/health.sh` with a periodic launchd health check and log output.
+`/opt/tanaab/agentbox/bin/health.sh` with a periodic launchd health check, latest report at
+`/var/db/tanaab/agentbox/health-report`, and historical log output.
 
 When authorized keys are provided, `agentbox` installs them for the invoking admin user and the
 OpenClaw runner, then hardens managed SSH access to key-only login for those users. It also prepares
@@ -481,6 +482,13 @@ OpenClaw runner passwords, Tailscale auth keys, or provider API keys.
 The preferred guided verification path is `$tanaab-agentbox-doctor`, which runs on the local host,
 groups the installed health checks, and recommends focused remediation without applying it. See the
 [Codex plugin guide](./CODEX.md#diagnose-host-health) for the workflow and example prompt.
+
+The root health LaunchDaemon atomically refreshes `/var/db/tanaab/agentbox/health-report` at load and
+every five minutes. The report is `root:admin` with mode `0640`, so a macOS administrator can run
+Doctor without sudo while the non-admin OpenClaw runner cannot read it. Doctor rejects incomplete or
+unsafe reports and reports older than 15 minutes; if a missing or stale report persists through one
+five-minute interval, rerun `agentbox` to reconcile the health LaunchDaemon. Older installations need
+one reconciliation before they publish this snapshot.
 
 The installed `/opt/tanaab/agentbox/bin/health.sh` remains the authoritative health contract for the
 host version. Use `--check` to print its line-oriented `key=value` report and return nonzero when a

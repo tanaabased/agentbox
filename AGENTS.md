@@ -166,7 +166,9 @@ This is directional guidance, not the current public contract:
   repository context, hostnames, paths, prior conversation, or existing configuration.
 - Keep agentbox doctor bound to `/opt/tanaab/agentbox/bin/health.sh`. If that installed health script
   is absent, report that agentbox is not installed; never fall back to a source or configured
-  installer copy.
+  installer copy. Read health only from the fixed agentbox-published
+  `/var/db/tanaab/agentbox/health-report`; never accept arbitrary saved reports, execute the health
+  script, or invoke sudo from Doctor.
 
 ## Validation
 

@@ -7,6 +7,13 @@ const remediationCatalog = JSON.parse(
   readFileSync(new URL('../references/remediations.json', import.meta.url), 'utf8'),
 );
 
+export const MAX_HEALTH_REPORT_AGE_SECONDS = 15 * 60;
+export const MAX_HEALTH_REPORT_BYTES = 4 * 1024 * 1024;
+
+const HEALTH_REPORT_MODE = 0o640;
+const MACOS_ADMIN_GROUP_ID = 80;
+const ROOT_USER_ID = 0;
+
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", `'"'"'`)}'`;
 }
@@ -79,6 +86,20 @@ function addGroupWarning(groups, groupId) {
   if (group.status === 'healthy') group.status = 'warning';
 }
 
+function installerSource(installer) {
+  if (installer?.status === 'available') {
+    return {
+      status: installer.status,
+      default: installer.default,
+      key: installer.installation.key,
+      kind: installer.installation.kind,
+      path: installer.installation.path,
+      version: installer.installation.version,
+    };
+  }
+  return installer ? { status: installer.status } : null;
+}
+
 export function parseHealthReport(report) {
   const values = {};
 
@@ -92,6 +113,103 @@ export function parseHealthReport(report) {
   }
 
   return values;
+}
+
+function invalidPublishedReport(detail) {
+  return {
+    ok: false,
+    status: 'report_unavailable',
+    detail,
+  };
+}
+
+export function validatePublishedHealthReportMetadata(metadata, options = {}) {
+  const maxBytes = options.maxBytes ?? MAX_HEALTH_REPORT_BYTES;
+
+  if (metadata.isSymbolicLink) {
+    return invalidPublishedReport('The published health report must not be a symbolic link.');
+  }
+  if (!metadata.isFile) {
+    return invalidPublishedReport('The published health report is not a regular file.');
+  }
+  if (metadata.uid !== ROOT_USER_ID || metadata.gid !== MACOS_ADMIN_GROUP_ID) {
+    return invalidPublishedReport('The published health report must be owned by root:admin.');
+  }
+  if (!Number.isInteger(metadata.mode) || (metadata.mode & 0o777) !== HEALTH_REPORT_MODE) {
+    return invalidPublishedReport('The published health report must have mode 0640.');
+  }
+  if (!Number.isSafeInteger(metadata.size) || metadata.size < 0 || metadata.size > maxBytes) {
+    return invalidPublishedReport('The published health report exceeds the maximum safe size.');
+  }
+
+  return { ok: true, status: 'safe' };
+}
+
+export function validatePublishedHealthReport(content, metadata, options = {}) {
+  const maxAgeSeconds = options.maxAgeSeconds ?? MAX_HEALTH_REPORT_AGE_SECONDS;
+  const maxBytes = options.maxBytes ?? MAX_HEALTH_REPORT_BYTES;
+  const nowMs = options.nowMs ?? Date.now();
+  const metadataResult = validatePublishedHealthReportMetadata(metadata, { maxBytes });
+
+  if (!metadataResult.ok) return metadataResult;
+  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > maxBytes) {
+    return invalidPublishedReport('The published health report exceeds the maximum safe size.');
+  }
+
+  const lines = content.split(/\r?\n/).filter((line) => line.length > 0);
+  const values = {};
+  for (const line of lines) {
+    const match = line.match(/^([a-z0-9_]+)=(.*)$/);
+    if (!match || Object.hasOwn(values, match[1])) {
+      return invalidPublishedReport('The published health report is malformed.');
+    }
+    values[match[1]] = match[2];
+  }
+
+  if (!/^agentbox_ok=[01]$/.test(lines.at(-1) || '')) {
+    return invalidPublishedReport('The published health report is incomplete.');
+  }
+  if (!values.timestamp || !values.agentbox_version || !/^[01]$/.test(values.agentbox_ok || '')) {
+    return invalidPublishedReport('The published health report is incomplete.');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(values.timestamp)) {
+    return invalidPublishedReport('The published health report has an invalid timestamp.');
+  }
+
+  const timestampMs = Date.parse(values.timestamp);
+  if (
+    !Number.isFinite(timestampMs) ||
+    new Date(timestampMs).toISOString().replace('.000Z', 'Z') !== values.timestamp
+  ) {
+    return invalidPublishedReport('The published health report has an invalid timestamp.');
+  }
+  if (timestampMs > nowMs + 60_000) {
+    return invalidPublishedReport('The published health report timestamp is in the future.');
+  }
+
+  const healthAgeMs = Math.max(0, nowMs - timestampMs);
+  const healthAgeSeconds = Math.floor(healthAgeMs / 1000);
+  const result = {
+    healthAgeSeconds,
+    healthTimestamp: values.timestamp,
+    installedVersion: values.agentbox_version,
+    values,
+  };
+
+  if (healthAgeMs > maxAgeSeconds * 1000) {
+    return {
+      ...result,
+      ok: false,
+      status: 'report_stale',
+      detail: `The published health report is older than ${maxAgeSeconds / 60} minutes.`,
+    };
+  }
+
+  return {
+    ...result,
+    ok: true,
+    status: 'fresh',
+  };
 }
 
 export function evaluateHealth(values, options = {}) {
@@ -279,22 +397,12 @@ export function evaluateHealth(values, options = {}) {
     ok: status !== 'unhealthy',
     source: {
       healthScript: options.healthScript || null,
+      healthReport: options.healthReport || null,
+      healthAgeSeconds: options.healthAgeSeconds ?? null,
       healthTimestamp: values.timestamp || null,
       installedVersion,
       pluginVersion,
-      installer:
-        installer?.status === 'available'
-          ? {
-              status: installer.status,
-              default: installer.default,
-              key: installer.installation.key,
-              kind: installer.installation.kind,
-              path: installer.installation.path,
-              version: installer.installation.version,
-            }
-          : installer
-            ? { status: installer.status }
-            : null,
+      installer: installerSource(installer),
     },
     summary: {
       groups: groups.length,
@@ -344,33 +452,51 @@ function normalizeVersion(value) {
 }
 
 export function unavailableReport(status, detail, options = {}) {
+  const handoff = ['not_installed', 'report_unavailable', 'report_stale'].includes(status)
+    ? {
+        skill: '$tanaab-agentbox',
+        intent: 'bootstrap_or_reconcile',
+      }
+    : null;
+  const remediation =
+    status === 'report_unavailable'
+      ? {
+          kind: 'reconcile',
+          summary:
+            options.remediationSummary ||
+            'Rerun agentbox to restore the published health report before diagnosing this host.',
+          command: null,
+          requiresConfirmation: false,
+          handoff,
+        }
+      : status === 'report_stale'
+        ? {
+            kind: 'reconcile',
+            summary:
+              'Wait through one five-minute health interval. If the report remains stale, rerun agentbox to reconcile the health LaunchDaemon.',
+            command: null,
+            requiresConfirmation: false,
+            handoff,
+          }
+        : null;
+
   return {
     schemaVersion: 1,
     status,
     ok: false,
     source: {
       healthScript: options.healthScript || null,
+      healthReport: options.healthReport || null,
+      healthAgeSeconds: options.healthAgeSeconds ?? null,
+      healthTimestamp: options.healthTimestamp || null,
+      installedVersion: options.installedVersion || null,
       pluginVersion: options.pluginVersion || null,
+      installer: installerSource(options.installer),
     },
     error: {
       detail,
-      ...(status === 'not_installed'
-        ? {
-            handoff: {
-              skill: '$tanaab-agentbox',
-              intent: 'bootstrap_or_reconcile',
-            },
-          }
-        : {}),
-      remediation:
-        status === 'authorization_required'
-          ? {
-              kind: 'command',
-              summary: 'Refresh sudo authorization in the current terminal, then rerun the doctor.',
-              command: '/usr/bin/sudo -v',
-              requiresConfirmation: true,
-            }
-          : null,
+      ...(handoff ? { handoff } : {}),
+      remediation,
     },
   };
 }

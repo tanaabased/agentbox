@@ -42,26 +42,29 @@ remediation without changing the host.
 - Run the shared [plugin runtime preflight](../../scripts/check-plugin-runtime.sh) and require it to
   succeed before invoking Bun. If it fails, stop, relay its explanation, and do not install Bun.
 - Require the installed health script at `/opt/tanaab/agentbox/bin/health.sh`.
-- Prefer an existing sudo timestamp. The probe uses `sudo -n` and never opens its own password
-  prompt.
+- Read only the fixed agentbox-published snapshot at
+  `/var/db/tanaab/agentbox/health-report`. Do not execute the health script, invoke `sudo`, or accept
+  an arbitrary saved report.
 - Treat the installed health script as authoritative for that host version. Do not substitute the
-  plugin's source copy.
+  plugin's source copy or a configured installer copy.
 
 ## Workflow
 
 1. Run `../../scripts/check-plugin-runtime.sh` from this skill directory. Stop without invoking Bun
    when it fails.
 2. Run `bun scripts/check-host.js` from this skill directory.
-3. If the result status is `authorization_required`, explain that the health state is root-readable,
-   ask before running `/usr/bin/sudo -v`, and then rerun the probe. Do not silently fall back to a
-   partial report.
-4. If the result status is `timeout`, report that the installed health script exceeded its bounded
-   runtime and stop rather than claiming partial health.
-5. If the result status is `not_installed`, stop the doctor workflow and use the returned handoff to
+3. If the result status is `not_installed`, stop the doctor workflow and use the returned handoff to
    direct the user to `$tanaab-agentbox` for bootstrap or reconciliation. Do not route directly to the
    installer solely because the installed health script is missing; the primary workflow will use
    `$tanaab-agentbox-installer` if executable config is also absent.
-6. Present the overall status and the installed agentbox version first.
+4. If the result status is `report_unavailable`, do not infer health from partial or unsafe data.
+   Follow the returned remediation: a missing post-boot or post-install report may need one
+   five-minute publication interval, while persistent absence, unsafe ownership or permissions, and
+   malformed content require `$tanaab-agentbox` reconciliation.
+5. If the result status is `report_stale`, report its age, wait through one five-minute interval, and
+   use the returned reconciliation handoff if it remains stale. Do not present stale groups or facts
+   as current health.
+6. Present the overall status, installed agentbox version, and snapshot age first.
 7. When installer metadata is configured, present its selected key, path, and version as the
    preferred executable for later reconciliation. Never use it as the health probe.
 8. When installer metadata is invalid or unavailable, use the warning remediation handoff to
@@ -81,15 +84,16 @@ remediation without changing the host.
 
 ## Checkpoints
 
-- Before sudo authorization, confirm the user is willing to refresh the current terminal's sudo
-  timestamp.
+- Before reporting current health, confirm the probe accepted the fixed snapshot as complete, safe,
+  and no more than 15 minutes old.
 - Before presenting a command, verify it came from the probe's remediation object rather than being
   improvised from raw output.
 - Before any later repair execution, get separate confirmation and explain the exact mutation.
 
 ## Completion Criteria
 
-- The probe completed against the installed health script or returned a clear unavailable status.
+- The probe completed against the fixed published snapshot or returned a clear unavailable or stale
+  status.
 - Every active health group is represented in the summary.
 - Every surfaced failure or warning includes a focused remediation or an explicit manual recovery
   boundary.
@@ -99,11 +103,13 @@ remediation without changing the host.
 
 ## Bundled Resources
 
-- [Health probe](scripts/check-host.js): runs the installed health report and emits normalized JSON.
-- [Probe library](scripts/check-host-lib.js): parses and evaluates health output.
+- [Health probe](scripts/check-host.js): validates the agentbox-published snapshot and emits
+  normalized JSON without sudo.
+- [Probe library](scripts/check-host-lib.js): validates, parses, and evaluates snapshot content.
 - [Plugin runtime preflight](../../scripts/check-plugin-runtime.sh): non-mutating Bun availability
   gate shared by Bun-dependent skills.
-- Repository unit tests under `test/`: cover grouping, conditions, warnings, and contract drift.
+- Repository unit tests under `test/`: cover snapshot validation, grouping, conditions, warnings,
+  and contract drift.
 - [Check catalog](references/checks.json): maps installed checks to user-facing groups.
 - [Remediation catalog](references/remediations.json): owns focused repair recommendations.
 
