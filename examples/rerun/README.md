@@ -44,9 +44,15 @@ sudo chown root:wheel /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gatewa
 sudo chmod 644 /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist
 sudo mkdir -p /Users/rita/.openclaw/service-env
 printf '%s\n' 'PRIVATE_LEGACY_VALUE=fixture' | sudo tee /Users/rita/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env >/dev/null
+printf '%s\n' '#!/bin/sh' 'exit 0' | sudo tee /Users/rita/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh >/dev/null
 printf '%s\n' "export NATIVE_GATEWAY_VALUE='preserve-me'" | sudo tee /Users/rita/.openclaw/service-env/ai.openclaw.gateway.env >/dev/null
+printf '%s\n' '#!/bin/sh' '# native-preserve-me' 'exit 0' | sudo tee /Users/rita/.openclaw/service-env/ai.openclaw.gateway-env-wrapper.sh >/dev/null
 sudo chmod 600 /Users/rita/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway.env
+sudo chmod 700 /Users/rita/.openclaw/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh
 sudo chmod 600 /Users/rita/.openclaw/service-env/ai.openclaw.gateway.env
+sudo chmod 700 /Users/rita/.openclaw/service-env/ai.openclaw.gateway-env-wrapper.sh
+printf '%s\n' 'legacy stdout' | sudo tee /var/log/tanaab/agentbox/openclaw-gateway.stdout.log >/dev/null
+printf '%s\n' 'legacy stderr' | sudo tee /var/log/tanaab/agentbox/openclaw-gateway.stderr.log >/dev/null
 sudo launchctl bootstrap system /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist
 sudo launchctl print system/dev.tanaab.agentbox.openclaw-gateway >/dev/null
 
@@ -64,6 +70,11 @@ launchctl bootstrap "gui/$UID" "$HOME/Library/LaunchAgents/ai.openclaw.gateway.p
 launchctl print "gui/$UID/ai.openclaw.gateway" >/dev/null
 openclaw config set gateway.port 19999 --strict-json
 openclaw config set gateway.auth.token stale-agentbox-app-token
+mkdir -p "$HOME/.openclaw/service-env"
+printf '%s\n' "export ADMIN_NATIVE_GATEWAY_VALUE='remove-me'" > "$HOME/.openclaw/service-env/ai.openclaw.gateway.env"
+printf '%s\n' '#!/bin/sh' 'exit 0' > "$HOME/.openclaw/service-env/ai.openclaw.gateway-env-wrapper.sh"
+chmod 600 "$HOME/.openclaw/service-env/ai.openclaw.gateway.env"
+chmod 700 "$HOME/.openclaw/service-env/ai.openclaw.gateway-env-wrapper.sh"
 
 # should register stale openclaw gateway tailscale authentication state before rerun
 sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set gateway.auth.allowTailscale false --strict-json
@@ -121,6 +132,8 @@ test "$(sudo jq -ce '.gateway.auth.token' /Users/rita/.openclaw/openclaw.json | 
 # should remove the stale invoking admin openclaw launch agent on rerun
 test ! -e "$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 if launchctl print "gui/$UID/ai.openclaw.gateway" >/dev/null 2>&1; then exit 1; fi
+test ! -e "$HOME/.openclaw/service-env/ai.openclaw.gateway.env"
+test ! -e "$HOME/.openclaw/service-env/ai.openclaw.gateway-env-wrapper.sh"
 find "$HOME" -maxdepth 1 -type d -name '.openclaw.agentbox-backup-*' | grep -F .openclaw.agentbox-backup-
 
 # should report the expected hostname
@@ -148,7 +161,11 @@ archive_dir="$(sudo find /var/db/tanaab/agentbox/migrations -maxdepth 1 -type d 
 test -n "$archive_dir"
 sudo test -f "$archive_dir/dev.tanaab.agentbox.openclaw-gateway.plist"
 sudo test -f "$archive_dir/service-env/dev.tanaab.agentbox.openclaw-gateway.env"
+sudo test -f "$archive_dir/service-env/dev.tanaab.agentbox.openclaw-gateway-env-wrapper.sh"
+sudo test ! -e /var/log/tanaab/agentbox/openclaw-gateway.stdout.log
+sudo test ! -e /var/log/tanaab/agentbox/openclaw-gateway.stderr.log
 sudo grep -Fx "export NATIVE_GATEWAY_VALUE='preserve-me'" /Users/rita/.openclaw/service-env/ai.openclaw.gateway.env
+sudo grep -Fx '# native-preserve-me' /Users/rita/.openclaw/service-env/ai.openclaw.gateway-env-wrapper.sh
 
 # should stage the migrated gateway as agentbox-managed
 test "$(sudo stat -f "%Su:%Sg:%Lp" /Users/rita/.openclaw/.env)" = "rita:$(id -gn rita):600"
@@ -169,7 +186,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ta
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_launchd_running_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_official_launchd_absent_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscaled_state_file_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_backend_state=Running"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tailscale_backend_state=Running"
 sudo test ! -e /Library/LaunchDaemons/com.tailscale.tailscaled.plist
 if sudo launchctl print system/com.tailscale.tailscaled >/dev/null 2>&1; then exit 1; fi

@@ -33,8 +33,10 @@ AGENTBOX_HEALTH_STATE_PATH="${AGENTBOX_STATE_DIR}/health.env"
 AGENTBOX_HEALTH_LABEL="dev.tanaab.agentbox.health"
 AGENTBOX_TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 AGENTBOX_TAILSCALED_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_TAILSCALED_LABEL}.plist"
-AGENTBOX_OPENCLAW_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
-AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}.plist"
+LEGACY_OPENCLAW_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
+LEGACY_OPENCLAW_GATEWAY_PLIST_PATH="/Library/LaunchDaemons/${LEGACY_OPENCLAW_GATEWAY_LABEL}.plist"
+LEGACY_OPENCLAW_GATEWAY_STDOUT_LOG="${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
+LEGACY_OPENCLAW_GATEWAY_STDERR_LOG="${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
 OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL="ai.openclaw.gateway"
 AGENTBOX_OPENCLAW_FINALIZER_LABEL="dev.tanaab.agentbox.openclaw-finalize"
 AGENTBOX_OPENCLAW_SERVICE_KIND="openclaw-gateway"
@@ -403,14 +405,6 @@ brewgroup_display() {
 
 openclaw_autologin_enabled() {
   [[ "${OPENCLAW_AUTOLOGIN}" == "on" ]]
-}
-
-openclaw_autologin_display() {
-  if openclaw_autologin_enabled; then
-    printf "enabled"
-  else
-    printf "disabled"
-  fi
 }
 
 openclaw_password_display() {
@@ -1749,27 +1743,46 @@ openclaw_autologin_configured() {
   [[ "$(autologin_user_value)" == "${OPENCLAW_USER}" ]]
 }
 
-filevault_enabled() {
+filevault_state_value() {
   local status
 
-  status="$(/usr/bin/fdesetup status 2>/dev/null || true)"
-  [[ "${status}" == "FileVault is On."* ]]
+  if ! status="$(/usr/bin/fdesetup status 2>/dev/null)"; then
+    printf 'unknown'
+    return 0
+  fi
+
+  case "${status}" in
+    "FileVault is On."*) printf 'enabled' ;;
+    "FileVault is Off."*) printf 'disabled' ;;
+    *) printf 'unknown' ;;
+  esac
 }
 
 validate_openclaw_autologin_preflight() {
   local configured_user
+  local filevault_state
 
   if ! openclaw_autologin_enabled; then
     return 0
   fi
 
-  if filevault_enabled; then
-    abort_multi "$(cat <<EOABORT
+  filevault_state="$(filevault_state_value)"
+  case "${filevault_state}" in
+    enabled)
+      abort_multi "$(cat <<EOABORT
 FileVault is enabled, so macos cannot provide unattended runtime-user autologin after a cold boot.
 disable FileVault deliberately before using the default unattended recovery profile, or rerun with ${tty_bold}--openclaw-autologin off${tty_reset} and accept a graphical login after each reboot.
 EOABORT
 )"
-  fi
+      ;;
+    unknown)
+      abort_multi "$(cat <<EOABORT
+agentbox could not determine FileVault status, so it cannot safely promise unattended runtime-user autologin.
+verify ${tty_bold}fdesetup status${tty_reset}, or rerun with ${tty_bold}--openclaw-autologin off${tty_reset} and accept a graphical login after each reboot.
+EOABORT
+)"
+      ;;
+  esac
 
   configured_user="$(autologin_user_value)"
   if [[ -n "${configured_user}" && "${configured_user}" != "${OPENCLAW_USER}" ]]; then
@@ -2386,16 +2399,14 @@ AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE=$(shell_quote "${AGENTBOX_HOMEBREW_PATHS_FIL
 AGENTBOX_HEALTH_ADMIN_USER=$(shell_quote "${ADMIN_USER}")
 AGENTBOX_HEALTH_OPENCLAW_USER=$(shell_quote "${OPENCLAW_USER}")
 AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=$(shell_quote "${OPENCLAW_FULL_NAME}")
-AGENTBOX_HEALTH_OPENCLAW_SERVICE_MODE=user
 AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED=${openclaw_autologin_expected}
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL=$(shell_quote "${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}")
-AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL=$(shell_quote "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}")
+AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL=$(shell_quote "${LEGACY_OPENCLAW_GATEWAY_LABEL}")
 AGENTBOX_HEALTH_OPENCLAW_FINALIZER_LABEL=$(shell_quote "${AGENTBOX_OPENCLAW_FINALIZER_LABEL}")
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=$(shell_quote "${OPENCLAW_GATEWAY_BIND_VALUE}")
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE=$(shell_quote "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}")
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT=$(shell_quote "${OPENCLAW_GATEWAY_PORT}")
 AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE=$(shell_quote "${OPENCLAW_AUTH_CHOICE}")
-AGENTBOX_HEALTH_OPENCLAW_GATEWAY_SETUP_STATUS=$(shell_quote "${OPENCLAW_GATEWAY_SETUP_STATUS}")
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED=${ssh_hardening_expected}
 AGENTBOX_HEALTH_SSH_ALLOWED_USERS=$(shell_quote "${ssh_allowed_users}")
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER=${managed_macos_runner}
@@ -3229,7 +3240,7 @@ plan_wrapper_execution() {
     plan_action "${tty_tp}remove${tty_reset} competing official or homebrew ${tty_ts}tailscaled${tty_reset} launchd services if present"
     plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, tailscale serve prerequisites, and scoped magicdns resolver"
   fi
-  plan_action "${tty_tp}archive and remove${tty_reset} the legacy system gateway service ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset} if present"
+  plan_action "${tty_tp}archive and remove${tty_reset} the legacy system gateway service ${tty_ts}${LEGACY_OPENCLAW_GATEWAY_LABEL}${tty_reset} if present"
   plan_action "${tty_tp}migrate${tty_reset} a conflicting invoking-admin native gateway and configure the admin app for attach-only use"
   plan_action "${tty_tp}onboard or reconcile${tty_reset} openclaw gateway configuration for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} without installing a service, using model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" == "serve" ]]; then
@@ -4326,8 +4337,8 @@ configure_openclaw_ui_assistant_branding() {
   execute sudo rm -f "${batch_file}"
 }
 
-agentbox_openclaw_gateway_launchd_loaded() {
-  agentbox_system_launchd_loaded "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
+legacy_openclaw_gateway_launchd_loaded() {
+  agentbox_system_launchd_loaded "${LEGACY_OPENCLAW_GATEWAY_LABEL}"
 }
 
 openclaw_native_gateway_launch_agent_plist_path() {
@@ -4466,7 +4477,7 @@ prepare_openclaw_native_gateway_log() {
   execute sudo chmod 600 "${log_path}"
 }
 
-remove_agentbox_openclaw_gateway_launchd_service() {
+migrate_legacy_openclaw_gateway_service() {
   local archive_dir
   local legacy_env_dir
   local legacy_env_file
@@ -4475,27 +4486,31 @@ remove_agentbox_openclaw_gateway_launchd_service() {
   local was_loaded="0"
 
   legacy_env_dir="$(openclaw_gateway_service_env_dir)"
-  legacy_env_file="${legacy_env_dir}/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}.env"
-  legacy_env_wrapper="${legacy_env_dir}/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}-env-wrapper.sh"
-  if agentbox_openclaw_gateway_launchd_loaded; then
+  legacy_env_file="${legacy_env_dir}/${LEGACY_OPENCLAW_GATEWAY_LABEL}.env"
+  legacy_env_wrapper="${legacy_env_dir}/${LEGACY_OPENCLAW_GATEWAY_LABEL}-env-wrapper.sh"
+  if legacy_openclaw_gateway_launchd_loaded; then
     was_loaded="1"
-  elif ! sudo test -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"; then
+  elif ! sudo test -f "${LEGACY_OPENCLAW_GATEWAY_PLIST_PATH}" &&
+    ! sudo test -f "${legacy_env_file}" &&
+    ! sudo test -f "${legacy_env_wrapper}" &&
+    ! sudo test -f "${LEGACY_OPENCLAW_GATEWAY_STDOUT_LOG}" &&
+    ! sudo test -f "${LEGACY_OPENCLAW_GATEWAY_STDERR_LOG}"; then
     return 0
   fi
 
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   archive_dir="${AGENTBOX_STATE_DIR}/migrations/openclaw-system-gateway-${timestamp}-$$"
-  log "${tty_tp}migrating${tty_reset} legacy system gateway ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}; backup: ${tty_ts}${archive_dir}${tty_reset}"
+  log "${tty_tp}migrating${tty_reset} legacy system gateway ${tty_ts}${LEGACY_OPENCLAW_GATEWAY_LABEL}${tty_reset}; backup: ${tty_ts}${archive_dir}${tty_reset}"
   execute sudo /usr/bin/install -d -o root -g wheel -m 700 "${AGENTBOX_STATE_DIR}" "${AGENTBOX_STATE_DIR}/migrations" "${archive_dir}"
-  sudo launchctl bootout "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" >/dev/null 2>&1 || true
-  sudo launchctl bootout system "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}" >/dev/null 2>&1 || true
+  sudo launchctl bootout "system/${LEGACY_OPENCLAW_GATEWAY_LABEL}" >/dev/null 2>&1 || true
+  sudo launchctl bootout system "${LEGACY_OPENCLAW_GATEWAY_PLIST_PATH}" >/dev/null 2>&1 || true
 
   if [[ "${was_loaded}" == "1" ]]; then
     wait_for_openclaw_gateway_port_quiescence
   fi
 
-  if sudo test -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"; then
-    execute sudo mv "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}" "${archive_dir}/"
+  if sudo test -f "${LEGACY_OPENCLAW_GATEWAY_PLIST_PATH}"; then
+    execute sudo mv "${LEGACY_OPENCLAW_GATEWAY_PLIST_PATH}" "${archive_dir}/"
   fi
   if sudo test -f "${legacy_env_file}" || sudo test -f "${legacy_env_wrapper}"; then
     execute sudo /usr/bin/install -d -o root -g wheel -m 700 "${archive_dir}/service-env"
@@ -4507,6 +4522,7 @@ remove_agentbox_openclaw_gateway_launchd_service() {
     fi
     sudo rmdir "${legacy_env_dir}" >/dev/null 2>&1 || true
   fi
+  execute sudo rm -f "${LEGACY_OPENCLAW_GATEWAY_STDOUT_LOG}" "${LEGACY_OPENCLAW_GATEWAY_STDERR_LOG}"
   execute sudo chown -R root:wheel "${archive_dir}"
   execute sudo chmod -R go-rwx "${archive_dir}"
 }
@@ -4561,18 +4577,27 @@ validate_openclaw_gateway_port_owner() {
 migrate_openclaw_admin_native_gateway() {
   local admin_home
   local backup_path
+  local native_env_dir
+  local native_env_file
+  local native_env_wrapper
   local openclaw_bin="$1"
   local plist_path
+  local service_present="0"
   local timestamp
   local uid
 
+  admin_home="$(invoking_admin_home_required)"
   uid="$(id -u "${ADMIN_USER}" 2>/dev/null || true)"
   plist_path="$(openclaw_native_gateway_launch_agent_plist_path "${ADMIN_USER}")"
-  if ! openclaw_native_gateway_launch_agent_loaded "${uid}" && ! sudo test -f "${plist_path}"; then
+  native_env_dir="${admin_home}/.openclaw/service-env"
+  native_env_file="${native_env_dir}/${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}.env"
+  native_env_wrapper="${native_env_dir}/${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}-env-wrapper.sh"
+  if openclaw_native_gateway_launch_agent_loaded "${uid}" || sudo test -f "${plist_path}"; then
+    service_present="1"
+  elif ! sudo test -f "${native_env_file}" && ! sudo test -f "${native_env_wrapper}"; then
     return 0
   fi
 
-  admin_home="$(invoking_admin_home_required)"
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   backup_path="${admin_home}/.openclaw.agentbox-backup-${timestamp}-$$"
   if sudo test -d "${admin_home}/.openclaw"; then
@@ -4582,14 +4607,20 @@ migrate_openclaw_admin_native_gateway() {
     execute sudo chmod -R go-rwx "${backup_path}"
   fi
 
-  log "${tty_tp}uninstalling${tty_reset} conflicting invoking-admin native gateway ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset}"
-  if ! run_as_invoking_admin "${openclaw_bin}" gateway uninstall >/dev/null 2>&1; then
-    abort "failed to uninstall the invoking-admin native openclaw gateway; backup retained at ${tty_ts}${backup_path}${tty_reset}."
+  if [[ "${service_present}" == "1" ]]; then
+    log "${tty_tp}uninstalling${tty_reset} conflicting invoking-admin native gateway ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset}"
+    if ! run_as_invoking_admin "${openclaw_bin}" gateway uninstall >/dev/null 2>&1; then
+      abort "failed to uninstall the invoking-admin native openclaw gateway; backup retained at ${tty_ts}${backup_path}${tty_reset}."
+    fi
+
+    if openclaw_native_gateway_launch_agent_loaded "${uid}" || sudo test -f "${plist_path}"; then
+      abort "invoking-admin native openclaw gateway is still present after uninstall; rerun agentbox migration after resolving the conflict."
+    fi
   fi
 
-  if openclaw_native_gateway_launch_agent_loaded "${uid}" || sudo test -f "${plist_path}"; then
-    abort "invoking-admin native openclaw gateway is still present after uninstall; rerun agentbox migration after resolving the conflict."
-  fi
+  log "${tty_tp}removing${tty_reset} invoking-admin native gateway service environment artifacts"
+  execute sudo rm -f "${native_env_file}" "${native_env_wrapper}"
+  sudo rmdir "${native_env_dir}" >/dev/null 2>&1 || true
 }
 
 openclaw_admin_app_state_dir() {
@@ -4824,7 +4855,6 @@ cleanup_stale_openclaw_finalizer() {
     sudo launchctl bootout "gui/${uid}/${AGENTBOX_OPENCLAW_FINALIZER_LABEL}" >/dev/null 2>&1 || true
   fi
   sudo rm -f "$(openclaw_finalizer_plist_path)" "$(openclaw_finalizer_state_path)" >/dev/null 2>&1 || true
-  sudo rmdir "$(openclaw_finalizer_state_dir)/.openclaw-finalize.lock" >/dev/null 2>&1 || true
 }
 
 activate_openclaw_finalizer() {
@@ -4945,28 +4975,6 @@ openclaw_gateway_failure_remediation() {
   printf "inspect %s and %s/openclaw-finalize.error.log, then rerun agentbox; a graphical session for %s is required." "$(openclaw_native_gateway_log_path)" "$(openclaw_finalizer_log_dir)" "${OPENCLAW_USER}"
 }
 
-wait_for_openclaw_gateway_status() {
-  local openclaw_bin="$1"
-  local attempts="0"
-  local output=""
-
-  while [[ "${attempts}" -lt 30 ]]; do
-    attempts=$((attempts + 1))
-
-    if openclaw_gateway_status_ready "${openclaw_bin}"; then
-      log "${tty_tp}verified${tty_reset} openclaw gateway status for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}"
-      return 0
-    fi
-
-    sleep 2
-  done
-
-  output="$(run_as_openclaw_runner "${openclaw_bin}" gateway status --require-rpc --timeout 10000 2>&1 || true)"
-  debug "${tty_tp}openclaw gateway status output${tty_reset}" "${output}"
-  print_openclaw_gateway_failure_diagnostics "${output}"
-  abort "openclaw gateway status did not become ready for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}; $(openclaw_gateway_failure_remediation)"
-}
-
 wait_for_openclaw_gateway_tailscale_serve_route() {
   local openclaw_bin="$1"
   local attempts="0"
@@ -5008,7 +5016,7 @@ run_agentbox_openclaw_gateway_setup() {
     preserve_existing_openclaw_gateway_configuration "${openclaw_bin}"
     capture_existing_openclaw_gateway_token "${existing_token_path}" || true
   fi
-  remove_agentbox_openclaw_gateway_launchd_service
+  migrate_legacy_openclaw_gateway_service
   migrate_openclaw_admin_native_gateway "${openclaw_bin}"
   validate_openclaw_gateway_port_owner
   ensure_openclaw_admin_app_attach_only
