@@ -36,8 +36,6 @@
     <string>__AGENTBOX_OPENCLAW_GATEWAY_LABEL__</string>
     <key>AGENTBOX_FINALIZER_STATE_DIR</key>
     <string>__AGENTBOX_OPENCLAW_FINALIZER_STATE_DIR__</string>
-    <key>AGENTBOX_FINALIZER_FORCE_INSTALL</key>
-    <string>1</string>
   </dict>
   <key>StandardOutPath</key>
   <string>__AGENTBOX_OPENCLAW_FINALIZER_STDOUT_LOG__</string>

@@ -13,7 +13,9 @@ case "$*" in
     if [[ "${TEST_OPENCLAW_INSTALL_FAIL:-0}" == "1" ]]; then
       exit 7
     fi
-    /usr/bin/touch "${TEST_OPENCLAW_INSTALLED}"
+    if [[ "${TEST_OPENCLAW_POST_INSTALL_HEALTH_FAIL:-0}" != "1" ]]; then
+      /usr/bin/touch "${TEST_OPENCLAW_INSTALLED}"
+    fi
     ;;
   'gateway status --require-rpc --timeout 10000')
     [[ -f "${TEST_OPENCLAW_INSTALLED}" ]]

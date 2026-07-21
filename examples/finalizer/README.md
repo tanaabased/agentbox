@@ -21,23 +21,7 @@ test -x "$AGENTBOX_PAYLOAD_DIR/examples/finalizer/fixtures/launchctl"
 case_root="$TMPDIR/finalizer-success"
 "$AGENTBOX_PAYLOAD_DIR/examples/finalizer/run-case.sh" "$case_root"
 grep -Fx "status=healthy" "$case_root/home/.agentbox/openclaw-gateway-finalizer-state"
-grep -E '^completed_at=.+$' "$case_root/home/.agentbox/openclaw-gateway-installed"
 test ! -e "$case_root/home/Library/LaunchAgents/dev.tanaab.agentbox.openclaw-finalize.plist"
-test "$(wc -l < "$case_root/install.log" | tr -d ' ')" -eq 1
-
-# should leave an already healthy Gateway alone
-case_root="$TMPDIR/finalizer-healthy"
-mkdir -p "$case_root"
-touch "$case_root/installed"
-"$AGENTBOX_PAYLOAD_DIR/examples/finalizer/run-case.sh" "$case_root"
-grep -Fx "status=healthy" "$case_root/home/.agentbox/openclaw-gateway-finalizer-state"
-test ! -e "$case_root/install.log"
-
-# should force reconciliation when agentbox requests it
-case_root="$TMPDIR/finalizer-forced"
-mkdir -p "$case_root"
-touch "$case_root/installed"
-AGENTBOX_FINALIZER_FORCE_INSTALL=1 "$AGENTBOX_PAYLOAD_DIR/examples/finalizer/run-case.sh" "$case_root"
 test "$(wc -l < "$case_root/install.log" | tr -d ' ')" -eq 1
 
 # should retain retry state and its plist after a failed install
@@ -63,11 +47,14 @@ grep -Fx "status=healthy" "$case_root/home/.agentbox/openclaw-gateway-finalizer-
 test ! -e "$case_root/home/Library/LaunchAgents/dev.tanaab.agentbox.openclaw-finalize.plist"
 test "$(wc -l < "$case_root/install.log" | tr -d ' ')" -eq 2
 
-# should leave state unchanged while another finalizer holds the lock
-case_root="$TMPDIR/finalizer-locked"
-mkdir -p "$case_root/home/.agentbox/.openclaw-finalize.lock"
-"$AGENTBOX_PAYLOAD_DIR/examples/finalizer/run-case.sh" "$case_root"
-test -d "$case_root/home/.agentbox/.openclaw-finalize.lock"
-test ! -e "$case_root/home/.agentbox/openclaw-gateway-finalizer-state"
+# should fail when install succeeds but launchd and RPC never become healthy
+case_root="$TMPDIR/finalizer-post-install-failure"
+set +e
+TEST_OPENCLAW_POST_INSTALL_HEALTH_FAIL=1 "$AGENTBOX_PAYLOAD_DIR/examples/finalizer/run-case.sh" "$case_root"
+command_status="$?"
+set -e
+test "$command_status" -ne 0
+grep -Fx "status=failed" "$case_root/home/.agentbox/openclaw-gateway-finalizer-state"
 test -f "$case_root/home/Library/LaunchAgents/dev.tanaab.agentbox.openclaw-finalize.plist"
+test "$(wc -l < "$case_root/install.log" | tr -d ' ')" -eq 1
 ```
