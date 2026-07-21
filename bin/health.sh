@@ -7,9 +7,6 @@ LOG_FILE="${AGENTBOX_LOG_DIR}/health.log"
 HEALTH_LABEL="dev.tanaab.agentbox.health"
 TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 TAILSCALED_STATE_FILE="/var/db/tanaab/agentbox/tailscale/tailscaled.state"
-OPENCLAW_LEGACY_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
-OPENCLAW_LEGACY_GATEWAY_STDOUT_LOG="${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
-OPENCLAW_LEGACY_GATEWAY_STDERR_LOG="${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
 OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL="ai.openclaw.gateway"
 OPENCLAW_FINALIZER_LABEL="dev.tanaab.agentbox.openclaw-finalize"
 AGENTBOX_OPENCLAW_SERVICE_KIND="openclaw-gateway"
@@ -36,7 +33,6 @@ AGENTBOX_HEALTH_OPENCLAW_USER=""
 AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=""
 AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED="0"
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL=""
-AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL="${OPENCLAW_LEGACY_GATEWAY_LABEL}"
 AGENTBOX_HEALTH_OPENCLAW_FINALIZER_LABEL="${OPENCLAW_FINALIZER_LABEL}"
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=""
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE=""
@@ -807,7 +803,6 @@ generate_report() {
   local node_cli_ok="0"
   local openclaw_cli_path=""
   local openclaw_cli_ok="0"
-  local openclaw_service_mode="user"
   local openclaw_gateway_label="${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL:-${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}}"
   local openclaw_gateway_activation_ok="0"
   local openclaw_gateway_state="not_configured"
@@ -822,7 +817,6 @@ generate_report() {
   local openclaw_finalizer_installed="0"
   local openclaw_finalizer_permissions_ok="skipped"
   local openclaw_finalizer_state=""
-  local openclaw_legacy_system_service_detected="0"
   local openclaw_duplicate_admin_gateway_detected="0"
   local openclaw_expected_port_ownership_ok="0"
   local openclaw_unattended_reboot_ready="0"
@@ -1146,15 +1140,6 @@ generate_report() {
     openclaw_finalizer_permissions_ok="0"
   fi
 
-  if [[ "$(launchd_job_loaded_value system "${AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL}")" == "1" ||
-    -e "/Library/LaunchDaemons/${AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL}.plist" ||
-    -e "${OPENCLAW_LEGACY_GATEWAY_STDOUT_LOG}" ||
-    -e "${OPENCLAW_LEGACY_GATEWAY_STDERR_LOG}" ]] ||
-    { [[ -n "${openclaw_home}" ]] &&
-      { [[ -e "${openclaw_home}/.openclaw/service-env/${AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL}.env" ]] ||
-        [[ -e "${openclaw_home}/.openclaw/service-env/${AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL}-env-wrapper.sh" ]]; }; }; then
-    openclaw_legacy_system_service_detected="1"
-  fi
   if [[ -n "${admin_uid}" ]] &&
     { [[ "$(launchd_job_loaded_value "gui/${admin_uid}" "${openclaw_gateway_label}")" == "1" ]] || [[ -e "${openclaw_admin_native_plist}" ]]; }; then
     openclaw_duplicate_admin_gateway_detected="1"
@@ -1176,9 +1161,7 @@ generate_report() {
     openclaw_unattended_reboot_ready="1"
   fi
 
-  if [[ "${openclaw_legacy_system_service_detected}" == "1" ]]; then
-    openclaw_gateway_state="legacy_system_service_detected"
-  elif [[ "${openclaw_duplicate_admin_gateway_detected}" == "1" ]]; then
+  if [[ "${openclaw_duplicate_admin_gateway_detected}" == "1" ]]; then
     openclaw_gateway_state="duplicate_gateway_detected"
   elif [[ "${openclaw_finalizer_state}" == "failed" ]]; then
     openclaw_gateway_state="failed"
@@ -1209,7 +1192,6 @@ generate_report() {
   fi
 
   print_kv openclaw_auth_choice "${AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE}"
-  print_kv openclaw_service_mode "${openclaw_service_mode}"
   print_kv openclaw_gateway_state "${openclaw_gateway_state}"
   print_kv openclaw_gateway_label "${openclaw_gateway_label}"
   print_kv openclaw_gateway_bind "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND}"
@@ -1243,7 +1225,6 @@ generate_report() {
     print_kv openclaw_gateway_log_permissions_ok "${openclaw_gateway_log_permissions_ok}"
   fi
   print_kv openclaw_gateway_rpc_ok "${openclaw_gateway_status_ok}"
-  print_kv openclaw_legacy_system_service_detected "${openclaw_legacy_system_service_detected}"
   print_kv openclaw_duplicate_admin_gateway_detected "${openclaw_duplicate_admin_gateway_detected}"
   print_kv openclaw_expected_port_ownership_ok "${openclaw_expected_port_ownership_ok}"
   print_kv openclaw_admin_app_attach_only_ok "${openclaw_admin_app_attach_only_ok}"

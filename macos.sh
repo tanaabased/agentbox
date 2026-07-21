@@ -33,10 +33,6 @@ AGENTBOX_HEALTH_STATE_PATH="${AGENTBOX_STATE_DIR}/health.env"
 AGENTBOX_HEALTH_LABEL="dev.tanaab.agentbox.health"
 AGENTBOX_TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 AGENTBOX_TAILSCALED_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_TAILSCALED_LABEL}.plist"
-LEGACY_OPENCLAW_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
-LEGACY_OPENCLAW_GATEWAY_PLIST_PATH="/Library/LaunchDaemons/${LEGACY_OPENCLAW_GATEWAY_LABEL}.plist"
-LEGACY_OPENCLAW_GATEWAY_STDOUT_LOG="${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
-LEGACY_OPENCLAW_GATEWAY_STDERR_LOG="${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
 OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL="ai.openclaw.gateway"
 AGENTBOX_OPENCLAW_FINALIZER_LABEL="dev.tanaab.agentbox.openclaw-finalize"
 AGENTBOX_OPENCLAW_SERVICE_KIND="openclaw-gateway"
@@ -303,7 +299,6 @@ OPENCLAW_FULL_NAME=""
 OPENCLAW_USER=""
 OPENCLAW_PASSWORD="${AGENTBOX_OPENCLAW_PASSWORD:-}"
 OPENCLAW_AUTOLOGIN="${AGENTBOX_OPENCLAW_AUTOLOGIN:-${DEFAULT_OPENCLAW_AUTOLOGIN}}"
-LEGACY_OPENCLAW_SERVICE_MODE_SET="${AGENTBOX_OPENCLAW_SERVICE_MODE+x}"
 OPENCLAW_GATEWAY_BIND_VALUE="loopback"
 OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE=""
 OPENCLAW_GATEWAY_PORT="${AGENTBOX_OPENCLAW_GATEWAY_PORT:-${DEFAULT_OPENCLAW_GATEWAY_PORT}}"
@@ -1138,9 +1133,6 @@ parse_args() {
         require_inline_option_value "--openclaw-autologin" "${1#*=}"
         OPENCLAW_AUTOLOGIN="${1#*=}"
         shift
-        ;;
-      --openclaw-service-mode | --openclaw-service-mode=*)
-        abort_option_usage "option ${tty_bold}--openclaw-service-mode${tty_reset} was removed; the native user LaunchAgent is now the only supported macos gateway service. Remove this option and use ${tty_bold}--openclaw-autologin on|off${tty_reset}."
         ;;
       --openclaw-gateway-port)
         require_next_option_value "--openclaw-gateway-port" "$#"
@@ -2401,7 +2393,6 @@ AGENTBOX_HEALTH_OPENCLAW_USER=$(shell_quote "${OPENCLAW_USER}")
 AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=$(shell_quote "${OPENCLAW_FULL_NAME}")
 AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED=${openclaw_autologin_expected}
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL=$(shell_quote "${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}")
-AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL=$(shell_quote "${LEGACY_OPENCLAW_GATEWAY_LABEL}")
 AGENTBOX_HEALTH_OPENCLAW_FINALIZER_LABEL=$(shell_quote "${AGENTBOX_OPENCLAW_FINALIZER_LABEL}")
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=$(shell_quote "${OPENCLAW_GATEWAY_BIND_VALUE}")
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE=$(shell_quote "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}")
@@ -2795,10 +2786,6 @@ validate_inputs_before_sudo() {
 
   if [[ "${OPENCLAW_AUTH_CHOICE}" =~ [[:space:]] ]]; then
     abort "openclaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} must not contain whitespace."
-  fi
-
-  if [[ -n "${LEGACY_OPENCLAW_SERVICE_MODE_SET}" ]]; then
-    abort "environment variable ${tty_bold}AGENTBOX_OPENCLAW_SERVICE_MODE${tty_reset} was removed; the native user LaunchAgent is now the only supported macos gateway service. Remove it and use ${tty_bold}AGENTBOX_OPENCLAW_AUTOLOGIN=on|off${tty_reset}."
   fi
 
   if ! openclaw_autologin_valid "${OPENCLAW_AUTOLOGIN}"; then
@@ -3237,8 +3224,7 @@ plan_wrapper_execution() {
     plan_action "${tty_tp}remove${tty_reset} competing official or homebrew ${tty_ts}tailscaled${tty_reset} launchd services if present"
     plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, tailscale serve prerequisites, and scoped magicdns resolver"
   fi
-  plan_action "${tty_tp}archive and remove${tty_reset} the legacy system gateway service ${tty_ts}${LEGACY_OPENCLAW_GATEWAY_LABEL}${tty_reset} if present"
-  plan_action "${tty_tp}migrate${tty_reset} a conflicting invoking-admin native gateway and configure the admin app for attach-only use"
+  plan_action "${tty_tp}reconcile${tty_reset} a conflicting invoking-admin native gateway and configure the admin app for attach-only use"
   plan_action "${tty_tp}onboard or reconcile${tty_reset} openclaw gateway configuration for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} without installing a service, using model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" == "serve" ]]; then
     plan_action "${tty_tp}allow${tty_reset} verified tailscale identities for openclaw gateway authentication"
@@ -4334,10 +4320,6 @@ configure_openclaw_ui_assistant_branding() {
   execute sudo rm -f "${batch_file}"
 }
 
-legacy_openclaw_gateway_launchd_loaded() {
-  agentbox_system_launchd_loaded "${LEGACY_OPENCLAW_GATEWAY_LABEL}"
-}
-
 openclaw_native_gateway_launch_agent_plist_path() {
   local user="$1"
   local home
@@ -4474,56 +4456,6 @@ prepare_openclaw_native_gateway_log() {
   execute sudo chmod 600 "${log_path}"
 }
 
-migrate_legacy_openclaw_gateway_service() {
-  local archive_dir
-  local legacy_env_dir
-  local legacy_env_file
-  local legacy_env_wrapper
-  local timestamp
-  local was_loaded="0"
-
-  legacy_env_dir="$(openclaw_gateway_service_env_dir)"
-  legacy_env_file="${legacy_env_dir}/${LEGACY_OPENCLAW_GATEWAY_LABEL}.env"
-  legacy_env_wrapper="${legacy_env_dir}/${LEGACY_OPENCLAW_GATEWAY_LABEL}-env-wrapper.sh"
-  if legacy_openclaw_gateway_launchd_loaded; then
-    was_loaded="1"
-  elif ! sudo test -f "${LEGACY_OPENCLAW_GATEWAY_PLIST_PATH}" &&
-    ! sudo test -f "${legacy_env_file}" &&
-    ! sudo test -f "${legacy_env_wrapper}" &&
-    ! sudo test -f "${LEGACY_OPENCLAW_GATEWAY_STDOUT_LOG}" &&
-    ! sudo test -f "${LEGACY_OPENCLAW_GATEWAY_STDERR_LOG}"; then
-    return 0
-  fi
-
-  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  archive_dir="${AGENTBOX_STATE_DIR}/migrations/openclaw-system-gateway-${timestamp}-$$"
-  log "${tty_tp}migrating${tty_reset} legacy system gateway ${tty_ts}${LEGACY_OPENCLAW_GATEWAY_LABEL}${tty_reset}; backup: ${tty_ts}${archive_dir}${tty_reset}"
-  execute sudo /usr/bin/install -d -o root -g wheel -m 700 "${AGENTBOX_STATE_DIR}" "${AGENTBOX_STATE_DIR}/migrations" "${archive_dir}"
-  sudo launchctl bootout "system/${LEGACY_OPENCLAW_GATEWAY_LABEL}" >/dev/null 2>&1 || true
-  sudo launchctl bootout system "${LEGACY_OPENCLAW_GATEWAY_PLIST_PATH}" >/dev/null 2>&1 || true
-
-  if [[ "${was_loaded}" == "1" ]]; then
-    wait_for_openclaw_gateway_port_quiescence
-  fi
-
-  if sudo test -f "${LEGACY_OPENCLAW_GATEWAY_PLIST_PATH}"; then
-    execute sudo mv "${LEGACY_OPENCLAW_GATEWAY_PLIST_PATH}" "${archive_dir}/"
-  fi
-  if sudo test -f "${legacy_env_file}" || sudo test -f "${legacy_env_wrapper}"; then
-    execute sudo /usr/bin/install -d -o root -g wheel -m 700 "${archive_dir}/service-env"
-    if sudo test -f "${legacy_env_file}"; then
-      execute sudo mv "${legacy_env_file}" "${archive_dir}/service-env/"
-    fi
-    if sudo test -f "${legacy_env_wrapper}"; then
-      execute sudo mv "${legacy_env_wrapper}" "${archive_dir}/service-env/"
-    fi
-    sudo rmdir "${legacy_env_dir}" >/dev/null 2>&1 || true
-  fi
-  execute sudo rm -f "${LEGACY_OPENCLAW_GATEWAY_STDOUT_LOG}" "${LEGACY_OPENCLAW_GATEWAY_STDERR_LOG}"
-  execute sudo chown -R root:wheel "${archive_dir}"
-  execute sudo chmod -R go-rwx "${archive_dir}"
-}
-
 openclaw_gateway_port_pids() {
   /usr/sbin/lsof -nP -iTCP:"${OPENCLAW_GATEWAY_PORT}" -sTCP:LISTEN -t 2>/dev/null | /usr/bin/sort -u || true
 }
@@ -4532,24 +4464,6 @@ openclaw_gateway_port_owner() {
   local pid="$1"
 
   /bin/ps -o user= -p "${pid}" 2>/dev/null | awk '{$1=$1; print}'
-}
-
-wait_for_openclaw_gateway_port_quiescence() {
-  local attempts="0"
-  local pids
-
-  while [[ "${attempts}" -lt 45 ]]; do
-    pids="$(openclaw_gateway_port_pids)"
-    if [[ -z "${pids}" ]]; then
-      return 0
-    fi
-    attempts=$((attempts + 1))
-    sleep 2
-  done
-
-  pids="$(openclaw_gateway_port_pids)"
-  pids="$(printf '%s' "${pids}" | /usr/bin/tr '\n' ',')"
-  abort "gateway port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset} remained occupied after stopping the legacy service; PID(s): ${tty_ts}${pids}${tty_reset}."
 }
 
 validate_openclaw_gateway_port_owner() {
@@ -4571,7 +4485,7 @@ validate_openclaw_gateway_port_owner() {
   done <<< "${pids}"
 }
 
-migrate_openclaw_admin_native_gateway() {
+reconcile_openclaw_admin_native_gateway_conflict() {
   local admin_home
   local backup_path
   local native_env_dir
@@ -4611,7 +4525,7 @@ migrate_openclaw_admin_native_gateway() {
     fi
 
     if openclaw_native_gateway_launch_agent_loaded "${uid}" || sudo test -f "${plist_path}"; then
-      abort "invoking-admin native openclaw gateway is still present after uninstall; rerun agentbox migration after resolving the conflict."
+      abort "invoking-admin native openclaw gateway is still present after uninstall; resolve the conflict and rerun agentbox."
     fi
   fi
 
@@ -5013,8 +4927,7 @@ run_agentbox_openclaw_gateway_setup() {
     preserve_existing_openclaw_gateway_configuration "${openclaw_bin}"
     capture_existing_openclaw_gateway_token "${existing_token_path}" || true
   fi
-  migrate_legacy_openclaw_gateway_service
-  migrate_openclaw_admin_native_gateway "${openclaw_bin}"
+  reconcile_openclaw_admin_native_gateway_conflict "${openclaw_bin}"
   validate_openclaw_gateway_port_owner
   ensure_openclaw_admin_app_attach_only
   run_openclaw_gateway_onboarding "${openclaw_bin}" "${reconcile_existing}"

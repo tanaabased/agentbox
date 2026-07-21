@@ -317,7 +317,6 @@ export function evaluateHealth(values, options = {}) {
       },
       openclaw: {
         user: values.openclaw_user || null,
-        serviceMode: values.openclaw_service_mode || null,
         gatewayBind: values.openclaw_gateway_bind || null,
         gatewayPort: values.openclaw_gateway_port || null,
         tailscaleMode: values.openclaw_gateway_tailscale_mode || null,

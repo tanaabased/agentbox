@@ -59,7 +59,6 @@ const healthyValues = {
   openclaw_cli_ok: '1',
   node_cli_ok: '1',
   ripgrep_ok: '1',
-  openclaw_service_mode: 'user',
   openclaw_gateway_state: 'healthy',
   openclaw_gateway_label: 'ai.openclaw.gateway',
   openclaw_gateway_bind: 'loopback',
@@ -77,7 +76,6 @@ const healthyValues = {
   openclaw_gateway_agent_environment_ok: '1',
   openclaw_gateway_log_permissions_ok: '1',
   openclaw_gateway_rpc_ok: '1',
-  openclaw_legacy_system_service_detected: '0',
   openclaw_duplicate_admin_gateway_detected: '0',
   openclaw_expected_port_ownership_ok: '1',
   openclaw_admin_app_attach_only_ok: '1',
@@ -111,6 +109,7 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     assert.equal(report.issues.length, 0);
     assert.equal(tailscaleGroup?.status, 'healthy');
     assert.equal(tailscaleGroup?.passed, 0);
+    assert.ok(!('serviceMode' in report.facts.openclaw));
   });
 
   it('should surface a conditional Tailscale Serve failure with a rendered repair', () => {
@@ -187,7 +186,6 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     ['installing', 'reconcile', /reconcile native Gateway activation/],
     ['failed', 'reconcile', /openclaw-finalize[.]error[.]log/],
     ['gui_session_inactive', 'manual', /Log into the OpenClaw runtime account/],
-    ['legacy_system_service_detected', 'reconcile', /agentbox migration/],
     ['duplicate_gateway_detected', 'reconcile', /conflicting administrator Gateway/],
   ]) {
     it(`should provide state-aware Gateway remediation for ${state}`, () => {

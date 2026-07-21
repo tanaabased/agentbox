@@ -88,7 +88,6 @@ test "$(stat -f "%Su" /Users/openclaw)" = "openclaw"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
 
 # should use native user LaunchAgent mode without changing CI autologin
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=user"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
 
@@ -135,7 +134,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 
 # should report staged first-login gateway activation
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_auth_choice=skip"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=user"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_bind=loopback"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_tailscale_mode=serve"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_port=18789"
@@ -147,7 +145,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo test -x /Users/openclaw/.local/libexec/agentbox-openclaw-finalize
 sudo test -f /Users/openclaw/Library/LaunchAgents/dev.tanaab.agentbox.openclaw-finalize.plist
 sudo /usr/libexec/PlistBuddy -c "Print :LimitLoadToSessionType" /Users/openclaw/Library/LaunchAgents/dev.tanaab.agentbox.openclaw-finalize.plist | grep -Fx Aqua
-sudo test ! -e /Library/LaunchDaemons/dev.tanaab.agentbox.openclaw-gateway.plist
 
 # should stage a private agentbox-managed gateway environment
 test "$(sudo stat -f "%Su:%Sg:%Lp" /Users/openclaw/.openclaw/.env)" = "openclaw:$(id -gn openclaw):600"
