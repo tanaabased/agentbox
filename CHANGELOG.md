@@ -1,5 +1,7 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+## v1.0.0-beta.8 - [July 21, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.8)
+
 ### Breaking Changes
 
 - Removed `--openclaw-service-mode` and `AGENTBOX_OPENCLAW_SERVICE_MODE`; macOS now supports only OpenClaw's native user LaunchAgent. [#19](https://github.com/tanaabased/agentbox/issues/19)
