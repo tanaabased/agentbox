@@ -24,6 +24,7 @@ agentbox \
   --brewfile "file://$TMPDIR/Brewfile.extra-url" \
   --tailscale-authkey off \
   --brewgroup "bobsbrewcrew:staff" \
+  --openclaw-autologin off \
   --openclaw-identity "Bob Homebrew Claw <bob>" \
   --openclaw-password "BobHomebrewClawPass1!" \
   --openclaw-auth-choice skip
@@ -80,7 +81,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "br
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_ok=1"
 test "$(sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup)" = "bobsbrewcrew"
 
-# should pass the overall agentbox health check
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --check
+# should stage gateway activation without changing CI autologin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_state=pending_first_login"
 ```

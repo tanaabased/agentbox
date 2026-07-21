@@ -23,7 +23,8 @@ async function createPayload(root, version = 'v1.2.1') {
     'bin/health.sh',
     'launchd/dev.tanaab.agentbox.health.plist.in',
     'launchd/dev.tanaab.agentbox.tailscaled.plist.in',
-    'launchd/dev.tanaab.agentbox.openclaw-gateway.plist.in',
+    'launchd/dev.tanaab.agentbox.openclaw-finalize.plist.in',
+    'libexec/agentbox-openclaw-finalize.sh',
     'assets/default_avatar.png',
     'assets/profile1.png',
   ];

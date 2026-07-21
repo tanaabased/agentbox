@@ -50,6 +50,11 @@
           "key": "openclaw_autologin_ok",
           "label": "OpenClaw runner autologin",
           "when": [{ "key": "openclaw_autologin_expected", "equals": "1" }]
+        },
+        {
+          "key": "openclaw_unattended_reboot_ready",
+          "label": "OpenClaw unattended reboot recovery",
+          "when": [{ "key": "openclaw_autologin_expected", "equals": "1" }]
         }
       ]
     },
@@ -106,44 +111,32 @@
       "label": "OpenClaw",
       "checks": [
         {
-          "key": "openclaw_gateway_launchd_loaded_ok",
-          "label": "Gateway launchd service loaded",
-          "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
+          "key": "openclaw_gateway_tailscale_auth_ok",
+          "label": "Gateway Tailscale identity authentication",
+          "issue": false,
+          "when": [{ "key": "openclaw_gateway_tailscale_mode", "equals": "serve" }]
         },
         {
-          "key": "openclaw_gateway_launchd_running_ok",
-          "label": "Gateway launchd service running",
-          "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
+          "key": "openclaw_gateway_agentbox_managed",
+          "label": "Gateway agentbox ownership",
+          "issue": false
+        },
+        {
+          "key": "openclaw_gateway_mdns_hostname_ok",
+          "label": "Managed Gateway mDNS hostname",
+          "when": [{ "key": "openclaw_gateway_agentbox_managed", "equals": "1" }]
+        },
+        {
+          "key": "openclaw_gateway_agent_environment_ok",
+          "label": "Managed Gateway agentbox environment",
+          "when": [{ "key": "openclaw_gateway_agentbox_managed", "equals": "1" }]
         },
         {
           "key": "openclaw_gateway_log_permissions_ok",
-          "label": "Gateway log permissions",
-          "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
+          "label": "Native Gateway log permissions",
+          "when": [{ "key": "openclaw_native_launchagent_installed_ok", "equals": "1" }]
         },
-        {
-          "key": "openclaw_native_gateway_launch_agents_absent_ok",
-          "label": "Native gateway service conflicts absent",
-          "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
-        },
-        {
-          "key": "openclaw_admin_app_attach_only_ok",
-          "label": "Admin OpenClaw app attach-only mode",
-          "when": [{ "key": "openclaw_service_mode", "equals": "system" }]
-        },
-        {
-          "key": "openclaw_admin_app_gateway_config_ok",
-          "label": "Admin OpenClaw app gateway configuration",
-          "when": [
-            { "key": "openclaw_service_mode", "equals": "system" },
-            { "key": "openclaw_admin_app_gateway_config_expected", "equals": "1" }
-          ]
-        },
-        {
-          "key": "openclaw_gateway_tailscale_auth_ok",
-          "label": "Gateway Tailscale identity authentication",
-          "when": [{ "key": "openclaw_gateway_tailscale_mode", "equals": "serve" }]
-        },
-        { "key": "openclaw_gateway_status_ok", "label": "Gateway readiness" },
+        { "key": "openclaw_gateway_activation_ok", "label": "Native Gateway activation" },
         { "key": "openclaw_gateway_ok", "label": "Gateway aggregate", "issue": false }
       ]
     },

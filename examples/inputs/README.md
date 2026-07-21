@@ -37,7 +37,7 @@ agentbox --help | grep -F -- "--openclaw-identity"
 agentbox --help | grep -F -- "--openclaw-password"
 agentbox --help | grep -F -- "--openclaw-auth-choice"
 agentbox --help | grep -F -- "--openclaw-auth-env"
-agentbox --help | grep -F -- "--openclaw-service-mode"
+agentbox --help | grep -F -- "--openclaw-autologin"
 agentbox --help | grep -F -- "--openclaw-gateway-port"
 
 # should document operational options
@@ -58,7 +58,7 @@ agentbox --help | grep -F "AGENTBOX_BREWGROUP             same as --brewgroup"
 # should document openclaw runner environment variables
 agentbox --help | grep -F "AGENTBOX_OPENCLAW_IDENTITY     same as --openclaw-identity"
 agentbox --help | grep -F "AGENTBOX_OPENCLAW_PASSWORD     same as --openclaw-password"
-agentbox --help | grep -F "AGENTBOX_OPENCLAW_SERVICE_MODE same as --openclaw-service-mode"
+agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN    same as --openclaw-autologin"
 agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice"
 agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env"
 agentbox --help | grep -F "AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port"
@@ -102,10 +102,10 @@ if agentbox --help | grep -F "AGENTBOX_BREW_GROUP"; then exit 1; fi
 if agentbox --help | grep -F -- "--trusted-brewgroup"; then exit 1; fi
 if agentbox --help | grep -F "AGENTBOX_TRUSTED_BREWGROUP"; then exit 1; fi
 
-# should not expose openclaw autologin controls
+# should expose only the canonical openclaw autologin control
 if agentbox --help | grep -F -- "--skip-openclaw-autologin"; then exit 1; fi
 if agentbox --help | grep -F -- "--skip-openclaw-auto-login"; then exit 1; fi
-if agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN"; then exit 1; fi
+agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN"
 if agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTO_LOGIN"; then exit 1; fi
 
 # should not expose skipped openclaw onboarding controls
@@ -166,11 +166,11 @@ agentbox --help | grep -F -- "[default: none]"
 AGENTBOX_OPENCLAW_PASSWORD="secret-password" agentbox --help | grep -F -- "--openclaw-password         sets the openclaw runner password"
 AGENTBOX_OPENCLAW_PASSWORD="secret-password" agentbox --help | grep -F "[default: provided]"
 if AGENTBOX_OPENCLAW_PASSWORD="secret-password" agentbox --help | grep -F "secret-password"; then exit 1; fi
-agentbox --help | grep -F -- "--openclaw-service-mode     sets openclaw gateway supervision mode"
-agentbox --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: system]"
-AGENTBOX_OPENCLAW_SERVICE_MODE=user agentbox --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: user]"
-AGENTBOX_OPENCLAW_SERVICE_MODE=user agentbox --openclaw-service-mode system --help | grep -F -- "--openclaw-service-mode" | grep -F "[default: system]"
-if AGENTBOX_OPENCLAW_SERVICE_MODE=user agentbox --openclaw-service-mode system --help | grep -F "[default: user]"; then exit 1; fi
+agentbox --help | grep -F -- "--openclaw-autologin        sets runtime-user autologin"
+agentbox --help | grep -F -- "--openclaw-autologin" | grep -F "[default: on]"
+AGENTBOX_OPENCLAW_AUTOLOGIN=off agentbox --help | grep -F -- "--openclaw-autologin" | grep -F "[default: off]"
+AGENTBOX_OPENCLAW_AUTOLOGIN=off agentbox --openclaw-autologin on --help | grep -F -- "--openclaw-autologin" | grep -F "[default: on]"
+if AGENTBOX_OPENCLAW_AUTOLOGIN=off agentbox --openclaw-autologin on --help | grep -F "[default: off]"; then exit 1; fi
 
 # should show openclaw identity input precedence
 AGENTBOX_OPENCLAW_IDENTITY="Env Input Claw <envinput>" agentbox --help | grep -F "Env Input Claw <envinput>"
@@ -326,33 +326,54 @@ printf "%s\n" "$output" | grep -F "option --openclaw-gateway-port must not be em
 printf "%s\n" "$output" | grep -F "Usage:"
 test "$command_status" -ne 0
 
-# should fail when openclaw service mode is missing
+# should fail when removed openclaw service mode is used
 set +e
 output="$(agentbox --openclaw-service-mode 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
-printf "%s\n" "$output" | grep -F "option --openclaw-service-mode requires a value."
+printf "%s\n" "$output" | grep -F "option --openclaw-service-mode was removed"
+printf "%s\n" "$output" | grep -F -- "--openclaw-autologin on|off"
 printf "%s\n" "$output" | grep -F "Usage:"
 test "$command_status" -ne 0
 
-# should fail when openclaw service mode is empty
+# should fail when the removed openclaw service mode environment variable is used
 set +e
-output="$(agentbox --openclaw-service-mode= 2>&1)"
+output="$(AGENTBOX_OPENCLAW_SERVICE_MODE=system agentbox --tailscale-authkey off --brewgroup off 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
-printf "%s\n" "$output" | grep -F "option --openclaw-service-mode must not be empty."
+printf "%s\n" "$output" | grep -F "AGENTBOX_OPENCLAW_SERVICE_MODE was removed"
+printf "%s\n" "$output" | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN=on|off"
+test "$command_status" -ne 0
+
+# should fail when openclaw autologin is missing
+set +e
+output="$(agentbox --openclaw-autologin 2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "option --openclaw-autologin requires a value."
 printf "%s\n" "$output" | grep -F "Usage:"
 test "$command_status" -ne 0
 
-# should fail when openclaw service mode is invalid
+# should fail when openclaw autologin is empty
 set +e
-output="$(agentbox --tailscale-authkey off --brewgroup off --openclaw-service-mode launch-agent 2>&1)"
+output="$(agentbox --openclaw-autologin= 2>&1)"
 command_status="$?"
 set -e
 printf "%s\n" "$output"
-printf "%s\n" "$output" | grep -F "openclaw service mode launch-agent must be system or user."
+printf "%s\n" "$output" | grep -F "option --openclaw-autologin must not be empty."
+printf "%s\n" "$output" | grep -F "Usage:"
+test "$command_status" -ne 0
+
+# should fail when openclaw autologin is invalid
+set +e
+output="$(agentbox --tailscale-authkey off --brewgroup off --openclaw-autologin sometimes 2>&1)"
+command_status="$?"
+set -e
+printf "%s\n" "$output"
+printf "%s\n" "$output" | grep -F "openclaw autologin sometimes must be on or off."
 test "$command_status" -ne 0
 
 # should fail when openclaw password value is empty

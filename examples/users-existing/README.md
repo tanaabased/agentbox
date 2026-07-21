@@ -33,6 +33,7 @@ agentbox \
   --force \
   --tailscale-authkey off \
   --brewgroup "tedsbrewclub" \
+  --openclaw-autologin off \
   --openclaw-identity "Ted Existing Claw <ted>" \
   --authorized-key "file:$TMPDIR/id_agentbox_users_existing.pub" \
   --hostname "TANAABAGENTBOXUSERSEXISTING"
@@ -52,8 +53,8 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 # should preserve the openclaw runner profile picture
 test "$(dscl . -read /Users/ted Picture | cut -d " " -f 2-)" = "$GITHUB_WORKSPACE/assets/agentbox-dark.png"
 
-# should use system openclaw service mode
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=system"
+# should use native user LaunchAgent mode without changing CI autologin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=user"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
 
@@ -78,7 +79,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 # should report openclaw runner brewgroup health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_openclaw_user_ok=1"
 
-# should pass the overall agentbox health check
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --check
+# should stage activation until the runtime user logs in
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_state=pending_first_login"
 ```

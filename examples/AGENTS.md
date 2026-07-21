@@ -1,7 +1,11 @@
 # Leia Example Guidance
 
-This file applies when editing `examples/**/README.md`. These README files are executable Leia specs
+This file applies when editing `examples/**`. The scenario README files are executable Leia specs
 consumed in CI, and many scenarios mutate GitHub-hosted macOS runners.
+
+Shell CLI, script, file-mutation, permission, exit-status, and other functional or end-to-end tests
+belong in these Leia scenarios rather than in the Mocha unit suite. Keep hermetic non-mutating shell
+flows in focused examples with fixtures beside their README.
 
 ## General Style
 
@@ -36,8 +40,9 @@ consumed in CI, and many scenarios mutate GitHub-hosted macOS runners.
 - Use fixed, readable local resource names for resources that exist only on ephemeral runners. Keep
   externally registered or shared resources, especially Tailscale hostnames, unique per scenario and
   run.
-- Do not add preemptive cleanup or destroy blocks just to reset machine state; each matrix job starts
-  on a fresh hosted VM.
+- Do not add cleanup phases or `## Destroy tests` sections; each matrix job runs on a fresh hosted VM
+  that GitHub Actions discards. If cleanup behavior is itself a product contract, assert that
+  behavior in `## Testing` instead.
 - Prefer `--retry 0` for mutating examples so partial bootstrap failures are not retried on the same
   VM.
 - Do not add expected-failure probes to mutating bootstrap examples when the failure can occur after

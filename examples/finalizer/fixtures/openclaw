@@ -1,0 +1,24 @@
+#!/bin/bash
+set -euo pipefail
+
+: "${TEST_OPENCLAW_INSTALLED:?TEST_OPENCLAW_INSTALLED is required}"
+: "${TEST_OPENCLAW_INSTALL_LOG:?TEST_OPENCLAW_INSTALL_LOG is required}"
+
+case "$*" in
+  'config validate --json')
+    exit 0
+    ;;
+  'gateway install --force')
+    printf '%s\n' install >> "${TEST_OPENCLAW_INSTALL_LOG}"
+    if [[ "${TEST_OPENCLAW_INSTALL_FAIL:-0}" == "1" ]]; then
+      exit 7
+    fi
+    /usr/bin/touch "${TEST_OPENCLAW_INSTALLED}"
+    ;;
+  'gateway status --require-rpc --timeout 10000')
+    [[ -f "${TEST_OPENCLAW_INSTALLED}" ]]
+    ;;
+  *)
+    exit 1
+    ;;
+esac

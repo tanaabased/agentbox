@@ -54,6 +54,17 @@
     "kind": "reconcile",
     "summary": "Re-run the matching agentbox version with the runner password available; macOS autologin configuration requires that secret input."
   },
+  "openclaw_unattended_reboot_ready": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox with the runtime password to repair autologin drift.",
+    "variants": [
+      {
+        "when": [{ "key": "openclaw_filevault_enabled", "equals": "1" }],
+        "kind": "manual",
+        "summary": "FileVault blocks unattended autologin. Opt out with --openclaw-autologin off and accept manual login, or change the machine security policy deliberately."
+      }
+    ]
+  },
   "brewgroup_admin_user_ok": {
     "kind": "command",
     "summary": "Add the invoking admin user to the configured Homebrew group.",
@@ -94,46 +105,61 @@
     "summary": "Install or repair ripgrep.",
     "command": "{{brew_prefix}}/bin/brew install ripgrep"
   },
-  "openclaw_gateway_launchd_loaded_ok": {
-    "kind": "command",
-    "summary": "Bootstrap the existing managed OpenClaw gateway LaunchDaemon plist.",
-    "command": "sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/{{openclaw_gateway_label}}.plist"
-  },
-  "openclaw_gateway_launchd_running_ok": {
-    "kind": "command",
-    "summary": "Restart the managed OpenClaw gateway LaunchDaemon.",
-    "command": "sudo /bin/launchctl kickstart -k system/{{openclaw_gateway_label}}"
-  },
-  "openclaw_gateway_log_permissions_ok": {
-    "kind": "command",
-    "summary": "Restore the managed gateway log directory and private runner-owned log files.",
-    "command": "sudo /usr/bin/install -d -o root -g wheel -m 755 /var/log/tanaab/agentbox && sudo /usr/bin/touch /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log && sudo /usr/sbin/chown {{openclaw_user}}:\"$(/usr/bin/id -gn {{openclaw_user}})\" /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log && sudo /bin/chmod 600 /var/log/tanaab/agentbox/openclaw-gateway.stdout.log /var/log/tanaab/agentbox/openclaw-gateway.stderr.log"
-  },
-  "openclaw_native_gateway_launch_agents_absent_ok": {
+  "openclaw_gateway_activation_ok": {
     "kind": "reconcile",
-    "summary": "Re-run agentbox in system service mode to remove conflicting native gateway LaunchAgents for the runner and invoking admin."
-  },
-  "openclaw_admin_app_attach_only_ok": {
-    "kind": "reconcile",
-    "summary": "Re-run agentbox in system service mode to restore the admin OpenClaw app attach-only marker and private permissions."
-  },
-  "openclaw_admin_app_gateway_config_ok": {
-    "kind": "reconcile",
-    "summary": "Re-run agentbox in system service mode to synchronize the managed gateway port and token into the admin OpenClaw app configuration without exposing the credential."
-  },
-  "openclaw_gateway_tailscale_auth_ok": {
-    "kind": "reconcile",
-    "summary": "Re-run agentbox to restore verified Tailscale identity authentication in the runner-owned gateway configuration."
-  },
-  "openclaw_gateway_status_ok": {
-    "kind": "reconcile",
-    "summary": "The native user gateway requires a logged-in runner GUI session; restore that session or rerun agentbox in system service mode.",
+    "summary": "Re-run agentbox to reconcile native Gateway activation and preserve its diagnostic state.",
     "variants": [
       {
-        "when": [{ "key": "openclaw_service_mode", "equals": "system" }],
-        "kind": "command",
-        "summary": "Restart the managed gateway, then inspect its private stderr log if readiness still fails.",
-        "command": "sudo /bin/launchctl kickstart -k system/{{openclaw_gateway_label}}"
+        "when": [{ "key": "openclaw_gateway_state", "equals": "pending_first_login" }],
+        "kind": "manual",
+        "summary": "Reboot or log into the OpenClaw runtime account once so the staged Aqua finalizer can install the native Gateway."
+      },
+      {
+        "when": [
+          { "key": "openclaw_gateway_state", "equals": "gui_session_inactive" },
+          { "key": "openclaw_autologin_expected", "equals": "0" }
+        ],
+        "kind": "manual",
+        "summary": "Log into the OpenClaw runtime account again; autologin is disabled, so a graphical login is required after every reboot or logout."
+      },
+      {
+        "when": [{ "key": "openclaw_gateway_state", "equals": "gui_session_inactive" }],
+        "kind": "manual",
+        "summary": "Log into the OpenClaw runtime account or reboot. If expected autologin no longer occurs, rerun agentbox with the runtime password."
+      },
+      {
+        "when": [{ "key": "openclaw_gateway_state", "equals": "failed" }],
+        "kind": "reconcile",
+        "summary": "Inspect the runtime user's ~/Library/Logs/openclaw/gateway.log and ~/Library/Logs/agentbox/openclaw-finalize.error.log, then rerun agentbox."
+      },
+      {
+        "when": [{ "key": "openclaw_gateway_state", "equals": "legacy_system_service_detected" }],
+        "kind": "reconcile",
+        "summary": "Run agentbox migration; do not repair the retired system Gateway with generic launchctl commands."
+      },
+      {
+        "when": [{ "key": "openclaw_gateway_state", "equals": "duplicate_gateway_detected" }],
+        "kind": "reconcile",
+        "summary": "Run agentbox migration to back up and remove the conflicting administrator Gateway safely."
+      }
+    ]
+  },
+  "openclaw_gateway_mdns_hostname_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox to regenerate the managed Gateway environment with the configured macOS mDNS hostname."
+  },
+  "openclaw_gateway_agent_environment_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox to regenerate the native service environment for the agentbox-managed Gateway."
+  },
+  "openclaw_gateway_log_permissions_ok": {
+    "kind": "reconcile",
+    "summary": "Inspect the runtime user's ~/Library/Logs/openclaw/gateway.log, then rerun agentbox to reconcile the managed native Gateway and its private runtime log.",
+    "variants": [
+      {
+        "when": [{ "key": "openclaw_gateway_agentbox_managed", "equals": "0" }],
+        "kind": "manual",
+        "summary": "The healthy native Gateway is not agentbox-managed. Inspect and correct its runtime log permissions deliberately without asking agentbox to replace or restart it."
       }
     ]
   },
@@ -185,15 +211,7 @@
   },
   "openclaw_gateway_tailscale_serve_route_ok": {
     "kind": "reconcile",
-    "summary": "Restore the native user gateway's logged-in runner session so OpenClaw can reconcile its Tailscale Serve route.",
-    "variants": [
-      {
-        "when": [{ "key": "openclaw_service_mode", "equals": "system" }],
-        "kind": "command",
-        "summary": "Restart the managed gateway so OpenClaw can reconcile its Tailscale Serve route.",
-        "command": "sudo /bin/launchctl kickstart -k system/{{openclaw_gateway_label}}"
-      }
-    ]
+    "summary": "Restore the runtime user's graphical session or rerun agentbox so the native Gateway can reconcile its Tailscale Serve route."
   },
   "tailscale_firewall_warning": {
     "kind": "command",

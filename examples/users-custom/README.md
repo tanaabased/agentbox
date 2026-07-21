@@ -20,6 +20,7 @@ agentbox \
   --hostname "TANAABAGENTBOXUSERSCUSTOM" \
   --tailscale-authkey off \
   --brewgroup off \
+  --openclaw-autologin off \
   --openclaw-identity "Luna Fresh Claw <luna>" \
   --openclaw-password "LunaFreshClawPass1!" \
   --openclaw-auth-choice skip \
@@ -41,8 +42,8 @@ grep -F "sudo -iu luna $(brew --prefix)/bin/openclaw dashboard" "$TMPDIR/users-c
 # should report the openclaw runner as non-admin
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
 
-# should use system openclaw service mode
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=system"
+# should use native user LaunchAgent mode without changing CI autologin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=user"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
 
@@ -53,7 +54,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_home_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_ok=1"
 
-# should pass the overall agentbox health check
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --check
+# should stage activation until the runtime user logs in
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_state=pending_first_login"
 ```

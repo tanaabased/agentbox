@@ -19,7 +19,7 @@ BOOTBOX_URL="https://bootbox.tanaab.sh/bootbox.sh"
 DEFAULT_AGENTBOX_HOSTNAME="TANAABAGENTBOX1"
 DEFAULT_BREWGROUP="brewer"
 DEFAULT_OPENCLAW_IDENTITY="A Tanaab-based Claw <openclaw>"
-DEFAULT_OPENCLAW_SERVICE_MODE="system"
+DEFAULT_OPENCLAW_AUTOLOGIN="on"
 DEFAULT_OPENCLAW_GATEWAY_PORT="18789"
 DEFAULT_OPENCLAW_AUTH_CHOICE="skip"
 OPENCLAW_UI_ASSISTANT_NAME="MODEL L3-37"
@@ -36,6 +36,8 @@ AGENTBOX_TAILSCALED_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_TAILSCALED_LAB
 AGENTBOX_OPENCLAW_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
 AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}.plist"
 OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL="ai.openclaw.gateway"
+AGENTBOX_OPENCLAW_FINALIZER_LABEL="dev.tanaab.agentbox.openclaw-finalize"
+AGENTBOX_OPENCLAW_SERVICE_KIND="openclaw-gateway"
 OPENCLAW_DISABLE_LAUNCH_AGENT_MARKER=".openclaw/disable-launchagent"
 AGENTBOX_HOMEBREW_PATHS_FILE="/etc/paths.d/00-agentbox-homebrew"
 HOMEBREW_TAILSCALE_LABEL="homebrew.mxcl.tailscale"
@@ -221,6 +223,16 @@ shell_single_quote() {
   printf "'"
 }
 
+dotenv_double_quote() {
+  local value="$1"
+
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\n'/\\n}"
+  printf '"%s"' "${value}"
+}
+
 xml_escape() {
   local value="$1"
 
@@ -277,6 +289,7 @@ DEBUG="${AGENTBOX_DEBUG:-${DEBUG:-${RUNNER_DEBUG:-}}}"
 FORCE="${AGENTBOX_FORCE:-}"
 AGENTBOX_PAYLOAD_DIR_INPUT="${AGENTBOX_PAYLOAD_DIR:-}"
 AGENTBOX_PAYLOAD_DIR=""
+AGENTBOX_LIBEXEC_DIR=""
 AGENTBOX_PAYLOAD_SOURCE_KIND=""
 AGENTBOX_PAYLOAD_RELEASE_TAG=""
 AGENTBOX_HOSTNAME_VALUE="${AGENTBOX_HOSTNAME:-${DEFAULT_AGENTBOX_HOSTNAME}}"
@@ -287,10 +300,12 @@ OPENCLAW_IDENTITY_INPUT="${AGENTBOX_OPENCLAW_IDENTITY:-${DEFAULT_OPENCLAW_IDENTI
 OPENCLAW_FULL_NAME=""
 OPENCLAW_USER=""
 OPENCLAW_PASSWORD="${AGENTBOX_OPENCLAW_PASSWORD:-}"
-OPENCLAW_SERVICE_MODE="${AGENTBOX_OPENCLAW_SERVICE_MODE:-${DEFAULT_OPENCLAW_SERVICE_MODE}}"
+OPENCLAW_AUTOLOGIN="${AGENTBOX_OPENCLAW_AUTOLOGIN:-${DEFAULT_OPENCLAW_AUTOLOGIN}}"
+LEGACY_OPENCLAW_SERVICE_MODE_SET="${AGENTBOX_OPENCLAW_SERVICE_MODE+x}"
 OPENCLAW_GATEWAY_BIND_VALUE="loopback"
 OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE=""
 OPENCLAW_GATEWAY_PORT="${AGENTBOX_OPENCLAW_GATEWAY_PORT:-${DEFAULT_OPENCLAW_GATEWAY_PORT}}"
+OPENCLAW_GATEWAY_PORT_EXPLICIT="${AGENTBOX_OPENCLAW_GATEWAY_PORT+x}"
 OPENCLAW_AUTH_CHOICE="${AGENTBOX_OPENCLAW_AUTH_CHOICE:-${DEFAULT_OPENCLAW_AUTH_CHOICE}}"
 OPENCLAW_AUTH_ENV="${AGENTBOX_OPENCLAW_AUTH_ENV:-}"
 TAILSCALE_AUTHKEY="${AGENTBOX_TAILSCALE_AUTHKEY:-}"
@@ -320,11 +335,13 @@ AGENTBOX_ASSETS_DIR=""
 AGENTBOX_HEALTH_SCRIPT_SOURCE=""
 AGENTBOX_HEALTH_PLIST_TEMPLATE=""
 AGENTBOX_TAILSCALED_PLIST_TEMPLATE=""
-AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE=""
+AGENTBOX_OPENCLAW_FINALIZER_PLIST_TEMPLATE=""
+AGENTBOX_OPENCLAW_FINALIZER_SOURCE=""
 AGENTBOX_PROFILE_IMAGE_SOURCE=""
 AGENTBOX_DEFAULT_AVATAR_SOURCE=""
 BREW_PREFIX_VALUE=""
 TAILSCALE_HOSTNAME_VALUE=""
+OPENCLAW_GATEWAY_SETUP_STATUS="not_configured"
 
 if [[ -n "${AGENTBOX_AUTHORIZED_KEY:-}" ]]; then
   append_array_value AUTHORIZED_KEY_SPECS "${AGENTBOX_AUTHORIZED_KEY}"
@@ -385,7 +402,7 @@ brewgroup_display() {
 }
 
 openclaw_autologin_enabled() {
-  [[ "${OPENCLAW_SERVICE_MODE}" == "user" ]]
+  [[ "${OPENCLAW_AUTOLOGIN}" == "on" ]]
 }
 
 openclaw_autologin_display() {
@@ -394,10 +411,6 @@ openclaw_autologin_display() {
   else
     printf "disabled"
   fi
-}
-
-openclaw_service_mode_display() {
-  printf "%s" "${OPENCLAW_SERVICE_MODE}"
 }
 
 openclaw_password_display() {
@@ -765,19 +778,15 @@ openclaw_gateway_port_valid() {
   (( 10#${port} >= 1 && 10#${port} <= 65535 ))
 }
 
-openclaw_service_mode_valid() {
+openclaw_autologin_valid() {
   case "${1:-}" in
-    system | user)
+    on | off)
       return 0
       ;;
     *)
       return 1
       ;;
   esac
-}
-
-openclaw_service_mode_is_system() {
-  [[ "${OPENCLAW_SERVICE_MODE}" == "system" ]]
 }
 
 derive_openclaw_gateway_tailscale_mode() {
@@ -896,7 +905,7 @@ usage() {
   local tailscale_authkey_display_value="none"
   local brewgroup_display_value="none"
   local openclaw_password_display_value="none"
-  local openclaw_service_mode_display_value="${DEFAULT_OPENCLAW_SERVICE_MODE}"
+  local openclaw_autologin_display_value="${DEFAULT_OPENCLAW_AUTOLOGIN}"
   local openclaw_gateway_port_display_value="${DEFAULT_OPENCLAW_GATEWAY_PORT}"
   local openclaw_auth_choice_display_value="${DEFAULT_OPENCLAW_AUTH_CHOICE}"
   local openclaw_auth_env_display_value="none"
@@ -914,7 +923,7 @@ usage() {
   tailscale_authkey_display_value="$(tailscale_authkey_display)"
   brewgroup_display_value="$(brewgroup_display)"
   openclaw_password_display_value="$(openclaw_password_display)"
-  openclaw_service_mode_display_value="$(openclaw_service_mode_display)"
+  openclaw_autologin_display_value="${OPENCLAW_AUTOLOGIN}"
   openclaw_gateway_port_display_value="$(openclaw_gateway_port_display)"
   openclaw_auth_choice_display_value="$(openclaw_auth_choice_display)"
   openclaw_auth_env_display_value="$(openclaw_auth_env_display)"
@@ -935,8 +944,8 @@ EOS
   usage_option "--tailscale-authkey" "uses a tailscale auth key to join; falsey disables setup" "${tailscale_authkey_display_value}"
   usage_option "--brewgroup" "manages homebrew prefix group write access; accepts group[:trusted-group]; falsey disables setup" "${brewgroup_display_value}"
   usage_option "--openclaw-identity" "configures the openclaw runner as \"full name <shortname>\"" "${OPENCLAW_IDENTITY_INPUT}"
-  usage_option "--openclaw-password" "sets the openclaw runner password for user creation or user service autologin" "${openclaw_password_display_value}"
-  usage_option "--openclaw-service-mode" "sets openclaw gateway supervision mode: system or user" "${openclaw_service_mode_display_value}"
+  usage_option "--openclaw-password" "sets the openclaw runner password for user creation or autologin" "${openclaw_password_display_value}"
+  usage_option "--openclaw-autologin" "sets runtime-user autologin for unattended reboot recovery: on or off" "${openclaw_autologin_display_value}"
   usage_option "--openclaw-auth-choice" "sets initial openclaw model auth choice" "${openclaw_auth_choice_display_value}"
   usage_option "--openclaw-auth-env" "passes one extra parent env var to openclaw auth onboarding" "${openclaw_auth_env_display_value}"
   usage_option "--openclaw-gateway-port" "sets openclaw gateway port" "${openclaw_gateway_port_display_value}"
@@ -956,7 +965,7 @@ ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_BREWGROUP             same as --brewgroup
   AGENTBOX_OPENCLAW_IDENTITY     same as --openclaw-identity
   AGENTBOX_OPENCLAW_PASSWORD     same as --openclaw-password
-  AGENTBOX_OPENCLAW_SERVICE_MODE same as --openclaw-service-mode
+  AGENTBOX_OPENCLAW_AUTOLOGIN    same as --openclaw-autologin
   AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice
   AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env
   AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port
@@ -1126,24 +1135,29 @@ parse_args() {
         OPENCLAW_AUTH_ENV="${1#*=}"
         shift
         ;;
-      --openclaw-service-mode)
-        require_next_option_value "--openclaw-service-mode" "$#"
-        OPENCLAW_SERVICE_MODE="$2"
+      --openclaw-autologin)
+        require_next_option_value "--openclaw-autologin" "$#"
+        OPENCLAW_AUTOLOGIN="$2"
         shift 2
         ;;
-      --openclaw-service-mode=*)
-        require_inline_option_value "--openclaw-service-mode" "${1#*=}"
-        OPENCLAW_SERVICE_MODE="${1#*=}"
+      --openclaw-autologin=*)
+        require_inline_option_value "--openclaw-autologin" "${1#*=}"
+        OPENCLAW_AUTOLOGIN="${1#*=}"
         shift
+        ;;
+      --openclaw-service-mode | --openclaw-service-mode=*)
+        abort_option_usage "option ${tty_bold}--openclaw-service-mode${tty_reset} was removed; the native user LaunchAgent is now the only supported macos gateway service. Remove this option and use ${tty_bold}--openclaw-autologin on|off${tty_reset}."
         ;;
       --openclaw-gateway-port)
         require_next_option_value "--openclaw-gateway-port" "$#"
         OPENCLAW_GATEWAY_PORT="$2"
+        OPENCLAW_GATEWAY_PORT_EXPLICIT="1"
         shift 2
         ;;
       --openclaw-gateway-port=*)
         require_inline_option_value "--openclaw-gateway-port" "${1#*=}"
         OPENCLAW_GATEWAY_PORT="${1#*=}"
+        OPENCLAW_GATEWAY_PORT_EXPLICIT="1"
         shift
         ;;
       --force)
@@ -1308,7 +1322,8 @@ agentbox_payload_valid() {
   [[ -f "${dir}/bin/health.sh" ]] || return 1
   [[ -f "${dir}/launchd/dev.tanaab.agentbox.health.plist.in" ]] || return 1
   [[ -f "${dir}/launchd/dev.tanaab.agentbox.tailscaled.plist.in" ]] || return 1
-  [[ -f "${dir}/launchd/dev.tanaab.agentbox.openclaw-gateway.plist.in" ]] || return 1
+  [[ -f "${dir}/launchd/dev.tanaab.agentbox.openclaw-finalize.plist.in" ]] || return 1
+  [[ -f "${dir}/libexec/agentbox-openclaw-finalize.sh" ]] || return 1
   [[ -f "${dir}/assets/default_avatar.png" ]] || return 1
 
   for profile_image_source in "${dir}"/assets/profile*.png; do
@@ -1501,11 +1516,13 @@ discover_agentbox_payload() {
   AGENTBOX_CORE_BREWFILE="${AGENTBOX_PAYLOAD_DIR}/Brewfile"
   AGENTBOX_BIN_DIR="${AGENTBOX_PAYLOAD_DIR}/bin"
   AGENTBOX_LAUNCHD_DIR="${AGENTBOX_PAYLOAD_DIR}/launchd"
+  AGENTBOX_LIBEXEC_DIR="${AGENTBOX_PAYLOAD_DIR}/libexec"
   AGENTBOX_ASSETS_DIR="${AGENTBOX_PAYLOAD_DIR}/assets"
   AGENTBOX_HEALTH_SCRIPT_SOURCE="${AGENTBOX_BIN_DIR}/health.sh"
   AGENTBOX_HEALTH_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.health.plist.in"
   AGENTBOX_TAILSCALED_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.tailscaled.plist.in"
-  AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.openclaw-gateway.plist.in"
+  AGENTBOX_OPENCLAW_FINALIZER_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.openclaw-finalize.plist.in"
+  AGENTBOX_OPENCLAW_FINALIZER_SOURCE="${AGENTBOX_LIBEXEC_DIR}/agentbox-openclaw-finalize.sh"
   AGENTBOX_DEFAULT_AVATAR_SOURCE="${AGENTBOX_ASSETS_DIR}/default_avatar.png"
   AGENTBOX_PROFILE_IMAGE_SOURCES=()
   AGENTBOX_PROFILE_IMAGE_SOURCE=""
@@ -1526,8 +1543,8 @@ discover_agentbox_payload() {
     abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_TAILSCALED_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or release payload that includes bin/ and launchd/."
   fi
 
-  if [[ ! -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE}" ]]; then
-    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required runtime asset ${tty_ts}$(display_home_path "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE}")${tty_reset}; use a current agentbox checkout or release payload that includes bin/ and launchd/."
+  if [[ ! -f "${AGENTBOX_OPENCLAW_FINALIZER_PLIST_TEMPLATE}" || ! -f "${AGENTBOX_OPENCLAW_FINALIZER_SOURCE}" ]]; then
+    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing the openclaw Aqua finalizer assets; use a current agentbox checkout or release payload that includes launchd/ and libexec/."
   fi
 
   if [[ ! -f "${AGENTBOX_DEFAULT_AVATAR_SOURCE}" ]]; then
@@ -1725,11 +1742,43 @@ validate_existing_openclaw_user() {
 }
 
 autologin_user_value() {
-  sudo defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true
+  /usr/bin/defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true
 }
 
 openclaw_autologin_configured() {
   [[ "$(autologin_user_value)" == "${OPENCLAW_USER}" ]]
+}
+
+filevault_enabled() {
+  local status
+
+  status="$(/usr/bin/fdesetup status 2>/dev/null || true)"
+  [[ "${status}" == "FileVault is On."* ]]
+}
+
+validate_openclaw_autologin_preflight() {
+  local configured_user
+
+  if ! openclaw_autologin_enabled; then
+    return 0
+  fi
+
+  if filevault_enabled; then
+    abort_multi "$(cat <<EOABORT
+FileVault is enabled, so macos cannot provide unattended runtime-user autologin after a cold boot.
+disable FileVault deliberately before using the default unattended recovery profile, or rerun with ${tty_bold}--openclaw-autologin off${tty_reset} and accept a graphical login after each reboot.
+EOABORT
+)"
+  fi
+
+  configured_user="$(autologin_user_value)"
+  if [[ -n "${configured_user}" && "${configured_user}" != "${OPENCLAW_USER}" ]]; then
+    abort_multi "$(cat <<EOABORT
+macos autologin is already configured for ${tty_ts}${configured_user}${tty_reset}; agentbox will not replace login-window state owned by another account.
+rerun with ${tty_bold}--openclaw-autologin off${tty_reset}, or deliberately disable the existing autologin configuration before rerunning.
+EOABORT
+)"
+  fi
 }
 
 openclaw_password_required() {
@@ -1903,7 +1952,10 @@ create_openclaw_user() {
 
 ensure_openclaw_autologin() {
   if ! openclaw_autologin_enabled; then
-    log "${tty_tp}skipping${tty_reset} openclaw runner autologin because openclaw service mode is ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}"
+    log "${tty_tp}skipping${tty_reset} openclaw runner autologin because ${tty_ts}--openclaw-autologin off${tty_reset} was selected"
+    if openclaw_autologin_configured; then
+      warn "${OPENCLAW_USER} is already the configured autologin user; agentbox preserves existing login-window state when autologin is opted out."
+    fi
     return 0
   fi
 
@@ -1917,11 +1969,11 @@ ensure_openclaw_autologin() {
   log "${tty_tp}configuring${tty_reset} openclaw runner autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}"
   debug "${tty_tp}running${tty_reset}" sudo sysadminctl -autologin set -userName "${OPENCLAW_USER}" -password "****"
   if ! sudo sysadminctl -autologin set -userName "${OPENCLAW_USER}" -password "${OPENCLAW_PASSWORD}"; then
-    abort "failed to configure openclaw runner autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}; use ${tty_bold}--openclaw-service-mode system${tty_reset} if this mac should not use gui autologin."
+    abort "macos policy or sysadminctl prevented autologin for ${tty_ts}${OPENCLAW_USER}${tty_reset}; rerun with ${tty_bold}--openclaw-autologin off${tty_reset} and accept manual graphical login after each reboot, or change the machine policy deliberately."
   fi
 
   if ! openclaw_autologin_configured; then
-    abort "openclaw runner autologin did not become active for ${tty_ts}${OPENCLAW_USER}${tty_reset}; use ${tty_bold}--openclaw-service-mode system${tty_reset} if this mac should not use gui autologin."
+    abort "openclaw runner autologin did not become active for ${tty_ts}${OPENCLAW_USER}${tty_reset}; rerun with ${tty_bold}--openclaw-autologin off${tty_reset} and accept manual graphical login after each reboot, or change the machine policy deliberately."
   fi
 }
 
@@ -2334,13 +2386,16 @@ AGENTBOX_HEALTH_HOMEBREW_PATHS_FILE=$(shell_quote "${AGENTBOX_HOMEBREW_PATHS_FIL
 AGENTBOX_HEALTH_ADMIN_USER=$(shell_quote "${ADMIN_USER}")
 AGENTBOX_HEALTH_OPENCLAW_USER=$(shell_quote "${OPENCLAW_USER}")
 AGENTBOX_HEALTH_OPENCLAW_FULL_NAME=$(shell_quote "${OPENCLAW_FULL_NAME}")
-AGENTBOX_HEALTH_OPENCLAW_SERVICE_MODE=$(shell_quote "${OPENCLAW_SERVICE_MODE}")
+AGENTBOX_HEALTH_OPENCLAW_SERVICE_MODE=user
 AGENTBOX_HEALTH_OPENCLAW_AUTOLOGIN_EXPECTED=${openclaw_autologin_expected}
-AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL=$(shell_quote "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}")
+AGENTBOX_HEALTH_OPENCLAW_GATEWAY_LABEL=$(shell_quote "${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}")
+AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL=$(shell_quote "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}")
+AGENTBOX_HEALTH_OPENCLAW_FINALIZER_LABEL=$(shell_quote "${AGENTBOX_OPENCLAW_FINALIZER_LABEL}")
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=$(shell_quote "${OPENCLAW_GATEWAY_BIND_VALUE}")
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE=$(shell_quote "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}")
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT=$(shell_quote "${OPENCLAW_GATEWAY_PORT}")
 AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE=$(shell_quote "${OPENCLAW_AUTH_CHOICE}")
+AGENTBOX_HEALTH_OPENCLAW_GATEWAY_SETUP_STATUS=$(shell_quote "${OPENCLAW_GATEWAY_SETUP_STATUS}")
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED=${ssh_hardening_expected}
 AGENTBOX_HEALTH_SSH_ALLOWED_USERS=$(shell_quote "${ssh_allowed_users}")
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER=${managed_macos_runner}
@@ -2363,124 +2418,24 @@ openclaw_gateway_state_dir() {
   printf "%s/.openclaw" "$(openclaw_runner_home_required)"
 }
 
-openclaw_gateway_tmp_dir() {
-  printf "%s/tmp" "$(openclaw_gateway_state_dir)"
-}
-
 openclaw_gateway_service_env_dir() {
   printf "%s/service-env" "$(openclaw_gateway_state_dir)"
 }
 
-openclaw_gateway_service_env_file_path() {
-  printf "%s/%s.env" "$(openclaw_gateway_service_env_dir)" "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
+openclaw_gateway_dotenv_path() {
+  printf "%s/.env" "$(openclaw_gateway_state_dir)"
 }
 
-openclaw_gateway_service_env_wrapper_path() {
-  printf "%s/%s-env-wrapper.sh" "$(openclaw_gateway_service_env_dir)" "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
+openclaw_native_gateway_service_env_file_path() {
+  printf "%s/%s.env" "$(openclaw_gateway_service_env_dir)" "${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}"
 }
 
-openclaw_gateway_service_version() {
-  local openclaw_bin="${BREW_PREFIX_VALUE}/bin/openclaw"
-  local version_output=""
-
-  if [[ -x "${openclaw_bin}" ]]; then
-    version_output="$("${openclaw_bin}" --version 2>/dev/null || true)"
-    version_output="$(trim_whitespace "${version_output}")"
-  fi
-
-  if [[ "${version_output}" =~ ([0-9]+[.][0-9]+[.][^[:space:]]+) ]]; then
-    printf "%s" "${BASH_REMATCH[1]}"
-    return 0
-  fi
-
-  if [[ -n "${version_output}" ]]; then
-    printf "%s" "${version_output##* }"
-    return 0
-  fi
-
-  printf "unknown"
+openclaw_native_gateway_log_dir() {
+  printf "%s/Library/Logs/openclaw" "$(openclaw_runner_home_required)"
 }
 
-prepare_openclaw_gateway_runtime_dirs() {
-  local primary_group
-  local service_env_dir
-  local state_dir
-  local tmp_dir
-
-  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
-  state_dir="$(openclaw_gateway_state_dir)"
-  tmp_dir="$(openclaw_gateway_tmp_dir)"
-  service_env_dir="$(openclaw_gateway_service_env_dir)"
-
-  execute sudo /usr/bin/install -d -o "${OPENCLAW_USER}" -g "${primary_group}" -m 700 "${state_dir}" "${tmp_dir}" "${service_env_dir}"
-}
-
-openclaw_gateway_node_extra_ca_certs() {
-  printf "%s" "${NODE_EXTRA_CA_CERTS:-/etc/ssl/cert.pem}"
-}
-
-openclaw_gateway_node_use_system_ca() {
-  printf "%s" "${NODE_USE_SYSTEM_CA:-1}"
-}
-
-openclaw_gateway_service_env_entry() {
-  local key="$1"
-  local value="${2:-}"
-
-  if [[ -z "${value}" ]]; then
-    return 0
-  fi
-
-  printf "export %s=" "${key}"
-  shell_single_quote "${value}"
-  printf "\n"
-}
-
-openclaw_gateway_service_env_content() {
-  local home
-  local health_command
-  local path_value
-  local state_dir
-  local tmp_dir
-
-  home="$(openclaw_runner_home_required)"
-  health_command="${AGENTBOX_OPT_DIR}/bin/health.sh --report"
-  path_value="$(openclaw_runner_path)"
-  state_dir="$(openclaw_gateway_state_dir)"
-  tmp_dir="$(openclaw_gateway_tmp_dir)"
-
-  printf "# generated by agentbox. do not edit; use %s/.env for durable openclaw runtime env.\n" "${state_dir}"
-  openclaw_gateway_service_env_entry "HOME" "${home}"
-  openclaw_gateway_service_env_entry "USER" "${OPENCLAW_USER}"
-  openclaw_gateway_service_env_entry "LOGNAME" "${OPENCLAW_USER}"
-  openclaw_gateway_service_env_entry "PATH" "${path_value}"
-  openclaw_gateway_service_env_entry "TMPDIR" "${tmp_dir}"
-  openclaw_gateway_service_env_entry "NODE_EXTRA_CA_CERTS" "$(openclaw_gateway_node_extra_ca_certs)"
-  openclaw_gateway_service_env_entry "NODE_USE_SYSTEM_CA" "$(openclaw_gateway_node_use_system_ca)"
-  openclaw_gateway_service_env_entry "OPENCLAW_STATE_DIR" "${state_dir}"
-  openclaw_gateway_service_env_entry "OPENCLAW_MDNS_HOSTNAME" "${AGENTBOX_HOSTNAME_VALUE}"
-  openclaw_gateway_service_env_entry "OPENCLAW_GATEWAY_PORT" "${OPENCLAW_GATEWAY_PORT}"
-  openclaw_gateway_service_env_entry "OPENCLAW_LAUNCHD_LABEL" "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
-  openclaw_gateway_service_env_entry "OPENCLAW_SERVICE_MARKER" "openclaw"
-  openclaw_gateway_service_env_entry "OPENCLAW_SERVICE_KIND" "gateway"
-  openclaw_gateway_service_env_entry "OPENCLAW_SERVICE_VERSION" "$(openclaw_gateway_service_version)"
-  openclaw_gateway_service_env_entry "AGENTBOX_MANAGED" "1"
-  openclaw_gateway_service_env_entry "AGENTBOX_SERVICE_KIND" "openclaw-gateway"
-  openclaw_gateway_service_env_entry "AGENTBOX_VERSION" "${SCRIPT_VERSION}"
-  openclaw_gateway_service_env_entry "AGENTBOX_HEALTH_COMMAND" "${health_command}"
-}
-
-openclaw_gateway_service_env_wrapper_content() {
-  cat <<'EOSERVICEENVWRAPPER'
-#!/bin/sh
-set -eu
-env_file="$1"
-shift
-if [ -f "$env_file" ]; then
-  . "$env_file"
-fi
-exec "$@"
-EOSERVICEENVWRAPPER
+openclaw_native_gateway_log_path() {
+  printf "%s/gateway.log" "$(openclaw_native_gateway_log_dir)"
 }
 
 agentbox_launchd_template_content() {
@@ -2497,17 +2452,6 @@ agentbox_launchd_template_content() {
   local tailscaled_stderr_log
   local tailscaled_statedir
   local tailscaled_statedir_argument
-  local openclaw_gateway_label
-  local openclaw_gateway_bin
-  local openclaw_gateway_user
-  local openclaw_gateway_working_directory
-  local openclaw_gateway_bind
-  local openclaw_gateway_env_file
-  local openclaw_gateway_env_wrapper
-  local openclaw_gateway_tailscale_mode
-  local openclaw_gateway_port
-  local openclaw_gateway_stdout_log
-  local openclaw_gateway_stderr_log
 
   if ! rendered="$(cat "${template_path}")"; then
     abort "failed to read agentbox launchd template ${tty_ts}$(display_home_path "${template_path}")${tty_reset}."
@@ -2524,17 +2468,6 @@ agentbox_launchd_template_content() {
   tailscaled_stderr_log="$(xml_escape "${AGENTBOX_LOG_DIR}/tailscaled.stderr.log")"
   tailscaled_statedir="${AGENTBOX_TAILSCALED_STATE_DIR}"
   tailscaled_statedir_argument="      <string>$(xml_escape "--statedir=${tailscaled_statedir}")</string>"
-  openclaw_gateway_label="$(xml_escape "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}")"
-  openclaw_gateway_bin="$(xml_escape "${BREW_PREFIX_VALUE}/bin/openclaw")"
-  openclaw_gateway_user="$(xml_escape "${OPENCLAW_USER}")"
-  openclaw_gateway_working_directory="$(xml_escape "$(openclaw_gateway_state_dir)")"
-  openclaw_gateway_bind="$(xml_escape "${OPENCLAW_GATEWAY_BIND_VALUE}")"
-  openclaw_gateway_env_file="$(xml_escape "$(openclaw_gateway_service_env_file_path)")"
-  openclaw_gateway_env_wrapper="$(xml_escape "$(openclaw_gateway_service_env_wrapper_path)")"
-  openclaw_gateway_tailscale_mode="$(xml_escape "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}")"
-  openclaw_gateway_port="$(xml_escape "${OPENCLAW_GATEWAY_PORT}")"
-  openclaw_gateway_stdout_log="$(xml_escape "${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log")"
-  openclaw_gateway_stderr_log="$(xml_escape "${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log")"
 
   rendered="${rendered//__AGENTBOX_VERSION__/${agentbox_version}}"
   rendered="${rendered//__AGENTBOX_HEALTH_LABEL__/${health_label}}"
@@ -2546,17 +2479,6 @@ agentbox_launchd_template_content() {
   rendered="${rendered//__AGENTBOX_TAILSCALED_STATEDIR_ARGUMENT__/${tailscaled_statedir_argument}}"
   rendered="${rendered//__AGENTBOX_TAILSCALED_STDOUT_LOG__/${tailscaled_stdout_log}}"
   rendered="${rendered//__AGENTBOX_TAILSCALED_STDERR_LOG__/${tailscaled_stderr_log}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_LABEL__/${openclaw_gateway_label}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_BIN__/${openclaw_gateway_bin}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_USER__/${openclaw_gateway_user}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_WORKING_DIRECTORY__/${openclaw_gateway_working_directory}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_BIND__/${openclaw_gateway_bind}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_ENV_FILE__/${openclaw_gateway_env_file}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_ENV_WRAPPER__/${openclaw_gateway_env_wrapper}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_TAILSCALE_MODE__/${openclaw_gateway_tailscale_mode}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_PORT__/${openclaw_gateway_port}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_STDOUT_LOG__/${openclaw_gateway_stdout_log}}"
-  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_STDERR_LOG__/${openclaw_gateway_stderr_log}}"
 
   if [[ "${rendered}" == *"__AGENTBOX_"* ]]; then
     abort "agentbox launchd template ${tty_ts}$(display_home_path "${template_path}")${tty_reset} contains unresolved placeholders."
@@ -2664,6 +2586,20 @@ run_agentbox_post_bootstrap_summary() {
 
   debug_multi "agentbox health report" "${health_report}"
   log
+  if [[ "${OPENCLAW_GATEWAY_SETUP_STATUS}" == "pending_first_login" ]]; then
+    log "agentbox setup ${tty_green}succeeded${tty_reset}; openclaw Gateway activation is staged for the runtime user's next graphical login"
+    log
+    log "after activation, ${tty_tp}open${tty_reset} the openclaw dashboard:"
+    log "  ${tty_ts}${dashboard_command}${tty_reset}"
+    return 0
+  fi
+
+  if [[ "${OPENCLAW_GATEWAY_SETUP_STATUS}" == "failed" ]]; then
+    printf "agentbox setup completed, but openclaw Gateway activation %sfailed%s\n" "${tty_red}" "${tty_reset}" >&2
+    printf "%sdetails:%s inspect %s and rerun agentbox\n" "${tty_dim}" "${tty_reset}" "$(openclaw_finalizer_log_dir)/openclaw-finalize.error.log" >&2
+    return 1
+  fi
+
   if [[ "${health_ok}" == "1" ]]; then
     log "agentbox setup ${tty_green}succeeded${tty_reset}"
     log
@@ -2838,7 +2774,7 @@ EOABORT
 validate_inputs_before_sudo() {
   TAILSCALE_AUTHKEY="$(trim_whitespace "${TAILSCALE_AUTHKEY}")"
   OPENCLAW_IDENTITY_INPUT="$(trim_whitespace "${OPENCLAW_IDENTITY_INPUT}")"
-  OPENCLAW_SERVICE_MODE="$(trim_whitespace "${OPENCLAW_SERVICE_MODE}")"
+  OPENCLAW_AUTOLOGIN="$(trim_whitespace "${OPENCLAW_AUTOLOGIN}")"
   OPENCLAW_GATEWAY_PORT="$(trim_whitespace "${OPENCLAW_GATEWAY_PORT}")"
   OPENCLAW_AUTH_CHOICE="$(trim_whitespace "${OPENCLAW_AUTH_CHOICE}")"
   OPENCLAW_AUTH_ENV="$(trim_whitespace "${OPENCLAW_AUTH_ENV}")"
@@ -2853,8 +2789,12 @@ validate_inputs_before_sudo() {
     abort "openclaw auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset} must not contain whitespace."
   fi
 
-  if ! openclaw_service_mode_valid "${OPENCLAW_SERVICE_MODE}"; then
-    abort "openclaw service mode ${tty_ts}${OPENCLAW_SERVICE_MODE:-empty}${tty_reset} must be ${tty_ts}system${tty_reset} or ${tty_ts}user${tty_reset}."
+  if [[ -n "${LEGACY_OPENCLAW_SERVICE_MODE_SET}" ]]; then
+    abort "environment variable ${tty_bold}AGENTBOX_OPENCLAW_SERVICE_MODE${tty_reset} was removed; the native user LaunchAgent is now the only supported macos gateway service. Remove it and use ${tty_bold}AGENTBOX_OPENCLAW_AUTOLOGIN=on|off${tty_reset}."
+  fi
+
+  if ! openclaw_autologin_valid "${OPENCLAW_AUTOLOGIN}"; then
+    abort "openclaw autologin ${tty_ts}${OPENCLAW_AUTOLOGIN:-empty}${tty_reset} must be ${tty_ts}on${tty_reset} or ${tty_ts}off${tty_reset}."
   fi
 
   if [[ -n "${OPENCLAW_AUTH_ENV}" ]] && ! env_name_valid "${OPENCLAW_AUTH_ENV}"; then
@@ -2889,6 +2829,7 @@ validate_inputs() {
 
   resolve_authorized_key_specs
   validate_existing_openclaw_user
+  validate_openclaw_autologin_preflight
 
   if [[ -n "${NONINTERACTIVE-}" || -n "${CI-}" ]]; then
     if openclaw_password_required && [[ -z "${OPENCLAW_PASSWORD}" ]]; then
@@ -3262,9 +3203,9 @@ plan_wrapper_execution() {
     plan_action "${tty_tp}create${tty_reset} non-admin openclaw runner user ${tty_ts}${OPENCLAW_FULL_NAME} <${OPENCLAW_USER}>${tty_reset}"
   fi
   if openclaw_autologin_enabled; then
-    plan_action "${tty_tp}ensure${tty_reset} openclaw runner autologin is configured for ${tty_ts}${OPENCLAW_USER}${tty_reset} because openclaw service mode is ${tty_ts}user${tty_reset}"
+    plan_action "${tty_tp}ensure${tty_reset} openclaw runner autologin is configured for ${tty_ts}${OPENCLAW_USER}${tty_reset} for unattended reboot recovery"
   else
-    plan_action "${tty_tp}skip${tty_reset} openclaw runner autologin because openclaw service mode is ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}"
+    plan_action "${tty_tp}preserve${tty_reset} login-window state and require a graphical runtime-user login after each reboot"
   fi
   if brewgroup_setup_disabled; then
     plan_action "${tty_tp}skip${tty_reset} homebrew brewgroup setup because the brewgroup input is disabled"
@@ -3288,23 +3229,15 @@ plan_wrapper_execution() {
     plan_action "${tty_tp}remove${tty_reset} competing official or homebrew ${tty_ts}tailscaled${tty_reset} launchd services if present"
     plan_action "${tty_tp}configure or verify${tty_reset} ${tty_ts}tailscaled${tty_reset} as an agentbox system launchd daemon, tailscale hostname ${tty_ts}${TAILSCALE_HOSTNAME_VALUE}${tty_reset}, tailscale serve prerequisites, and scoped magicdns resolver"
   fi
-  if openclaw_service_mode_is_system; then
-    plan_action "${tty_tp}remove${tty_reset} openclaw native user gateway service ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} or invoking admin ${tty_ts}${ADMIN_USER}${tty_reset} if present"
-    plan_action "${tty_tp}configure${tty_reset} the openclaw app for invoking admin ${tty_ts}${ADMIN_USER}${tty_reset} to attach to the agentbox-managed gateway without managing launchd"
-  else
-    plan_action "${tty_tp}remove${tty_reset} agentbox openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset} if present"
-  fi
-  plan_action "${tty_tp}onboard or reconcile${tty_reset} openclaw gateway configuration for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} using service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+  plan_action "${tty_tp}archive and remove${tty_reset} the legacy system gateway service ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset} if present"
+  plan_action "${tty_tp}migrate${tty_reset} a conflicting invoking-admin native gateway and configure the admin app for attach-only use"
+  plan_action "${tty_tp}onboard or reconcile${tty_reset} openclaw gateway configuration for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} without installing a service, using model auth choice ${tty_ts}${OPENCLAW_AUTH_CHOICE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" == "serve" ]]; then
     plan_action "${tty_tp}allow${tty_reset} verified tailscale identities for openclaw gateway authentication"
   fi
   plan_action "${tty_tp}configure${tty_reset} permanent openclaw fallback gateway branding as ${tty_ts}${OPENCLAW_UI_ASSISTANT_NAME}${tty_reset} with the bundled default avatar and Tanaab green seam color"
-  if openclaw_service_mode_is_system; then
-    plan_action "${tty_tp}install or refresh${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
-  else
-    plan_action "${tty_tp}delegate${tty_reset} openclaw gateway service install to openclaw native user service management"
-  fi
-  plan_action "${tty_tp}verify${tty_reset} openclaw gateway readiness and configured tailscale exposure"
+  plan_action "${tty_tp}stage${tty_reset} an Aqua-only one-time finalizer that installs and verifies native LaunchAgent ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset}"
+  plan_action "${tty_tp}activate and verify${tty_reset} the finalizer immediately when the runtime GUI domain exists; otherwise complete on first graphical login"
   plan_action "${tty_tp}install or refresh${tty_reset} launchd health check ${tty_ts}${AGENTBOX_HEALTH_LABEL}${tty_reset}"
   plan_action "${tty_tp}print${tty_reset} a nonfatal post-bootstrap health summary"
 }
@@ -4073,7 +4006,14 @@ run_as_openclaw_runner() {
   home="$(openclaw_runner_home_required)"
   path_value="$(openclaw_runner_path)"
 
-  env_args=("HOME=${home}" "USER=${OPENCLAW_USER}" "LOGNAME=${OPENCLAW_USER}" "PATH=${path_value}")
+  env_args=(
+    "HOME=${home}"
+    "USER=${OPENCLAW_USER}"
+    "LOGNAME=${OPENCLAW_USER}"
+    "PATH=${path_value}"
+    "OPENCLAW_HOME=${home}"
+    "OPENCLAW_STATE_DIR=${home}/.openclaw"
+  )
   env_display_args=("${env_args[@]}")
 
   for env_name in ${extra_env_names}; do
@@ -4148,6 +4088,95 @@ openclaw_gateway_configuration_initialized() {
   return 0
 }
 
+preserve_existing_openclaw_gateway_configuration() {
+  local openclaw_bin="$1"
+  local existing_bind
+  local existing_port
+  local existing_tailscale_mode
+
+  existing_bind="$(run_as_openclaw_runner "${openclaw_bin}" config get gateway.bind 2>/dev/null || true)"
+  existing_bind="$(trim_whitespace "${existing_bind}")"
+  if [[ -n "${existing_bind}" ]]; then
+    OPENCLAW_GATEWAY_BIND_VALUE="${existing_bind}"
+  fi
+
+  if [[ -z "${OPENCLAW_GATEWAY_PORT_EXPLICIT}" ]]; then
+    existing_port="$(run_as_openclaw_runner "${openclaw_bin}" config get gateway.port 2>/dev/null || true)"
+    existing_port="$(trim_whitespace "${existing_port}")"
+    if openclaw_gateway_port_valid "${existing_port}"; then
+      OPENCLAW_GATEWAY_PORT="${existing_port}"
+    fi
+  fi
+
+  existing_tailscale_mode="$(run_as_openclaw_runner "${openclaw_bin}" config get gateway.tailscale.mode 2>/dev/null || true)"
+  existing_tailscale_mode="$(trim_whitespace "${existing_tailscale_mode}")"
+  case "${existing_tailscale_mode}" in
+    off | serve | funnel) OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE="${existing_tailscale_mode}" ;;
+  esac
+
+  debug "${tty_tp}preserving${tty_reset}" existing openclaw gateway "bind ${OPENCLAW_GATEWAY_BIND_VALUE}, tailscale mode ${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}, and port ${OPENCLAW_GATEWAY_PORT}"
+}
+
+capture_existing_openclaw_gateway_token() {
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+  local output_path="$1"
+  local runner_config
+
+  runner_config="$(openclaw_gateway_state_dir)/openclaw.json"
+  /usr/bin/install -m 600 /dev/null "${output_path}"
+  if ! run_as_openclaw_runner "${jq_bin}" -ce '.gateway.auth.token | select(type == "string" and length > 0 and (startswith("$") | not) and . != "__OPENCLAW_REDACTED__")' "${runner_config}" > "${output_path}"; then
+    rm -f "${output_path}"
+    return 1
+  fi
+}
+
+restore_existing_openclaw_gateway_token() {
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+  local primary_group
+  local runner_config
+  local token_path="$1"
+  local updated_config="${BOOT_TMPDIR}/openclaw-runner-preserved-config.json"
+
+  [[ -f "${token_path}" ]] || return 0
+  runner_config="$(openclaw_gateway_state_dir)/openclaw.json"
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+  /usr/bin/install -m 600 /dev/null "${updated_config}"
+  # shellcheck disable=SC2024
+  if ! sudo "${jq_bin}" --slurpfile gateway_token "${token_path}" '.gateway.auth.token = $gateway_token[0]' "${runner_config}" > "${updated_config}"; then
+    rm -f "${token_path}" "${updated_config}"
+    abort "failed to preserve the existing openclaw Gateway token during reconciliation."
+  fi
+  execute sudo /usr/bin/install -o "${OPENCLAW_USER}" -g "${primary_group}" -m 600 "${updated_config}" "${runner_config}"
+  rm -f "${token_path}" "${updated_config}"
+  if ! run_as_openclaw_runner "$(openclaw_bin_path)" config validate --json >/dev/null; then
+    abort "openclaw gateway configuration validation failed after preserving its existing token."
+  fi
+}
+
+openclaw_help_has_option() {
+  local openclaw_bin="$1"
+  local option="$2"
+  local help_output
+  shift 2
+
+  help_output="$(run_as_openclaw_runner "${openclaw_bin}" "$@" --help 2>&1)" || return 1
+  grep -Fq -- "${option}" <<< "${help_output}"
+}
+
+validate_openclaw_cli_contract() {
+  local openclaw_bin="$1"
+  local -a missing=()
+
+  openclaw_help_has_option "${openclaw_bin}" "--no-install-daemon" onboard || missing+=("onboard --no-install-daemon")
+  openclaw_help_has_option "${openclaw_bin}" "--skip-health" onboard || missing+=("onboard --skip-health")
+  openclaw_help_has_option "${openclaw_bin}" "--force" gateway install || missing+=("gateway install --force")
+  openclaw_help_has_option "${openclaw_bin}" "--require-rpc" gateway status || missing+=("gateway status --require-rpc")
+
+  if array_has_values missing; then
+    abort "installed openclaw cli is incompatible with agentbox gateway activation; missing required options: ${tty_ts}$(array_join ", " missing)${tty_reset}. Update openclaw and rerun."
+  fi
+}
+
 run_openclaw_gateway_onboarding() {
   local openclaw_bin="$1"
   local reconcile_existing="${2:-0}"
@@ -4182,14 +4211,9 @@ run_openclaw_gateway_onboarding() {
     --skip-ui
     --skip-hooks
     --skip-health
+    --no-install-daemon
     --suppress-gateway-token-output
   )
-
-  if openclaw_service_mode_is_system; then
-    openclaw_args+=(--no-install-daemon)
-  else
-    openclaw_args+=(--install-daemon)
-  fi
 
   if noninteractive_mode_enabled || [[ "${reconcile_existing}" == "1" ]]; then
     openclaw_args+=(--non-interactive --accept-risk --json)
@@ -4203,9 +4227,9 @@ run_openclaw_gateway_onboarding() {
   fi
 
   if [[ "${reconcile_existing}" == "1" ]]; then
-    log "${tty_tp}reconciling${tty_reset} existing openclaw gateway configuration non-interactively for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} with service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+    log "${tty_tp}reconciling${tty_reset} existing openclaw gateway configuration non-interactively for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} without installing a service, with loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   else
-    log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode with service mode ${tty_ts}${OPENCLAW_SERVICE_MODE}${tty_reset}, loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
+    log "${tty_tp}configuring${tty_reset} openclaw gateway for runner ${tty_ts}${OPENCLAW_USER}${tty_reset} in ${tty_ts}$(openclaw_onboarding_mode_display)${tty_reset} mode without installing a service, with loopback bind, tailscale exposure ${tty_ts}${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}${tty_reset}, and port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}"
   fi
   OPENCLAW_RUNNER_EXTRA_ENV_NAMES="${onboarding_env_names}" \
     OPENCLAW_RUNNER_STDIN_PATH="${runner_stdin_path}" \
@@ -4302,48 +4326,6 @@ configure_openclaw_ui_assistant_branding() {
   execute sudo rm -f "${batch_file}"
 }
 
-write_openclaw_gateway_service_env_files() {
-  local env_file
-  local primary_group
-  local wrapper_file
-
-  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
-  env_file="$(openclaw_gateway_service_env_file_path)"
-  wrapper_file="$(openclaw_gateway_service_env_wrapper_path)"
-
-  if ! openclaw_gateway_service_env_content | sudo tee "${env_file}" >/dev/null; then
-    abort "failed to write openclaw gateway service environment file ${tty_ts}${env_file}${tty_reset}."
-  fi
-  execute sudo chown "${OPENCLAW_USER}:${primary_group}" "${env_file}"
-  execute sudo chmod 600 "${env_file}"
-
-  if ! openclaw_gateway_service_env_wrapper_content | sudo tee "${wrapper_file}" >/dev/null; then
-    abort "failed to write openclaw gateway service environment wrapper ${tty_ts}${wrapper_file}${tty_reset}."
-  fi
-  execute sudo chown "${OPENCLAW_USER}:${primary_group}" "${wrapper_file}"
-  execute sudo chmod 700 "${wrapper_file}"
-}
-
-write_agentbox_openclaw_gateway_plist() {
-  openclaw_runner_home_required >/dev/null
-  render_agentbox_launchd_template "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_TEMPLATE}" "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
-}
-
-prepare_openclaw_gateway_log_file() {
-  local path="$1"
-  local primary_group
-
-  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
-  execute sudo touch "${path}"
-  execute sudo chown "${OPENCLAW_USER}:${primary_group}" "${path}"
-  execute sudo chmod 600 "${path}"
-}
-
-prepare_openclaw_gateway_logs() {
-  prepare_openclaw_gateway_log_file "${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
-  prepare_openclaw_gateway_log_file "${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
-}
-
 agentbox_openclaw_gateway_launchd_loaded() {
   agentbox_system_launchd_loaded "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}"
 }
@@ -4366,75 +4348,248 @@ openclaw_native_gateway_launch_agent_loaded() {
   [[ -n "${uid}" ]] && sudo launchctl print "gui/${uid}/${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}" >/dev/null 2>&1
 }
 
-verify_agentbox_openclaw_gateway_launchd_setup() {
-  if ! agentbox_openclaw_gateway_launchd_loaded; then
-    abort "agentbox openclaw gateway launchd daemon is not loaded in the system launchd domain."
-  fi
+openclaw_gateway_managed_env_content() {
+  local health_command="${AGENTBOX_OPT_DIR}/bin/health.sh --report"
+
+  printf 'OPENCLAW_MDNS_HOSTNAME='
+  dotenv_double_quote "${AGENTBOX_HOSTNAME_VALUE}"
+  printf '\nAGENTBOX_MANAGED="1"\nAGENTBOX_SERVICE_KIND='
+  dotenv_double_quote "${AGENTBOX_OPENCLAW_SERVICE_KIND}"
+  printf '\nAGENTBOX_VERSION='
+  dotenv_double_quote "${SCRIPT_VERSION}"
+  printf '\nAGENTBOX_HEALTH_COMMAND='
+  dotenv_double_quote "${health_command}"
+  printf '\n'
 }
 
-remove_agentbox_openclaw_gateway_launchd_service() {
-  if ! agentbox_openclaw_gateway_launchd_loaded && ! sudo test -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"; then
+openclaw_gateway_dotenv_has_value() {
+  local expected
+  local key="$1"
+  local value="$2"
+  local path="${3:-$(openclaw_gateway_dotenv_path)}"
+
+  expected="${key}=$(dotenv_double_quote "${value}")"
+  sudo /usr/bin/grep -Fqx -- "${expected}" "${path}" 2>/dev/null
+}
+
+openclaw_native_gateway_service_env_has_value() {
+  local expected
+  local key="$1"
+  local value="$2"
+  local path="${3:-$(openclaw_native_gateway_service_env_file_path)}"
+
+  expected="export ${key}=$(shell_single_quote "${value}")"
+  sudo /usr/bin/grep -Fqx -- "${expected}" "${path}" 2>/dev/null
+}
+
+openclaw_native_gateway_agentbox_managed() {
+  local dotenv_path
+  local service_env_path
+
+  dotenv_path="$(openclaw_gateway_dotenv_path)"
+  service_env_path="$(openclaw_native_gateway_service_env_file_path)"
+
+  if openclaw_gateway_dotenv_has_value AGENTBOX_MANAGED 1 "${dotenv_path}" &&
+    openclaw_gateway_dotenv_has_value AGENTBOX_SERVICE_KIND "${AGENTBOX_OPENCLAW_SERVICE_KIND}" "${dotenv_path}"; then
     return 0
   fi
 
-  log "${tty_tp}removing${tty_reset} agentbox openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset} because openclaw service mode is ${tty_ts}user${tty_reset}"
+  openclaw_native_gateway_service_env_has_value AGENTBOX_MANAGED 1 "${service_env_path}" &&
+    openclaw_native_gateway_service_env_has_value AGENTBOX_SERVICE_KIND "${AGENTBOX_OPENCLAW_SERVICE_KIND}" "${service_env_path}"
+}
+
+openclaw_native_gateway_managed_environment_current() {
+  local service_env_path
+
+  service_env_path="$(openclaw_native_gateway_service_env_file_path)"
+
+  openclaw_native_gateway_service_env_has_value OPENCLAW_MDNS_HOSTNAME "${AGENTBOX_HOSTNAME_VALUE}" "${service_env_path}" &&
+    openclaw_native_gateway_service_env_has_value AGENTBOX_MANAGED 1 "${service_env_path}" &&
+    openclaw_native_gateway_service_env_has_value AGENTBOX_SERVICE_KIND "${AGENTBOX_OPENCLAW_SERVICE_KIND}" "${service_env_path}" &&
+    openclaw_native_gateway_service_env_has_value AGENTBOX_VERSION "${SCRIPT_VERSION}" "${service_env_path}" &&
+    openclaw_native_gateway_service_env_has_value AGENTBOX_HEALTH_COMMAND "${AGENTBOX_OPT_DIR}/bin/health.sh --report" "${service_env_path}"
+}
+
+write_openclaw_gateway_managed_environment() {
+  local dotenv_path
+  local primary_group
+  local state_dir
+  local updated_path="${BOOT_TMPDIR}/openclaw-managed.env.$$"
+
+  state_dir="$(openclaw_gateway_state_dir)"
+  dotenv_path="$(openclaw_gateway_dotenv_path)"
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+  if sudo test -L "${dotenv_path}"; then
+    abort "refusing to replace symlinked openclaw environment file ${tty_ts}${dotenv_path}${tty_reset}."
+  fi
+
+  if sudo test -f "${dotenv_path}"; then
+    # shellcheck disable=SC2024
+    sudo /usr/bin/awk '
+      BEGIN {
+        managed["OPENCLAW_MDNS_HOSTNAME"] = 1
+        managed["AGENTBOX_MANAGED"] = 1
+        managed["AGENTBOX_SERVICE_KIND"] = 1
+        managed["AGENTBOX_VERSION"] = 1
+        managed["AGENTBOX_HEALTH_COMMAND"] = 1
+      }
+      {
+        key = $0
+        sub(/^[[:space:]]*(export[[:space:]]+)?/, "", key)
+        sub(/[[:space:]]*=.*/, "", key)
+        if (key in managed) next
+        print
+      }
+    ' "${dotenv_path}" > "${updated_path}"
+  else
+    : > "${updated_path}"
+  fi
+  openclaw_gateway_managed_env_content >> "${updated_path}"
+
+  execute sudo /usr/bin/install -d -o "${OPENCLAW_USER}" -g "${primary_group}" -m 700 "${state_dir}"
+  execute sudo /usr/bin/install -o "${OPENCLAW_USER}" -g "${primary_group}" -m 600 "${updated_path}" "${dotenv_path}"
+  rm -f "${updated_path}"
+  debug "${tty_tp}configured${tty_reset}" managed openclaw gateway environment for runner "${OPENCLAW_USER}"
+}
+
+prepare_openclaw_native_gateway_log() {
+  local log_dir
+  local log_path
+  local primary_group
+
+  log_dir="$(openclaw_native_gateway_log_dir)"
+  log_path="$(openclaw_native_gateway_log_path)"
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+  execute sudo /usr/bin/install -d -o "${OPENCLAW_USER}" -g "${primary_group}" -m 700 "${log_dir}"
+  execute sudo touch "${log_path}"
+  execute sudo chown "${OPENCLAW_USER}:${primary_group}" "${log_path}"
+  execute sudo chmod 600 "${log_path}"
+}
+
+remove_agentbox_openclaw_gateway_launchd_service() {
+  local archive_dir
+  local legacy_env_dir
+  local legacy_env_file
+  local legacy_env_wrapper
+  local timestamp
+  local was_loaded="0"
+
+  legacy_env_dir="$(openclaw_gateway_service_env_dir)"
+  legacy_env_file="${legacy_env_dir}/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}.env"
+  legacy_env_wrapper="${legacy_env_dir}/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}-env-wrapper.sh"
+  if agentbox_openclaw_gateway_launchd_loaded; then
+    was_loaded="1"
+  elif ! sudo test -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"; then
+    return 0
+  fi
+
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  archive_dir="${AGENTBOX_STATE_DIR}/migrations/openclaw-system-gateway-${timestamp}-$$"
+  log "${tty_tp}migrating${tty_reset} legacy system gateway ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}; backup: ${tty_ts}${archive_dir}${tty_reset}"
+  execute sudo /usr/bin/install -d -o root -g wheel -m 700 "${AGENTBOX_STATE_DIR}" "${AGENTBOX_STATE_DIR}/migrations" "${archive_dir}"
   sudo launchctl bootout "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" >/dev/null 2>&1 || true
   sudo launchctl bootout system "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}" >/dev/null 2>&1 || true
+
+  if [[ "${was_loaded}" == "1" ]]; then
+    wait_for_openclaw_gateway_port_quiescence
+  fi
+
   if sudo test -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"; then
-    execute sudo rm -f "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}"
+    execute sudo mv "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}" "${archive_dir}/"
   fi
+  if sudo test -f "${legacy_env_file}" || sudo test -f "${legacy_env_wrapper}"; then
+    execute sudo /usr/bin/install -d -o root -g wheel -m 700 "${archive_dir}/service-env"
+    if sudo test -f "${legacy_env_file}"; then
+      execute sudo mv "${legacy_env_file}" "${archive_dir}/service-env/"
+    fi
+    if sudo test -f "${legacy_env_wrapper}"; then
+      execute sudo mv "${legacy_env_wrapper}" "${archive_dir}/service-env/"
+    fi
+    sudo rmdir "${legacy_env_dir}" >/dev/null 2>&1 || true
+  fi
+  execute sudo chown -R root:wheel "${archive_dir}"
+  execute sudo chmod -R go-rwx "${archive_dir}"
 }
 
-run_openclaw_gateway_uninstall_for_user() {
-  local openclaw_bin="$1"
-  local user="$2"
-
-  if [[ "${user}" == "${OPENCLAW_USER}" ]]; then
-    run_as_openclaw_runner "${openclaw_bin}" gateway uninstall
-    return
-  fi
-
-  if [[ "${user}" == "${ADMIN_USER}" ]]; then
-    run_as_invoking_admin "${openclaw_bin}" gateway uninstall
-    return
-  fi
-
-  abort "internal openclaw gateway uninstall requested for unmanaged user ${tty_ts}${user}${tty_reset}."
+openclaw_gateway_port_pids() {
+  /usr/sbin/lsof -nP -iTCP:"${OPENCLAW_GATEWAY_PORT}" -sTCP:LISTEN -t 2>/dev/null | /usr/bin/sort -u || true
 }
 
-remove_openclaw_native_gateway_launch_agent_for_user() {
+openclaw_gateway_port_owner() {
+  local pid="$1"
+
+  /bin/ps -o user= -p "${pid}" 2>/dev/null | awk '{$1=$1; print}'
+}
+
+wait_for_openclaw_gateway_port_quiescence() {
+  local attempts="0"
+  local pids
+
+  while [[ "${attempts}" -lt 45 ]]; do
+    pids="$(openclaw_gateway_port_pids)"
+    if [[ -z "${pids}" ]]; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    sleep 2
+  done
+
+  pids="$(openclaw_gateway_port_pids)"
+  pids="$(printf '%s' "${pids}" | /usr/bin/tr '\n' ',')"
+  abort "gateway port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset} remained occupied after stopping the legacy service; PID(s): ${tty_ts}${pids}${tty_reset}."
+}
+
+validate_openclaw_gateway_port_owner() {
+  local owner
+  local pid
+  local pids
+  local runner_uid
+
+  pids="$(openclaw_gateway_port_pids)"
+  [[ -n "${pids}" ]] || return 0
+  runner_uid="$(id -u "${OPENCLAW_USER}" 2>/dev/null || true)"
+
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] || continue
+    owner="$(openclaw_gateway_port_owner "${pid}")"
+    if [[ "${owner}" != "${OPENCLAW_USER}" ]] || ! openclaw_native_gateway_launch_agent_loaded "${runner_uid}"; then
+      abort "unexpected process owns gateway port ${tty_ts}${OPENCLAW_GATEWAY_PORT}${tty_reset}: PID ${tty_ts}${pid}${tty_reset}, owner ${tty_ts}${owner:-unknown}${tty_reset}. agentbox will not kill an unverified process."
+    fi
+  done <<< "${pids}"
+}
+
+migrate_openclaw_admin_native_gateway() {
+  local admin_home
+  local backup_path
   local openclaw_bin="$1"
-  local user="$2"
   local plist_path
+  local timestamp
   local uid
 
-  uid="$(id -u "${user}" 2>/dev/null || true)"
-  plist_path="$(openclaw_native_gateway_launch_agent_plist_path "${user}")"
-
+  uid="$(id -u "${ADMIN_USER}" 2>/dev/null || true)"
+  plist_path="$(openclaw_native_gateway_launch_agent_plist_path "${ADMIN_USER}")"
   if ! openclaw_native_gateway_launch_agent_loaded "${uid}" && ! sudo test -f "${plist_path}"; then
     return 0
   fi
 
-  log "${tty_tp}removing${tty_reset} openclaw native user gateway service ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} for ${tty_ts}${user}${tty_reset} because openclaw service mode is ${tty_ts}system${tty_reset}"
-  run_openclaw_gateway_uninstall_for_user "${openclaw_bin}" "${user}" >/dev/null 2>&1 || true
-  if [[ -n "${uid}" ]]; then
-    sudo launchctl bootout "gui/${uid}/${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}" >/dev/null 2>&1 || true
-    sudo launchctl bootout "gui/${uid}" "${plist_path}" >/dev/null 2>&1 || true
+  admin_home="$(invoking_admin_home_required)"
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  backup_path="${admin_home}/.openclaw.agentbox-backup-${timestamp}-$$"
+  if sudo test -d "${admin_home}/.openclaw"; then
+    log "${tty_tp}backing up${tty_reset} conflicting invoking-admin openclaw state to ${tty_ts}${backup_path}${tty_reset}"
+    execute sudo cp -pR "${admin_home}/.openclaw" "${backup_path}"
+    execute sudo chown -R "${ADMIN_USER}:$(user_primary_group "${ADMIN_USER}")" "${backup_path}"
+    execute sudo chmod -R go-rwx "${backup_path}"
   fi
-  if sudo test -f "${plist_path}"; then
-    execute sudo rm -f "${plist_path}"
+
+  log "${tty_tp}uninstalling${tty_reset} conflicting invoking-admin native gateway ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset}"
+  if ! run_as_invoking_admin "${openclaw_bin}" gateway uninstall >/dev/null 2>&1; then
+    abort "failed to uninstall the invoking-admin native openclaw gateway; backup retained at ${tty_ts}${backup_path}${tty_reset}."
   fi
 
   if openclaw_native_gateway_launch_agent_loaded "${uid}" || sudo test -f "${plist_path}"; then
-    abort "openclaw native user gateway service ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} for ${tty_ts}${user}${tty_reset} is still present after removal."
+    abort "invoking-admin native openclaw gateway is still present after uninstall; rerun agentbox migration after resolving the conflict."
   fi
-}
-
-remove_openclaw_native_gateway_launch_agents() {
-  local openclaw_bin="$1"
-
-  remove_openclaw_native_gateway_launch_agent_for_user "${openclaw_bin}" "${OPENCLAW_USER}"
-  remove_openclaw_native_gateway_launch_agent_for_user "${openclaw_bin}" "${ADMIN_USER}"
 }
 
 openclaw_admin_app_state_dir() {
@@ -4546,17 +4701,161 @@ reconcile_openclaw_admin_app_config() {
   debug "${tty_tp}verified${tty_reset}" openclaw app gateway token synchronization for invoking admin "${ADMIN_USER}" by sha256 equality
 }
 
-run_agentbox_openclaw_gateway_launchd_setup() {
-  execute sudo mkdir -p "${AGENTBOX_LOG_DIR}"
-  execute sudo chown root:wheel "${AGENTBOX_LOG_DIR}"
-  execute sudo chmod 755 "${AGENTBOX_LOG_DIR}"
-  prepare_openclaw_gateway_runtime_dirs
-  prepare_openclaw_gateway_logs
-  write_openclaw_gateway_service_env_files
-  write_agentbox_openclaw_gateway_plist
+openclaw_finalizer_executable_path() {
+  printf "%s/.local/libexec/agentbox-openclaw-finalize" "$(openclaw_runner_home_required)"
+}
 
-  refresh_agentbox_system_launchd_service "${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" "${AGENTBOX_OPENCLAW_GATEWAY_PLIST_PATH}" "0" "1"
-  verify_agentbox_openclaw_gateway_launchd_setup
+openclaw_finalizer_plist_path() {
+  printf "%s/Library/LaunchAgents/%s.plist" "$(openclaw_runner_home_required)" "${AGENTBOX_OPENCLAW_FINALIZER_LABEL}"
+}
+
+openclaw_finalizer_state_dir() {
+  printf "%s/.agentbox" "$(openclaw_runner_home_required)"
+}
+
+openclaw_finalizer_state_path() {
+  printf "%s/openclaw-gateway-finalizer-state" "$(openclaw_finalizer_state_dir)"
+}
+
+openclaw_finalizer_log_dir() {
+  printf "%s/Library/Logs/agentbox" "$(openclaw_runner_home_required)"
+}
+
+openclaw_finalizer_template_content() {
+  local executable
+  local finalizer_label
+  local finalizer_state_dir
+  local gateway_label
+  local home
+  local openclaw_bin
+  local openclaw_path
+  local openclaw_state_dir
+  local rendered
+  local stderr_log
+  local stdout_log
+  local user
+
+  home="$(openclaw_runner_home_required)"
+  executable="$(xml_escape "$(openclaw_finalizer_executable_path)")"
+  finalizer_label="$(xml_escape "${AGENTBOX_OPENCLAW_FINALIZER_LABEL}")"
+  finalizer_state_dir="$(xml_escape "$(openclaw_finalizer_state_dir)")"
+  gateway_label="$(xml_escape "${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}")"
+  openclaw_bin="$(xml_escape "${BREW_PREFIX_VALUE}/bin/openclaw")"
+  openclaw_path="$(xml_escape "$(openclaw_runner_path)")"
+  openclaw_state_dir="$(xml_escape "$(openclaw_gateway_state_dir)")"
+  stderr_log="$(xml_escape "$(openclaw_finalizer_log_dir)/openclaw-finalize.error.log")"
+  stdout_log="$(xml_escape "$(openclaw_finalizer_log_dir)/openclaw-finalize.log")"
+  user="$(xml_escape "${OPENCLAW_USER}")"
+  home="$(xml_escape "${home}")"
+  rendered="$(cat "${AGENTBOX_OPENCLAW_FINALIZER_PLIST_TEMPLATE}")" || abort "failed to read openclaw Aqua finalizer template."
+  rendered="${rendered//__AGENTBOX_OPENCLAW_FINALIZER_LABEL__/${finalizer_label}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_FINALIZER_EXECUTABLE__/${executable}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_HOME__/${home}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_USER__/${user}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_PATH__/${openclaw_path}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_STATE_DIR__/${openclaw_state_dir}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_BIN__/${openclaw_bin}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_GATEWAY_LABEL__/${gateway_label}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_FINALIZER_STATE_DIR__/${finalizer_state_dir}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_FINALIZER_STDOUT_LOG__/${stdout_log}}"
+  rendered="${rendered//__AGENTBOX_OPENCLAW_FINALIZER_STDERR_LOG__/${stderr_log}}"
+
+  if [[ "${rendered}" == *"__AGENTBOX_"* ]]; then
+    abort "openclaw Aqua finalizer template contains unresolved placeholders."
+  fi
+  printf "%s\n" "${rendered}"
+}
+
+write_openclaw_finalizer_state() {
+  local primary_group
+  local state="$1"
+  local tmp_path="${BOOT_TMPDIR}/openclaw-finalizer-state.$$"
+
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+  printf 'status=%s\nstep=staged\nupdated_at=%s\nexit_code=0\n' "${state}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${tmp_path}"
+  execute sudo /usr/bin/install -o "${OPENCLAW_USER}" -g "${primary_group}" -m 600 "${tmp_path}" "$(openclaw_finalizer_state_path)"
+  rm -f "${tmp_path}"
+}
+
+stage_openclaw_finalizer() {
+  local home
+  local plist_path
+  local primary_group
+  local rendered_path
+
+  home="$(openclaw_runner_home_required)"
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+  plist_path="$(openclaw_finalizer_plist_path)"
+  rendered_path="${BOOT_TMPDIR}/$(basename "${plist_path}").rendered.$$"
+
+  execute sudo /usr/bin/install -d -o "${OPENCLAW_USER}" -g "${primary_group}" -m 700 \
+    "${home}/.local" "${home}/.local/libexec" \
+    "$(openclaw_finalizer_state_dir)" "$(openclaw_finalizer_log_dir)"
+  execute sudo /usr/bin/install -d -o "${OPENCLAW_USER}" -g "${primary_group}" -m 755 "${home}/Library/LaunchAgents"
+  execute sudo /usr/bin/install -o "${OPENCLAW_USER}" -g "${primary_group}" -m 700 \
+    "${AGENTBOX_OPENCLAW_FINALIZER_SOURCE}" "$(openclaw_finalizer_executable_path)"
+
+  openclaw_finalizer_template_content > "${rendered_path}"
+  execute /usr/bin/plutil -lint "${rendered_path}"
+  execute sudo /usr/bin/install -o "${OPENCLAW_USER}" -g "${primary_group}" -m 644 "${rendered_path}" "${plist_path}"
+  rm -f "${rendered_path}"
+  write_openclaw_finalizer_state pending_first_login
+}
+
+openclaw_runner_gui_domain_active() {
+  local uid
+
+  uid="$(id -u "${OPENCLAW_USER}" 2>/dev/null || true)"
+  [[ -n "${uid}" ]] && sudo launchctl print "gui/${uid}" >/dev/null 2>&1
+}
+
+openclaw_finalizer_state_value() {
+  local state_path
+
+  state_path="$(openclaw_finalizer_state_path)"
+  sudo awk -F= '$1 == "status" {print $2; exit}' "${state_path}" 2>/dev/null || true
+}
+
+cleanup_stale_openclaw_finalizer() {
+  local uid
+
+  uid="$(id -u "${OPENCLAW_USER}" 2>/dev/null || true)"
+  if [[ -n "${uid}" ]]; then
+    sudo launchctl bootout "gui/${uid}/${AGENTBOX_OPENCLAW_FINALIZER_LABEL}" >/dev/null 2>&1 || true
+  fi
+  sudo rm -f "$(openclaw_finalizer_plist_path)" "$(openclaw_finalizer_state_path)" >/dev/null 2>&1 || true
+  sudo rmdir "$(openclaw_finalizer_state_dir)/.openclaw-finalize.lock" >/dev/null 2>&1 || true
+}
+
+activate_openclaw_finalizer() {
+  local attempts="0"
+  local state
+  local uid
+
+  uid="$(id -u "${OPENCLAW_USER}")"
+  sudo launchctl bootout "gui/${uid}/${AGENTBOX_OPENCLAW_FINALIZER_LABEL}" >/dev/null 2>&1 || true
+  if ! sudo launchctl bootstrap "gui/${uid}" "$(openclaw_finalizer_plist_path)"; then
+    OPENCLAW_GATEWAY_SETUP_STATUS="failed"
+    warn "failed to bootstrap the openclaw Aqua finalizer; inspect $(openclaw_finalizer_log_dir)/openclaw-finalize.error.log and rerun agentbox."
+    return 0
+  fi
+
+  while [[ "${attempts}" -lt 45 ]]; do
+    if openclaw_native_gateway_launch_agent_loaded "${uid}" && openclaw_gateway_status_ready "${BREW_PREFIX_VALUE}/bin/openclaw"; then
+      OPENCLAW_GATEWAY_SETUP_STATUS="healthy"
+      log "${tty_tp}verified${tty_reset} native openclaw LaunchAgent and RPC health for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+      return 0
+    fi
+    state="$(openclaw_finalizer_state_value)"
+    if [[ "${state}" == "failed" ]]; then
+      break
+    fi
+    attempts=$((attempts + 1))
+    sleep 2
+  done
+
+  OPENCLAW_GATEWAY_SETUP_STATUS="failed"
+  warn "openclaw Aqua finalizer failed; inspect $(openclaw_finalizer_log_dir)/openclaw-finalize.error.log and rerun agentbox."
 }
 
 openclaw_gateway_status_ready() {
@@ -4635,21 +4934,15 @@ print_openclaw_gateway_failure_diagnostics() {
     print_diagnostic_block "tailscale serve status:" "${serve_output}"
   fi
 
-  if openclaw_service_mode_is_system; then
-    launchd_output="$(sudo launchctl print "system/${AGENTBOX_OPENCLAW_GATEWAY_LABEL}" 2>&1 || true)"
-    print_diagnostic_block "agentbox openclaw gateway launchd daemon state:" "${launchd_output}"
-
-    print_openclaw_gateway_log_tail "openclaw gateway stderr" "${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
-    print_openclaw_gateway_log_tail "openclaw gateway stdout" "${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
-  fi
+  launchd_output="$(sudo launchctl print "gui/$(id -u "${OPENCLAW_USER}")/${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}" 2>&1 || true)"
+  print_diagnostic_block "openclaw native LaunchAgent state:" "${launchd_output}"
+  print_openclaw_gateway_log_tail "openclaw gateway" "$(openclaw_native_gateway_log_path)"
+  print_openclaw_gateway_log_tail "openclaw finalizer stderr" "$(openclaw_finalizer_log_dir)/openclaw-finalize.error.log"
+  print_openclaw_gateway_log_tail "openclaw finalizer stdout" "$(openclaw_finalizer_log_dir)/openclaw-finalize.log"
 }
 
 openclaw_gateway_failure_remediation() {
-  if openclaw_service_mode_is_system; then
-    printf "inspect %s/openclaw-gateway.stderr.log." "${AGENTBOX_LOG_DIR}"
-  else
-    printf "ensure %s has a logged-in macos gui session for openclaw's native user service, or rerun with --openclaw-service-mode system." "${OPENCLAW_USER}"
-  fi
+  printf "inspect %s and %s/openclaw-finalize.error.log, then rerun agentbox; a graphical session for %s is required." "$(openclaw_native_gateway_log_path)" "$(openclaw_finalizer_log_dir)" "${OPENCLAW_USER}"
 }
 
 wait_for_openclaw_gateway_status() {
@@ -4701,33 +4994,69 @@ wait_for_openclaw_gateway_tailscale_serve_route() {
 }
 
 run_agentbox_openclaw_gateway_setup() {
+  local existing_token_path="${BOOT_TMPDIR}/openclaw-existing-gateway-token.json"
   local openclaw_bin
   local reconcile_existing="0"
+  local runner_uid
 
   check_sudo_access "before openclaw gateway setup"
   resolve_brew_prefix
   openclaw_bin="$(openclaw_bin_path)"
-  if openclaw_service_mode_is_system; then
-    ensure_openclaw_admin_app_attach_only
-    remove_openclaw_native_gateway_launch_agents "${openclaw_bin}"
-  else
-    remove_agentbox_openclaw_gateway_launchd_service
-  fi
+  validate_openclaw_cli_contract "${openclaw_bin}"
   if openclaw_gateway_configuration_initialized "${openclaw_bin}"; then
     reconcile_existing="1"
+    preserve_existing_openclaw_gateway_configuration "${openclaw_bin}"
+    capture_existing_openclaw_gateway_token "${existing_token_path}" || true
   fi
+  remove_agentbox_openclaw_gateway_launchd_service
+  migrate_openclaw_admin_native_gateway "${openclaw_bin}"
+  validate_openclaw_gateway_port_owner
+  ensure_openclaw_admin_app_attach_only
   run_openclaw_gateway_onboarding "${openclaw_bin}" "${reconcile_existing}"
+  restore_existing_openclaw_gateway_token "${existing_token_path}"
   configure_openclaw_tailscale_auth "${openclaw_bin}"
   configure_openclaw_ui_assistant_branding "${openclaw_bin}"
-  if openclaw_service_mode_is_system; then
-    log "${tty_tp}installing${tty_reset} openclaw gateway launchd daemon ${tty_ts}${AGENTBOX_OPENCLAW_GATEWAY_LABEL}${tty_reset}"
-    run_agentbox_openclaw_gateway_launchd_setup
-    reconcile_openclaw_admin_app_config "${openclaw_bin}"
-  else
-    log "${tty_tp}using${tty_reset} openclaw native user service for gateway supervision"
+  reconcile_openclaw_admin_app_config "${openclaw_bin}"
+
+  runner_uid="$(id -u "${OPENCLAW_USER}")"
+  if openclaw_native_gateway_launch_agent_loaded "${runner_uid}" && openclaw_gateway_status_ready "${openclaw_bin}"; then
+    if ! openclaw_native_gateway_agentbox_managed; then
+      cleanup_stale_openclaw_finalizer
+      OPENCLAW_GATEWAY_SETUP_STATUS="healthy"
+      log "${tty_tp}preserving${tty_reset} healthy runtime-user native openclaw Gateway not managed by agentbox"
+      wait_for_openclaw_gateway_tailscale_serve_route "${openclaw_bin}"
+      return 0
+    fi
+
+    write_openclaw_gateway_managed_environment
+    prepare_openclaw_native_gateway_log
+    if openclaw_native_gateway_managed_environment_current; then
+      cleanup_stale_openclaw_finalizer
+      OPENCLAW_GATEWAY_SETUP_STATUS="healthy"
+      log "${tty_tp}verified${tty_reset} exactly one healthy agentbox-managed runtime-user native openclaw Gateway"
+      wait_for_openclaw_gateway_tailscale_serve_route "${openclaw_bin}"
+      return 0
+    fi
   fi
-  wait_for_openclaw_gateway_status "${openclaw_bin}"
-  wait_for_openclaw_gateway_tailscale_serve_route "${openclaw_bin}"
+
+  write_openclaw_gateway_managed_environment
+  prepare_openclaw_native_gateway_log
+  log "${tty_tp}staging${tty_reset} Aqua-only openclaw Gateway finalizer for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+  stage_openclaw_finalizer
+  if openclaw_runner_gui_domain_active; then
+    activate_openclaw_finalizer
+    if [[ "${OPENCLAW_GATEWAY_SETUP_STATUS}" == "healthy" ]]; then
+      wait_for_openclaw_gateway_tailscale_serve_route "${openclaw_bin}"
+    fi
+    return 0
+  fi
+
+  OPENCLAW_GATEWAY_SETUP_STATUS="pending_first_login"
+  if openclaw_autologin_enabled; then
+    log "${tty_tp}staged${tty_reset} openclaw Gateway activation; it will complete after a reboot or the next graphical login by ${tty_ts}${OPENCLAW_USER}${tty_reset}"
+  else
+    warn "openclaw Gateway activation requires a graphical login by ${OPENCLAW_USER}; with autologin off, the user must log in again after every reboot."
+  fi
 }
 
 main() {
@@ -4755,8 +5084,7 @@ main() {
   debug raw AGENTBOX_BREWGROUP="$(brewgroup_display)"
   debug raw AGENTBOX_OPENCLAW_IDENTITY="${OPENCLAW_FULL_NAME} <${OPENCLAW_USER}>"
   debug raw AGENTBOX_OPENCLAW_PASSWORD="$(openclaw_password_display)"
-  debug raw AGENTBOX_OPENCLAW_SERVICE_MODE="${OPENCLAW_SERVICE_MODE}"
-  debug raw OPENCLAW_AUTOLOGIN="$(openclaw_autologin_display)"
+  debug raw AGENTBOX_OPENCLAW_AUTOLOGIN="${OPENCLAW_AUTOLOGIN}"
   debug raw AGENTBOX_INTERACTION_MODE="$(openclaw_onboarding_mode_display)"
   debug raw AGENTBOX_OPENCLAW_AUTH_CHOICE="${OPENCLAW_AUTH_CHOICE}"
   debug raw AGENTBOX_OPENCLAW_AUTH_ENV="$(openclaw_auth_env_display)"

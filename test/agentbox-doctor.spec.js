@@ -46,7 +46,11 @@ const healthyValues = {
   openclaw_user_non_admin_ok: '1',
   openclaw_user_ok: '1',
   openclaw_autologin_expected: '1',
+  openclaw_autologin_configured_user: 'emori',
+  openclaw_autologin_user: 'emori',
   openclaw_autologin_ok: '1',
+  openclaw_filevault_enabled: '0',
+  openclaw_unattended_reboot_ready: '1',
   brewgroup_enabled: '0',
   trusted_brewgroup_enabled: '0',
   homebrew_login_path_bin_ok: '1',
@@ -55,20 +59,33 @@ const healthyValues = {
   openclaw_cli_ok: '1',
   node_cli_ok: '1',
   ripgrep_ok: '1',
-  openclaw_service_mode: 'system',
-  openclaw_gateway_label: 'dev.tanaab.agentbox.openclaw-gateway',
+  openclaw_service_mode: 'user',
+  openclaw_gateway_state: 'healthy',
+  openclaw_gateway_label: 'ai.openclaw.gateway',
   openclaw_gateway_bind: 'loopback',
   openclaw_gateway_port: '18789',
   openclaw_gateway_tailscale_mode: 'off',
-  openclaw_gateway_launchd_loaded_ok: '1',
-  openclaw_gateway_launchd_running_ok: '1',
+  openclaw_gui_domain_present: '1',
+  openclaw_finalizer_installed: '0',
+  openclaw_finalizer_state: 'none',
+  openclaw_finalizer_permissions_ok: '1',
+  openclaw_native_launchagent_installed_ok: '1',
+  openclaw_native_launchagent_loaded_ok: '1',
+  openclaw_native_launchagent_running_ok: '1',
+  openclaw_gateway_agentbox_managed: '1',
+  openclaw_gateway_mdns_hostname_ok: '1',
+  openclaw_gateway_agent_environment_ok: '1',
   openclaw_gateway_log_permissions_ok: '1',
-  openclaw_native_gateway_launch_agents_absent_ok: '1',
+  openclaw_gateway_rpc_ok: '1',
+  openclaw_legacy_system_service_detected: '0',
+  openclaw_duplicate_admin_gateway_detected: '0',
+  openclaw_expected_port_ownership_ok: '1',
   openclaw_admin_app_attach_only_ok: '1',
   openclaw_admin_app_gateway_config_expected: '1',
   openclaw_admin_app_gateway_config_ok: '1',
   openclaw_gateway_tailscale_auth_ok: 'skipped',
   openclaw_gateway_status_ok: '1',
+  openclaw_gateway_activation_ok: '1',
   openclaw_gateway_ok: '1',
   tailscale_expected: '0',
   tailscale_firewall_warning: 'skipped',
@@ -164,85 +181,117 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     assert.ok(!report.warnings.some((warning) => warning.key === 'agentbox_version_mismatch'));
   });
 
-  it('should not recommend a system launchd repair for native user service mode', () => {
+  for (const [state, kind, summaryPattern] of [
+    ['not_configured', 'reconcile', /reconcile native Gateway activation/],
+    ['pending_first_login', 'manual', /Reboot or log into/],
+    ['installing', 'reconcile', /reconcile native Gateway activation/],
+    ['failed', 'reconcile', /openclaw-finalize[.]error[.]log/],
+    ['gui_session_inactive', 'manual', /Log into the OpenClaw runtime account/],
+    ['legacy_system_service_detected', 'reconcile', /agentbox migration/],
+    ['duplicate_gateway_detected', 'reconcile', /conflicting administrator Gateway/],
+  ]) {
+    it(`should provide state-aware Gateway remediation for ${state}`, () => {
+      const report = evaluateHealth({
+        ...healthyValues,
+        openclaw_gateway_state: state,
+        openclaw_gateway_activation_ok: '0',
+        openclaw_gateway_ok: '0',
+        agentbox_ok: '0',
+      });
+      const issue = report.issues.find(
+        (candidate) => candidate.key === 'openclaw_gateway_activation_ok',
+      );
+
+      assert.equal(issue?.remediation.kind, kind);
+      assert.match(issue?.remediation.summary || '', summaryPattern);
+      assert.equal(issue?.remediation.command, null);
+    });
+  }
+
+  it('should explain recurring manual login when autologin is disabled', () => {
     const report = evaluateHealth({
       ...healthyValues,
-      openclaw_service_mode: 'user',
-      openclaw_gateway_status_ok: '0',
+      openclaw_autologin_expected: '0',
+      openclaw_autologin_configured_user: 'off',
+      openclaw_autologin_user: '',
+      openclaw_autologin_ok: 'skipped',
+      openclaw_unattended_reboot_ready: '0',
+      openclaw_gateway_state: 'gui_session_inactive',
+      openclaw_gateway_activation_ok: '0',
       openclaw_gateway_ok: '0',
       agentbox_ok: '0',
     });
-    const issue = report.issues.find((candidate) => candidate.key === 'openclaw_gateway_status_ok');
-
-    assert.deepEqual(
-      {
-        kind: issue?.remediation.kind,
-        command: issue?.remediation.command,
-        requiresConfirmation: issue?.remediation.requiresConfirmation,
-      },
-      { kind: 'reconcile', command: null, requiresConfirmation: false },
+    const issue = report.issues.find(
+      (candidate) => candidate.key === 'openclaw_gateway_activation_ok',
     );
+
+    assert.match(issue?.remediation.summary || '', /required after every reboot or logout/);
   });
 
-  it('should hand managed admin app drift to agentbox reconciliation', () => {
+  it('should surface Gateway configuration drift through the activation leaf', () => {
     const report = evaluateHealth({
       ...healthyValues,
       openclaw_admin_app_gateway_config_ok: '0',
+      openclaw_gateway_state: 'failed',
+      openclaw_gateway_activation_ok: '0',
       openclaw_gateway_ok: '0',
       agentbox_ok: '0',
     });
     const issue = report.issues.find(
-      (candidate) => candidate.key === 'openclaw_admin_app_gateway_config_ok',
-    );
-
-    assert.equal(report.status, 'unhealthy');
-    assert.deepEqual(
-      {
-        kind: issue?.remediation.kind,
-        command: issue?.remediation.command,
-        skill: issue?.remediation.handoff?.skill,
-      },
-      { kind: 'reconcile', command: null, skill: '$tanaab-agentbox' },
-    );
-  });
-
-  it('should require Tailscale identity authentication only for Serve mode', () => {
-    const report = evaluateHealth({
-      ...healthyValues,
-      openclaw_gateway_tailscale_mode: 'serve',
-      openclaw_gateway_tailscale_auth_ok: '0',
-      tailscale_expected: '0',
-      openclaw_gateway_ok: '0',
-      agentbox_ok: '0',
-    });
-    const issue = report.issues.find(
-      (candidate) => candidate.key === 'openclaw_gateway_tailscale_auth_ok',
+      (candidate) => candidate.key === 'openclaw_gateway_activation_ok',
     );
 
     assert.equal(report.status, 'unhealthy');
     assert.equal(issue?.remediation.kind, 'reconcile');
+    assert.equal(issue?.remediation.handoff?.skill, '$tanaab-agentbox');
   });
 
-  it('should skip system-owned admin app checks in user service mode', () => {
+  it('should surface managed Gateway environment drift directly', () => {
     const report = evaluateHealth({
       ...healthyValues,
-      openclaw_service_mode: 'user',
-      openclaw_gateway_launchd_loaded_ok: 'skipped',
-      openclaw_gateway_launchd_running_ok: 'skipped',
-      openclaw_gateway_log_permissions_ok: 'skipped',
-      openclaw_native_gateway_launch_agents_absent_ok: 'skipped',
-      openclaw_admin_app_attach_only_ok: 'skipped',
-      openclaw_admin_app_gateway_config_expected: '0',
-      openclaw_admin_app_gateway_config_ok: 'skipped',
+      openclaw_gateway_mdns_hostname_ok: '0',
+      openclaw_gateway_activation_ok: '0',
+      openclaw_gateway_ok: '0',
+      agentbox_ok: '0',
     });
-    const openclaw = report.groups.find((group) => group.id === 'openclaw');
-
-    assert.equal(report.status, 'healthy');
-    assert.equal(
-      openclaw?.checks.find((check) => check.key === 'openclaw_admin_app_gateway_config_ok')
-        ?.status,
-      'skipped',
+    const issue = report.issues.find(
+      (candidate) => candidate.key === 'openclaw_gateway_mdns_hostname_ok',
     );
+
+    assert.equal(issue?.remediation.kind, 'reconcile');
+    assert.match(issue?.remediation.summary || '', /managed Gateway environment/);
+  });
+
+  it('should not hand unmanaged Gateway log permissions back to agentbox reconciliation', () => {
+    const report = evaluateHealth({
+      ...healthyValues,
+      openclaw_gateway_agentbox_managed: '0',
+      openclaw_gateway_mdns_hostname_ok: 'skipped',
+      openclaw_gateway_agent_environment_ok: 'skipped',
+      openclaw_gateway_log_permissions_ok: '0',
+      agentbox_ok: '0',
+    });
+    const issue = report.issues.find(
+      (candidate) => candidate.key === 'openclaw_gateway_log_permissions_ok',
+    );
+
+    assert.equal(issue?.remediation.kind, 'manual');
+    assert.match(issue?.remediation.summary || '', /not agentbox-managed/);
+  });
+
+  it('should explain FileVault when unattended reboot recovery is unavailable', () => {
+    const report = evaluateHealth({
+      ...healthyValues,
+      openclaw_filevault_enabled: '1',
+      openclaw_unattended_reboot_ready: '0',
+      agentbox_ok: '0',
+    });
+    const issue = report.issues.find(
+      (candidate) => candidate.key === 'openclaw_unattended_reboot_ready',
+    );
+
+    assert.equal(issue?.remediation.kind, 'manual');
+    assert.match(issue?.remediation.summary || '', /FileVault blocks unattended autologin/);
   });
 
   it('should attach the configured default installer only to reconcile remediation', () => {
@@ -259,14 +308,16 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     const report = evaluateHealth(
       {
         ...healthyValues,
-        openclaw_service_mode: 'user',
-        openclaw_gateway_status_ok: '0',
+        openclaw_gateway_state: 'failed',
+        openclaw_gateway_activation_ok: '0',
         openclaw_gateway_ok: '0',
         agentbox_ok: '0',
       },
       { installer },
     );
-    const issue = report.issues.find((candidate) => candidate.key === 'openclaw_gateway_status_ok');
+    const issue = report.issues.find(
+      (candidate) => candidate.key === 'openclaw_gateway_activation_ok',
+    );
 
     assert.deepEqual(issue?.remediation.installer, {
       key: 'source',

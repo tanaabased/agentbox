@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail
+
+: "${TEST_OPENCLAW_INSTALLED:?TEST_OPENCLAW_INSTALLED is required}"
+
+[[ "$*" == "print gui/${UID}/ai.openclaw.gateway" ]]
+[[ -f "${TEST_OPENCLAW_INSTALLED}" ]]

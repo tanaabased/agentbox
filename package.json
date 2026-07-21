@@ -37,7 +37,7 @@
     "leia": "leia",
     "lint": "bun run lint:eslint && bun run format:check && bun run lint:shellcheck",
     "lint:eslint": "eslint .",
-    "lint:shellcheck": "shellcheck *.sh bin/*.sh scripts/*.sh",
+    "lint:shellcheck": "shellcheck *.sh bin/*.sh libexec/*.sh scripts/*.sh",
     "test": "bun run test:unit",
     "test:unit": "mocha \"test/**/*.spec.js\""
   }
