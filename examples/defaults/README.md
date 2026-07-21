@@ -217,6 +217,18 @@ grep -E '^agentbox_version=.+$' /var/db/tanaab/agentbox/health-report
 tail -n 1 /var/db/tanaab/agentbox/health-report | grep -E '^agentbox_ok=[01]$'
 if sudo -u openclaw test -r /var/db/tanaab/agentbox/health-report; then exit 1; fi
 
+# should manually publish tailscale health under the launchd path
+before_report_inode="$(stat -f "%i" /var/db/tanaab/agentbox/health-report)"
+sudo /usr/bin/env PATH=/usr/bin:/bin:/usr/sbin:/sbin /opt/tanaab/agentbox/bin/health.sh
+after_report_inode="$(stat -f "%i" /var/db/tanaab/agentbox/health-report)"
+test "$after_report_inode" != "$before_report_inode"
+grep -Fx "tailscale_backend_state=Running" /var/db/tanaab/agentbox/health-report
+grep -Fx "tailscale_operator_user=openclaw" /var/db/tanaab/agentbox/health-report
+grep -Fx "tailscale_operator_ok=1" /var/db/tanaab/agentbox/health-report
+grep -Fx "tailscale_magicdns_enabled=1" /var/db/tanaab/agentbox/health-report
+grep -Fx "tailscale_magicdns_resolver_ok=1" /var/db/tanaab/agentbox/health-report
+grep -Fx "tailscale_https_certificates_enabled=1" /var/db/tanaab/agentbox/health-report
+
 # should diagnose pending first-login health from the published report without sudo
 "$AGENTBOX_PAYLOAD_DIR/scripts/check-plugin-runtime.sh"
 set +e

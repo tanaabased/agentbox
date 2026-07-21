@@ -490,6 +490,17 @@ unsafe reports and reports older than 15 minutes; if a missing or stale report p
 five-minute interval, rerun `agentbox` to reconcile the health LaunchDaemon. Older installations need
 one reconciliation before they publish this snapshot.
 
+To publish a fresh snapshot immediately instead of waiting for the next interval, run the installed
+health script with no arguments:
+
+```sh
+sudo /opt/tanaab/agentbox/bin/health.sh
+```
+
+This atomically replaces the administrator-readable snapshot and appends the same report to the
+periodic health log. The `--check` and `--report` modes below print a live report but do not replace
+the published snapshot.
+
 The installed `/opt/tanaab/agentbox/bin/health.sh` remains the authoritative health contract for the
 host version. Use `--check` to print its line-oriented `key=value` report and return nonzero when a
 required check fails:

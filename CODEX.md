@@ -121,6 +121,9 @@ boot or installation, allow one five-minute publication interval; if the report 
 or stale, use `$tanaab-agentbox` to reconcile the installed health service. Arbitrary saved reports
 and source-checkout health scripts are not accepted.
 
+To refresh the fixed snapshot immediately instead of waiting for the next interval, use the manual
+publication command in [Verification Details](./ADVANCED.md#verification-details).
+
 The doctor recommends repairs but does not execute them. Apply a recommended command or handoff only
 after a separate confirmation, then rerun the doctor to verify the result.
 

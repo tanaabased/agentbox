@@ -46,11 +46,18 @@ AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
 STATE_LOADED="0"
 SSH_HARDENING_DIAGNOSTIC=""
 HEALTH_REPORT_TEMP=""
+JQ_BIN=""
+TAILSCALE_BIN=""
 
 if [[ -r "${STATE_FILE}" ]]; then
   # shellcheck source=/dev/null
   . "${STATE_FILE}"
   STATE_LOADED="1"
+fi
+
+if [[ -n "${AGENTBOX_HEALTH_BREW_PREFIX}" ]]; then
+  JQ_BIN="${AGENTBOX_HEALTH_BREW_PREFIX}/bin/jq"
+  TAILSCALE_BIN="${AGENTBOX_HEALTH_BREW_PREFIX}/bin/tailscale"
 fi
 
 dotenv_double_quote() {
@@ -660,18 +667,20 @@ openclaw_gateway_tailscale_serve_route_ok_value() {
   local port="$1"
   local status
 
-  if [[ -z "${port}" ]] || ! command -v tailscale >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+  if [[ -z "${port}" || ! -x "${TAILSCALE_BIN}" || ! -x "${JQ_BIN}" ]]; then
     printf '0'
     return 0
   fi
 
-  status="$(tailscale serve status --json 2>/dev/null || true)"
+  status="$("${TAILSCALE_BIN}" serve status --json 2>/dev/null || true)"
   if [[ -z "${status}" ]]; then
     printf '0'
     return 0
   fi
 
-  if printf "%s" "${status}" | jq -e --arg port "${port}" '
+  # $port is a jq variable, not a shell expansion.
+  # shellcheck disable=SC2016
+  if printf "%s" "${status}" | "${JQ_BIN}" -e --arg port "${port}" '
     any((.Web // {}) | to_entries[]?;
       (.key | endswith(":443"))
       and ((.value.Handlers["/"].Proxy // "")
@@ -687,7 +696,7 @@ openclaw_gateway_tailscale_serve_route_ok_value() {
 tailscale_magicdns_enabled_value() {
   local status_json="$1"
 
-  if printf "%s" "${status_json}" | jq -e '.CurrentTailnet.MagicDNSEnabled == true' >/dev/null 2>&1; then
+  if printf "%s" "${status_json}" | "${JQ_BIN}" -e '.CurrentTailnet.MagicDNSEnabled == true' >/dev/null 2>&1; then
     printf '1'
   else
     printf '0'
@@ -697,7 +706,7 @@ tailscale_magicdns_enabled_value() {
 tailscale_https_certificates_enabled_value() {
   local status_json="$1"
 
-  if printf "%s" "${status_json}" | jq -e '((.CertDomains // []) | length) > 0' >/dev/null 2>&1; then
+  if printf "%s" "${status_json}" | "${JQ_BIN}" -e '((.CertDomains // []) | length) > 0' >/dev/null 2>&1; then
     printf '1'
   else
     printf '0'
@@ -707,7 +716,7 @@ tailscale_https_certificates_enabled_value() {
 tailscale_magicdns_suffix_value() {
   local status_json="$1"
 
-  printf "%s" "${status_json}" | jq -r '.CurrentTailnet.MagicDNSSuffix // ""' 2>/dev/null | sed 's/[.]$//'
+  printf "%s" "${status_json}" | "${JQ_BIN}" -r '.CurrentTailnet.MagicDNSSuffix // ""' 2>/dev/null | sed 's/[.]$//'
 }
 
 tailscale_magicdns_suffix_valid() {
@@ -732,7 +741,7 @@ tailscale_magicdns_resolver_ok_value() {
   local resolver_path=""
   local suffix=""
 
-  if [[ -z "${status_json}" ]] || ! command -v jq >/dev/null 2>&1; then
+  if [[ -z "${status_json}" || ! -x "${JQ_BIN}" ]]; then
     printf '0'
     return 0
   fi
@@ -1274,19 +1283,19 @@ generate_report() {
       tailscaled_state_file_ok="1"
     fi
 
-    if command -v tailscale >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-      tailscale_status_json="$(tailscale status --json 2>/dev/null || true)"
+    if [[ -x "${TAILSCALE_BIN}" && -x "${JQ_BIN}" ]]; then
+      tailscale_status_json="$("${TAILSCALE_BIN}" status --json 2>/dev/null || true)"
       if [[ -n "${tailscale_status_json}" ]]; then
-        tailscale_backend_state="$(printf "%s" "${tailscale_status_json}" | jq -r '.BackendState // ""' 2>/dev/null || true)"
-        tailscale_hostname="$(printf "%s" "${tailscale_status_json}" | jq -r '.Self.HostName // ""' 2>/dev/null || true)"
-        tailscale_ip="$(printf "%s" "${tailscale_status_json}" | jq -r '(.Self.TailscaleIPs // []) | .[0] // ""' 2>/dev/null || true)"
+        tailscale_backend_state="$(printf "%s" "${tailscale_status_json}" | "${JQ_BIN}" -r '.BackendState // ""' 2>/dev/null || true)"
+        tailscale_hostname="$(printf "%s" "${tailscale_status_json}" | "${JQ_BIN}" -r '.Self.HostName // ""' 2>/dev/null || true)"
+        tailscale_ip="$(printf "%s" "${tailscale_status_json}" | "${JQ_BIN}" -r '(.Self.TailscaleIPs // []) | .[0] // ""' 2>/dev/null || true)"
         tailscale_magicdns_enabled="$(tailscale_magicdns_enabled_value "${tailscale_status_json}")"
         tailscale_https_certificates_enabled="$(tailscale_https_certificates_enabled_value "${tailscale_status_json}")"
         tailscale_magicdns_suffix="$(tailscale_magicdns_suffix_value "${tailscale_status_json}" || true)"
         tailscale_magicdns_resolver_path="$(tailscale_magicdns_resolver_path_value "${tailscale_magicdns_suffix}")"
         tailscale_magicdns_resolver_ok="$(tailscale_magicdns_resolver_ok_value "${tailscale_status_json}")"
       fi
-      tailscale_operator_user="$(tailscale debug prefs 2>/dev/null | jq -r '.OperatorUser // ""' 2>/dev/null || true)"
+      tailscale_operator_user="$("${TAILSCALE_BIN}" debug prefs 2>/dev/null | "${JQ_BIN}" -r '.OperatorUser // ""' 2>/dev/null || true)"
     fi
 
     print_kv tailscale_backend_state "${tailscale_backend_state}"
