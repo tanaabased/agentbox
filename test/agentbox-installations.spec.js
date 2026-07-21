@@ -25,7 +25,6 @@ async function createPayload(root, version = 'v1.2.1') {
     'launchd/dev.tanaab.agentbox.tailscaled.plist.in',
     'launchd/dev.tanaab.agentbox.openclaw-finalize.plist.in',
     'libexec/agentbox-openclaw-finalize.sh',
-    'assets/default_avatar.png',
     'assets/profile1.png',
   ];
   for (const file of files) {

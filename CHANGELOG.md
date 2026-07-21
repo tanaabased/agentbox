@@ -20,10 +20,7 @@
 ### Bug Fixes
 
 - Fixed Homebrew brewgroup access to repair descendant drift on every run and report later drift in health. [#21](https://github.com/tanaabased/agentbox/issues/21)
-
-### Bug Fixes
-
-- Fixed Homebrew brewgroup access to repair descendant drift on every run and report later drift in health. [#21](https://github.com/tanaabased/agentbox/issues/21) [#25](https://github.com/tanaabased/agentbox/pull/25)
+- Fixed OpenClaw reruns to preserve the existing UI assistant name and avatar while continuing to enforce the Tanaab seam color.
 
 ## v1.0.0-beta.7 - [July 17, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.7)
 

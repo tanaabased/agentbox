@@ -77,6 +77,11 @@ chmod 700 "$HOME/.openclaw/service-env/ai.openclaw.gateway-env-wrapper.sh"
 # should register stale openclaw gateway tailscale authentication state before rerun
 sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set gateway.auth.allowTailscale false --strict-json
 
+# should seed custom openclaw UI identity and a stale seam color before rerun
+sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set ui.assistant.name "Rita Custom Claw"
+sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set ui.assistant.avatar "data:image/png;base64,$(/usr/bin/base64 < "$AGENTBOX_PAYLOAD_DIR/assets/profile1.png" | /usr/bin/tr -d '\r\n')"
+sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set ui.seamColor "#db2777"
+
 # should stop the existing tailscale identity before rerun
 sudo tailscale down
 sudo tailscale status --json | tee /dev/stderr | jq -e '.BackendState == "Stopped"'
@@ -127,10 +132,10 @@ dscl . -read /Users/rita RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^
 test -d /Users/rita
 test "$(stat -f "%Su" /Users/rita)" = "rita"
 
-# should restore permanent openclaw fallback gateway branding on rerun
-test "$(sudo jq -r '.ui.assistant.name' /Users/rita/.openclaw/openclaw.json)" = "MODEL L3-37"
+# should preserve custom openclaw UI identity and restore the seam color on rerun
+test "$(sudo jq -r '.ui.assistant.name' /Users/rita/.openclaw/openclaw.json)" = "Rita Custom Claw"
 test "$(sudo jq -r '.ui.seamColor' /Users/rita/.openclaw/openclaw.json)" = "#00c88a"
-sudo jq -r '.ui.assistant.avatar | select(startswith("data:image/png;base64,")) | sub("^data:image/png;base64,"; "")' /Users/rita/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png"
+sudo jq -r '.ui.assistant.avatar | select(startswith("data:image/png;base64,")) | sub("^data:image/png;base64,"; "")' /Users/rita/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/profile1.png"
 
 # should restore openclaw gateway tailscale identity authentication on rerun
 test "$(sudo jq -r '.gateway.auth.allowTailscale' /Users/rita/.openclaw/openclaw.json)" = "true"

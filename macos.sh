@@ -22,7 +22,6 @@ DEFAULT_OPENCLAW_IDENTITY="A Tanaab-based Claw <openclaw>"
 DEFAULT_OPENCLAW_AUTOLOGIN="on"
 DEFAULT_OPENCLAW_GATEWAY_PORT="18789"
 DEFAULT_OPENCLAW_AUTH_CHOICE="skip"
-OPENCLAW_UI_ASSISTANT_NAME="MODEL L3-37"
 OPENCLAW_UI_SEAM_COLOR="#00c88a"
 AGENTBOX_OPT_DIR="/opt/tanaab/agentbox"
 AGENTBOX_PROFILE_IMAGE_PATH="${AGENTBOX_OPT_DIR}/profile.png"
@@ -335,7 +334,6 @@ AGENTBOX_TAILSCALED_PLIST_TEMPLATE=""
 AGENTBOX_OPENCLAW_FINALIZER_PLIST_TEMPLATE=""
 AGENTBOX_OPENCLAW_FINALIZER_SOURCE=""
 AGENTBOX_PROFILE_IMAGE_SOURCE=""
-AGENTBOX_DEFAULT_AVATAR_SOURCE=""
 BREW_PREFIX_VALUE=""
 TAILSCALE_HOSTNAME_VALUE=""
 OPENCLAW_GATEWAY_SETUP_STATUS="not_configured"
@@ -1310,8 +1308,6 @@ agentbox_payload_valid() {
   [[ -f "${dir}/launchd/dev.tanaab.agentbox.tailscaled.plist.in" ]] || return 1
   [[ -f "${dir}/launchd/dev.tanaab.agentbox.openclaw-finalize.plist.in" ]] || return 1
   [[ -f "${dir}/libexec/agentbox-openclaw-finalize.sh" ]] || return 1
-  [[ -f "${dir}/assets/default_avatar.png" ]] || return 1
-
   for profile_image_source in "${dir}"/assets/profile*.png; do
     if [[ -f "${profile_image_source}" ]]; then
       return 0
@@ -1325,7 +1321,7 @@ validate_agentbox_payload_dir() {
   local dir="$1"
 
   if ! agentbox_payload_valid "${dir}"; then
-    abort "agentbox payload at ${tty_ts}$(display_home_path "${dir}")${tty_reset} must include Brewfile, bin/health.sh, launchd templates, assets/default_avatar.png, and assets/profile*.png."
+    abort "agentbox payload at ${tty_ts}$(display_home_path "${dir}")${tty_reset} must include Brewfile, bin/health.sh, launchd templates, and assets/profile*.png."
   fi
 }
 
@@ -1509,7 +1505,6 @@ discover_agentbox_payload() {
   AGENTBOX_TAILSCALED_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.tailscaled.plist.in"
   AGENTBOX_OPENCLAW_FINALIZER_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.openclaw-finalize.plist.in"
   AGENTBOX_OPENCLAW_FINALIZER_SOURCE="${AGENTBOX_LIBEXEC_DIR}/agentbox-openclaw-finalize.sh"
-  AGENTBOX_DEFAULT_AVATAR_SOURCE="${AGENTBOX_ASSETS_DIR}/default_avatar.png"
   AGENTBOX_PROFILE_IMAGE_SOURCES=()
   AGENTBOX_PROFILE_IMAGE_SOURCE=""
 
@@ -1531,10 +1526,6 @@ discover_agentbox_payload() {
 
   if [[ ! -f "${AGENTBOX_OPENCLAW_FINALIZER_PLIST_TEMPLATE}" || ! -f "${AGENTBOX_OPENCLAW_FINALIZER_SOURCE}" ]]; then
     abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing the openclaw Aqua finalizer assets; use a current agentbox checkout or release payload that includes launchd/ and libexec/."
-  fi
-
-  if [[ ! -f "${AGENTBOX_DEFAULT_AVATAR_SOURCE}" ]]; then
-    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required runtime asset ${tty_ts}assets/default_avatar.png${tty_reset}; use a current agentbox checkout or release payload that includes the bundled default avatar."
   fi
 
   for profile_image_source in "${AGENTBOX_ASSETS_DIR}"/profile*.png; do
@@ -3230,7 +3221,7 @@ plan_wrapper_execution() {
   if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" == "serve" ]]; then
     plan_action "${tty_tp}allow${tty_reset} verified tailscale identities for openclaw gateway authentication"
   fi
-  plan_action "${tty_tp}configure${tty_reset} permanent openclaw fallback gateway branding as ${tty_ts}${OPENCLAW_UI_ASSISTANT_NAME}${tty_reset} with the bundled default avatar and Tanaab green seam color"
+  plan_action "${tty_tp}configure${tty_reset} the openclaw UI seam color as Tanaab green"
   if user_exists "${OPENCLAW_USER}"; then
     plan_action "${tty_tp}ensure${tty_reset} native runtime-user openclaw LaunchAgent ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} is installed, current, and healthy, using an Aqua-only one-time finalizer only when installation or repair is required"
   else
@@ -4255,69 +4246,29 @@ configure_openclaw_tailscale_auth() {
   fi
 }
 
-openclaw_default_avatar_data_uri() {
-  local encoded
-
-  if ! encoded="$(/usr/bin/base64 < "${AGENTBOX_DEFAULT_AVATAR_SOURCE}" | /usr/bin/tr -d '\r\n')" || [[ -z "${encoded}" ]]; then
-    abort "failed to encode openclaw fallback gateway avatar from ${tty_ts}$(display_home_path "${AGENTBOX_DEFAULT_AVATAR_SOURCE}")${tty_reset}."
-  fi
-
-  printf "data:image/png;base64,%s" "${encoded}"
-}
-
-configure_openclaw_ui_assistant_branding() {
-  local avatar_data_uri
-  local batch_file
+configure_openclaw_ui_seam_color() {
   local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
   local openclaw_bin="$1"
-  local primary_group
   local runner_config
 
-  avatar_data_uri="$(openclaw_default_avatar_data_uri)"
-  batch_file="$(openclaw_gateway_state_dir)/.agentbox-ui-assistant.batch.json"
   runner_config="$(openclaw_gateway_state_dir)/openclaw.json"
-  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
 
-  # shellcheck disable=SC2016
-  if ! "${jq_bin}" -n \
-    --arg assistant_name "${OPENCLAW_UI_ASSISTANT_NAME}" \
-    --arg assistant_avatar "${avatar_data_uri}" \
-    --arg seam_color "${OPENCLAW_UI_SEAM_COLOR}" \
-    '[
-      {"path":"ui.assistant.name","value":$assistant_name},
-      {"path":"ui.assistant.avatar","value":$assistant_avatar},
-      {"path":"ui.seamColor","value":$seam_color}
-    ]' | sudo tee "${batch_file}" >/dev/null; then
-    sudo rm -f "${batch_file}" >/dev/null 2>&1 || true
-    abort "failed to prepare openclaw fallback gateway branding for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
-  fi
-
-  execute sudo chown "${OPENCLAW_USER}:${primary_group}" "${batch_file}"
-  execute sudo chmod 600 "${batch_file}"
-
-  log "${tty_tp}configuring${tty_reset} openclaw fallback gateway branding as ${tty_ts}${OPENCLAW_UI_ASSISTANT_NAME}${tty_reset}"
-  if ! run_as_openclaw_runner "${openclaw_bin}" config set --batch-file "${batch_file}" >/dev/null; then
-    sudo rm -f "${batch_file}" >/dev/null 2>&1 || true
-    abort "failed to configure openclaw fallback gateway branding for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+  log "${tty_tp}configuring${tty_reset} openclaw UI seam color as ${tty_ts}${OPENCLAW_UI_SEAM_COLOR}${tty_reset}"
+  if ! run_as_openclaw_runner "${openclaw_bin}" config set ui.seamColor "${OPENCLAW_UI_SEAM_COLOR}" >/dev/null; then
+    abort "failed to configure the openclaw UI seam color for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
   fi
 
   if ! run_as_openclaw_runner "${openclaw_bin}" config validate --json >/dev/null; then
-    sudo rm -f "${batch_file}" >/dev/null 2>&1 || true
-    abort "openclaw gateway configuration validation failed after setting fallback branding for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+    abort "openclaw gateway configuration validation failed after setting the UI seam color for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
   fi
 
   # shellcheck disable=SC2016
   if ! run_as_openclaw_runner "${jq_bin}" -e \
-    --arg expected_name "${OPENCLAW_UI_ASSISTANT_NAME}" \
     --arg expected_seam_color "${OPENCLAW_UI_SEAM_COLOR}" \
-    --slurpfile updates "${batch_file}" \
-    '.ui.assistant.name == $expected_name and .ui.assistant.avatar == $updates[0][1].value and .ui.seamColor == $expected_seam_color' \
+    '.ui.seamColor == $expected_seam_color' \
     "${runner_config}" >/dev/null; then
-    sudo rm -f "${batch_file}" >/dev/null 2>&1 || true
-    abort "openclaw fallback gateway branding verification failed for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+    abort "openclaw UI seam color verification failed for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
   fi
-
-  execute sudo rm -f "${batch_file}"
 }
 
 openclaw_native_gateway_launch_agent_plist_path() {
@@ -4933,7 +4884,7 @@ run_agentbox_openclaw_gateway_setup() {
   run_openclaw_gateway_onboarding "${openclaw_bin}" "${reconcile_existing}"
   restore_existing_openclaw_gateway_token "${existing_token_path}"
   configure_openclaw_tailscale_auth "${openclaw_bin}"
-  configure_openclaw_ui_assistant_branding "${openclaw_bin}"
+  configure_openclaw_ui_seam_color "${openclaw_bin}"
   reconcile_openclaw_admin_app_config "${openclaw_bin}"
 
   runner_uid="$(id -u "${OPENCLAW_USER}")"

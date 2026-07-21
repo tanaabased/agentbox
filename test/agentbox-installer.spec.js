@@ -42,7 +42,6 @@ async function createPayload(root, version, scriptRelativePath = 'macos.sh') {
     'launchd/dev.tanaab.agentbox.tailscaled.plist.in',
     'launchd/dev.tanaab.agentbox.openclaw-finalize.plist.in',
     'libexec/agentbox-openclaw-finalize.sh',
-    'assets/default_avatar.png',
     'assets/profile1.png',
   ];
   for (const file of files) {
