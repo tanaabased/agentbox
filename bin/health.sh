@@ -2,7 +2,8 @@
 set -euo pipefail
 
 STATE_FILE="/var/db/tanaab/agentbox/health.env"
-LOG_FILE="/var/log/tanaab/agentbox/health.log"
+AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
+LOG_FILE="${AGENTBOX_LOG_DIR}/health.log"
 HEALTH_LABEL="dev.tanaab.agentbox.health"
 TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 TAILSCALED_STATE_FILE="/var/db/tanaab/agentbox/tailscale/tailscaled.state"
