@@ -262,21 +262,20 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
     assert.match(issue?.remediation.summary || '', /managed Gateway environment/);
   });
 
-  it('should not hand unmanaged Gateway log permissions back to agentbox reconciliation', () => {
+  it('should keep unmanaged Gateway environment and log checks informational', () => {
     const report = evaluateHealth({
       ...healthyValues,
       openclaw_gateway_agentbox_managed: '0',
       openclaw_gateway_mdns_hostname_ok: 'skipped',
       openclaw_gateway_agent_environment_ok: 'skipped',
-      openclaw_gateway_log_permissions_ok: '0',
-      agentbox_ok: '0',
+      openclaw_gateway_log_permissions_ok: 'skipped',
     });
-    const issue = report.issues.find(
-      (candidate) => candidate.key === 'openclaw_gateway_log_permissions_ok',
-    );
 
-    assert.equal(issue?.remediation.kind, 'manual');
-    assert.match(issue?.remediation.summary || '', /not agentbox-managed/);
+    assert.equal(report.status, 'healthy');
+    assert.equal(
+      report.issues.some((candidate) => candidate.key === 'openclaw_gateway_log_permissions_ok'),
+      false,
+    );
   });
 
   it('should explain FileVault when unattended reboot recovery is unavailable', () => {
@@ -292,6 +291,21 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
 
     assert.equal(issue?.remediation.kind, 'manual');
     assert.match(issue?.remediation.summary || '', /FileVault blocks unattended autologin/);
+  });
+
+  it('should explain unknown FileVault status before promising unattended recovery', () => {
+    const report = evaluateHealth({
+      ...healthyValues,
+      openclaw_filevault_enabled: 'unknown',
+      openclaw_unattended_reboot_ready: '0',
+      agentbox_ok: '0',
+    });
+    const issue = report.issues.find(
+      (candidate) => candidate.key === 'openclaw_unattended_reboot_ready',
+    );
+
+    assert.equal(issue?.remediation.kind, 'manual');
+    assert.match(issue?.remediation.summary || '', /status could not be determined/);
   });
 
   it('should attach the configured default installer only to reconcile remediation', () => {

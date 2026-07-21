@@ -7,6 +7,8 @@ HEALTH_LABEL="dev.tanaab.agentbox.health"
 TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 TAILSCALED_STATE_FILE="/var/db/tanaab/agentbox/tailscale/tailscaled.state"
 OPENCLAW_LEGACY_GATEWAY_LABEL="dev.tanaab.agentbox.openclaw-gateway"
+OPENCLAW_LEGACY_GATEWAY_STDOUT_LOG="${AGENTBOX_LOG_DIR}/openclaw-gateway.stdout.log"
+OPENCLAW_LEGACY_GATEWAY_STDERR_LOG="${AGENTBOX_LOG_DIR}/openclaw-gateway.stderr.log"
 OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL="ai.openclaw.gateway"
 OPENCLAW_FINALIZER_LABEL="dev.tanaab.agentbox.openclaw-finalize"
 AGENTBOX_OPENCLAW_SERVICE_KIND="openclaw-gateway"
@@ -434,11 +436,11 @@ openclaw_expected_port_ownership_ok_value() {
 }
 
 filevault_enabled_value() {
-  if [[ "$(filevault_status)" == "FileVault is On."* ]]; then
-    printf '1'
-  else
-    printf '0'
-  fi
+  case "$(filevault_status)" in
+    "FileVault is On."*) printf '1' ;;
+    "FileVault is Off."*) printf '0' ;;
+    *) printf 'unknown' ;;
+  esac
 }
 
 openclaw_admin_app_attach_only_ok_value() {
@@ -584,11 +586,15 @@ gatekeeper_status() {
 }
 
 filevault_status() {
+  local status
+
   if command -v fdesetup >/dev/null 2>&1; then
-    fdesetup status 2>/dev/null || true
-  else
-    printf 'unavailable'
+    if status="$(fdesetup status 2>/dev/null)" && [[ -n "${status}" ]]; then
+      printf '%s' "${status}"
+      return 0
+    fi
   fi
+  printf 'unavailable'
 }
 
 path_file_contains_value() {
@@ -829,7 +835,6 @@ generate_report() {
   local openclaw_finalizer_executable=""
   local openclaw_finalizer_state_dir=""
   local openclaw_finalizer_state_path=""
-  local openclaw_finalizer_completion_path=""
   local openclaw_finalizer_log_dir=""
   local openclaw_gateway_log_dir=""
   local openclaw_gateway_log_path=""
@@ -1101,7 +1106,6 @@ generate_report() {
   openclaw_finalizer_executable="${openclaw_home}/.local/libexec/agentbox-openclaw-finalize"
   openclaw_finalizer_state_dir="${openclaw_home}/.agentbox"
   openclaw_finalizer_state_path="${openclaw_finalizer_state_dir}/openclaw-gateway-finalizer-state"
-  openclaw_finalizer_completion_path="${openclaw_finalizer_state_dir}/openclaw-gateway-installed"
   openclaw_finalizer_log_dir="${openclaw_home}/Library/Logs/agentbox"
   openclaw_gateway_log_dir="${openclaw_home}/Library/Logs/openclaw"
   openclaw_gateway_log_path="${openclaw_gateway_log_dir}/gateway.log"
@@ -1121,7 +1125,8 @@ generate_report() {
     openclaw_gateway_mdns_hostname_ok="$(openclaw_gateway_mdns_hostname_ok_value "${openclaw_home}" "${openclaw_native_launchagent_installed_ok}")"
     openclaw_gateway_agent_environment_ok="$(openclaw_gateway_agent_environment_ok_value "${openclaw_home}" "${openclaw_native_launchagent_installed_ok}")"
   fi
-  if [[ "${openclaw_native_launchagent_installed_ok}" == "1" ]]; then
+  if [[ "${openclaw_native_launchagent_installed_ok}" == "1" &&
+    "${openclaw_gateway_agentbox_managed}" == "1" ]]; then
     if [[ "$(path_owner_group_without_mode_bits_value "${openclaw_gateway_log_dir}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_primary_group}" 022)" == "1" ]] &&
       [[ "$(path_owner_group_mode_value "${openclaw_gateway_log_path}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_primary_group}" 600)" == "1" ]]; then
       openclaw_gateway_log_permissions_ok="1"
@@ -1134,7 +1139,6 @@ generate_report() {
     "$(path_owner_group_mode_value "${openclaw_finalizer_state_dir}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_primary_group}" 700)" == "1" &&
     "$(path_owner_group_mode_value "${openclaw_finalizer_log_dir}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_primary_group}" 700)" == "1" &&
     ( ! -e "${openclaw_finalizer_state_path}" || "$(path_owner_group_mode_value "${openclaw_finalizer_state_path}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_primary_group}" 600)" == "1" ) &&
-    ( ! -e "${openclaw_finalizer_completion_path}" || "$(path_owner_group_mode_value "${openclaw_finalizer_completion_path}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_primary_group}" 600)" == "1" ) &&
     ( "${openclaw_finalizer_installed}" != "1" || "$(path_owner_group_mode_value "${openclaw_finalizer_plist}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_primary_group}" 644)" == "1" ) ]]; then
     openclaw_finalizer_permissions_ok="1"
   elif [[ -e "${openclaw_finalizer_executable}" || -e "${openclaw_finalizer_state_dir}" || "${openclaw_finalizer_installed}" == "1" ]]; then
@@ -1142,7 +1146,12 @@ generate_report() {
   fi
 
   if [[ "$(launchd_job_loaded_value system "${AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL}")" == "1" ||
-    -e "/Library/LaunchDaemons/${AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL}.plist" ]]; then
+    -e "/Library/LaunchDaemons/${AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL}.plist" ||
+    -e "${OPENCLAW_LEGACY_GATEWAY_STDOUT_LOG}" ||
+    -e "${OPENCLAW_LEGACY_GATEWAY_STDERR_LOG}" ]] ||
+    { [[ -n "${openclaw_home}" ]] &&
+      { [[ -e "${openclaw_home}/.openclaw/service-env/${AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL}.env" ]] ||
+        [[ -e "${openclaw_home}/.openclaw/service-env/${AGENTBOX_HEALTH_OPENCLAW_LEGACY_GATEWAY_LABEL}-env-wrapper.sh" ]]; }; }; then
     openclaw_legacy_system_service_detected="1"
   fi
   if [[ -n "${admin_uid}" ]] &&
@@ -1226,7 +1235,8 @@ generate_report() {
     print_kv openclaw_gateway_mdns_hostname_ok "${openclaw_gateway_mdns_hostname_ok}"
     print_kv openclaw_gateway_agent_environment_ok "${openclaw_gateway_agent_environment_ok}"
   fi
-  if [[ "${openclaw_native_launchagent_installed_ok}" == "1" ]]; then
+  if [[ "${openclaw_native_launchagent_installed_ok}" == "1" &&
+    "${openclaw_gateway_agentbox_managed}" == "1" ]]; then
     mark_required openclaw_gateway_log_permissions_ok "${openclaw_gateway_log_permissions_ok}"
   else
     print_kv openclaw_gateway_log_permissions_ok "${openclaw_gateway_log_permissions_ok}"

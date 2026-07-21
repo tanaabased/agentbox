@@ -117,11 +117,6 @@
           "when": [{ "key": "openclaw_gateway_tailscale_mode", "equals": "serve" }]
         },
         {
-          "key": "openclaw_gateway_agentbox_managed",
-          "label": "Gateway agentbox ownership",
-          "issue": false
-        },
-        {
           "key": "openclaw_gateway_mdns_hostname_ok",
           "label": "Managed Gateway mDNS hostname",
           "when": [{ "key": "openclaw_gateway_agentbox_managed", "equals": "1" }]
@@ -134,7 +129,10 @@
         {
           "key": "openclaw_gateway_log_permissions_ok",
           "label": "Native Gateway log permissions",
-          "when": [{ "key": "openclaw_native_launchagent_installed_ok", "equals": "1" }]
+          "when": [
+            { "key": "openclaw_native_launchagent_installed_ok", "equals": "1" },
+            { "key": "openclaw_gateway_agentbox_managed", "equals": "1" }
+          ]
         },
         { "key": "openclaw_gateway_activation_ok", "label": "Native Gateway activation" },
         { "key": "openclaw_gateway_ok", "label": "Gateway aggregate", "issue": false }

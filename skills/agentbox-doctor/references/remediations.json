@@ -62,6 +62,11 @@
         "when": [{ "key": "openclaw_filevault_enabled", "equals": "1" }],
         "kind": "manual",
         "summary": "FileVault blocks unattended autologin. Opt out with --openclaw-autologin off and accept manual login, or change the machine security policy deliberately."
+      },
+      {
+        "when": [{ "key": "openclaw_filevault_enabled", "equals": "unknown" }],
+        "kind": "manual",
+        "summary": "FileVault status could not be determined. Verify fdesetup status before relying on unattended autologin, or opt out with --openclaw-autologin off and accept manual login."
       }
     ]
   },
@@ -154,14 +159,7 @@
   },
   "openclaw_gateway_log_permissions_ok": {
     "kind": "reconcile",
-    "summary": "Inspect the runtime user's ~/Library/Logs/openclaw/gateway.log, then rerun agentbox to reconcile the managed native Gateway and its private runtime log.",
-    "variants": [
-      {
-        "when": [{ "key": "openclaw_gateway_agentbox_managed", "equals": "0" }],
-        "kind": "manual",
-        "summary": "The healthy native Gateway is not agentbox-managed. Inspect and correct its runtime log permissions deliberately without asking agentbox to replace or restart it."
-      }
-    ]
+    "summary": "Inspect the runtime user's ~/Library/Logs/openclaw/gateway.log, then rerun agentbox to reconcile the managed native Gateway and its private runtime log."
   },
   "tailscaled_launchd_loaded_ok": {
     "kind": "command",
