@@ -326,27 +326,6 @@ printf "%s\n" "$output" | grep -F "option --openclaw-gateway-port must not be em
 printf "%s\n" "$output" | grep -F "Usage:"
 test "$command_status" -ne 0
 
-# should fail when removed openclaw service mode is used
-set +e
-output="$(agentbox --openclaw-service-mode 2>&1)"
-command_status="$?"
-set -e
-printf "%s\n" "$output"
-printf "%s\n" "$output" | grep -F "option --openclaw-service-mode was removed"
-printf "%s\n" "$output" | grep -F -- "--openclaw-autologin on|off"
-printf "%s\n" "$output" | grep -F "Usage:"
-test "$command_status" -ne 0
-
-# should fail when the removed openclaw service mode environment variable is used
-set +e
-output="$(AGENTBOX_OPENCLAW_SERVICE_MODE=system agentbox --tailscale-authkey off --brewgroup off 2>&1)"
-command_status="$?"
-set -e
-printf "%s\n" "$output"
-printf "%s\n" "$output" | grep -F "AGENTBOX_OPENCLAW_SERVICE_MODE was removed"
-printf "%s\n" "$output" | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN=on|off"
-test "$command_status" -ne 0
-
 # should fail when openclaw autologin is missing
 set +e
 output="$(agentbox --openclaw-autologin 2>&1)"

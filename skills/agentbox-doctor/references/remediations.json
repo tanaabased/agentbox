@@ -138,14 +138,9 @@
         "summary": "Inspect the runtime user's ~/Library/Logs/openclaw/gateway.log and ~/Library/Logs/agentbox/openclaw-finalize.error.log, then rerun agentbox."
       },
       {
-        "when": [{ "key": "openclaw_gateway_state", "equals": "legacy_system_service_detected" }],
-        "kind": "reconcile",
-        "summary": "Run agentbox migration; do not repair the retired system Gateway with generic launchctl commands."
-      },
-      {
         "when": [{ "key": "openclaw_gateway_state", "equals": "duplicate_gateway_detected" }],
         "kind": "reconcile",
-        "summary": "Run agentbox migration to back up and remove the conflicting administrator Gateway safely."
+        "summary": "Rerun agentbox to back up and remove the conflicting administrator Gateway safely."
       }
     ]
   },

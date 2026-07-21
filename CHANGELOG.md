@@ -13,7 +13,7 @@
 
 - Updated agentbox-managed native Gateways with durable mDNS and ownership environment while preserving healthy unmanaged services.
 - Updated Gateway diagnostics and health to cover the native runtime log and its permissions.
-- Updated Gateway migration to archive the retired system service, back up conflicting administrator state, and refuse unexpected port owners.
+- Updated Gateway conflict reconciliation to back up administrator state and refuse unexpected port owners.
 - Updated health and doctor output with autologin readiness, GUI and finalizer state, native LaunchAgent status, conflict detection, and state-specific remediation.
 
 ## v1.0.0-beta.7 - [July 17, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.7)
