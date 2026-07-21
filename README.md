@@ -107,26 +107,6 @@ Common inputs:
 Use [ADVANCED.md](./ADVANCED.md) for the full option guide, payload-resolution details, brewgroup
 behavior, OpenClaw auth environment handling, and deeper Tailscale notes.
 
-On rerun, `agentbox` reconciles an existing valid local OpenClaw gateway configuration
-non-interactively instead of reopening the onboarding wizard. See
-[OpenClaw reruns and later configuration](./ADVANCED.md#reruns-and-later-openclaw-configuration).
-
-### Open the OpenClaw Dashboard
-
-After setup succeeds, `agentbox` prints the exact command for opening the authenticated OpenClaw
-Dashboard. With the default runner username, that command is:
-
-```sh
-sudo -iu openclaw "$(brew --prefix)/bin/openclaw" dashboard
-```
-
-Replace `openclaw` with the configured runner short name when using a custom identity. Running the
-command as the runner lets OpenClaw use its runner-owned gateway configuration and token without
-printing the token. Each additional browser profile or device connecting over the tailnet must
-complete its own OpenClaw authorization flow and may need the gateway token on first connection. See
-[Dashboard access](./ADVANCED.md#dashboard-access) for direct runner usage, remote-device
-authorization, the copy-only option, and headless-session behavior.
-
 ## Verification
 
 At the end of setup, `agentbox` prints a concise health success or failure status. A failed health

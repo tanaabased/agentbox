@@ -2584,12 +2584,9 @@ run_agentbox_launchd_health_setup() {
 }
 
 run_agentbox_post_bootstrap_summary() {
-  local dashboard_command
   local health_command="${AGENTBOX_OPT_DIR}/bin/health.sh"
   local health_ok="0"
   local health_report
-
-  dashboard_command="$(shell_join sudo -iu "${OPENCLAW_USER}" "${BREW_PREFIX_VALUE}/bin/openclaw" dashboard)"
 
   if health_report="$(sudo "${health_command}" --check 2>&1)"; then
     health_ok="1"
@@ -2600,8 +2597,8 @@ run_agentbox_post_bootstrap_summary() {
   if [[ "${OPENCLAW_GATEWAY_SETUP_STATUS}" == "pending_first_login" ]]; then
     log "agentbox setup ${tty_green}succeeded${tty_reset}; openclaw Gateway activation is staged for the runtime user's next graphical login"
     log
-    log "after activation, ${tty_tp}open${tty_reset} the openclaw dashboard:"
-    log "  ${tty_ts}${dashboard_command}${tty_reset}"
+    log "after activation, ${tty_tp}open${tty_reset} the openclaw dashboard from the ${tty_ts}${OPENCLAW_USER}${tty_reset} graphical session:"
+    log "  ${tty_ts}openclaw dashboard${tty_reset}"
     return 0
   fi
 
@@ -2614,8 +2611,8 @@ run_agentbox_post_bootstrap_summary() {
   if [[ "${health_ok}" == "1" ]]; then
     log "agentbox setup ${tty_green}succeeded${tty_reset}"
     log
-    log "${tty_tp}open${tty_reset} the openclaw dashboard:"
-    log "  ${tty_ts}${dashboard_command}${tty_reset}"
+    log "${tty_tp}open${tty_reset} the openclaw dashboard from the ${tty_ts}${OPENCLAW_USER}${tty_reset} graphical session:"
+    log "  ${tty_ts}openclaw dashboard${tty_reset}"
     return 0
   fi
 

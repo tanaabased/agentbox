@@ -24,7 +24,8 @@ sudo softwareupdate --install --all --restart
 
 - Keep automatic/background security updates enabled in System Settings.
 - Choose the operating profile deliberately: FileVault with manual runtime-user login, or FileVault
-  disabled with default autologin for unattended Gateway recovery. `agentbox` does not promise both.
+  disabled with default autologin for unattended Gateway recovery. `agentbox` does not promise both;
+  see [OpenClaw LaunchAgent](#openclaw-launchagent).
 - Consider installing an [HDMI dummy plug or headless display adapter](https://www.amazon.com/dp/B0CKKLTWMN?ref=fed_asin_title)
   for smoother headless display behavior.
 - Create or choose a preauthorized Tailscale auth key with any desired device tags, or decide to skip
@@ -80,83 +81,47 @@ OpenClaw Gateway onboarding is gateway-only by default: `agentbox` skips OpenCla
 skill installation, UI setup, hooks, and OpenClaw health checks, while keeping gateway token auth
 enabled.
 
-OpenClaw Gateway runs only as OpenClaw's native per-user LaunchAgent. Because macOS creates the
-`gui/<uid>` launchd domain only for a logged-in user, `agentbox` enables runtime-user autologin by
-default. After a normal reboot, macOS logs in the dedicated non-admin runner and the native Gateway
-returns without operator intervention.
+On reruns, `agentbox` reconciles valid local Gateway configuration without reopening the OpenClaw
+wizard. Make other OpenClaw changes from the runner's interactive session, then rerun `agentbox` to
+restore its managed LaunchAgent, loopback bind, gateway port, and Tailscale exposure.
 
-Autologin reduces physical-access security. FileVault prevents unattended autologin after a cold
-boot, so `agentbox` stops before mutation when both are requested. Use `--openclaw-autologin off`
-only when manual graphical login after every reboot or logout is acceptable.
+OpenClaw Gateway uses OpenClaw's native per-user LaunchAgent.
 
-#### Dashboard Access
+### OpenClaw LaunchAgent
 
-When logged in directly as the OpenClaw runner, open the authenticated Dashboard with:
+The native `ai.openclaw.gateway` LaunchAgent is the only supported macOS Gateway service. It runs in
+the runner's `gui/<uid>` launchd domain, which exists only while that user has a graphical login
+session.
+
+`agentbox` stages a one-time Aqua finalizer to install and verify the native LaunchAgent. If the
+runner's GUI session already exists, setup runs the finalizer immediately and waits up to 90 seconds.
+Otherwise setup succeeds with pending first-login activation, and the next graphical login completes
+installation. Completion requires both a loaded LaunchAgent and healthy Gateway RPC. Failed attempts
+retain retry state and logs under `~/Library/Logs/agentbox/`; the native Gateway runtime log is
+`~/Library/Logs/openclaw/gateway.log`.
+
+By default, `agentbox` configures the dedicated non-admin runner as the macOS autologin user. After a
+normal reboot, macOS creates the runner's GUI session and the native Gateway returns without operator
+intervention.
+
+Autologin reduces physical-access security because anyone at the Mac can reach the runner's logged-in
+desktop. FileVault prevents unattended autologin after a cold boot, so setup stops before mutation
+when FileVault is enabled or its status cannot be determined. Setup also fails if local policy keeps
+macOS from applying the requested autologin configuration.
+
+With `--openclaw-autologin off`, a graphical runner login is required after every reboot and after
+explicitly logging the runner out. Fast User Switching keeps the runner's Aqua session and
+LaunchAgent alive; a full logout stops them.
+
+From the runner's graphical session, open the authenticated Dashboard with:
 
 ```sh
 openclaw dashboard
 ```
 
-From an admin account, run the same command as the runner. The default runner command is:
-
-```sh
-sudo -iu openclaw "$(brew --prefix)/bin/openclaw" dashboard
-```
-
-Replace `openclaw` with the configured runner short name when using a custom identity. `agentbox`
-also prints the fully resolved command after a successful setup. OpenClaw normally opens the
-Dashboard and copies its authenticated URL without printing the gateway token.
-
-To copy the authenticated URL without opening a browser, add `--no-open`:
-
-```sh
-sudo -iu openclaw "$(brew --prefix)/bin/openclaw" dashboard --no-open
-```
-
-Copying may be unavailable in a purely headless or SSH-only session. In that case, OpenClaw does not
-print the hidden token as a fallback. `openclaw config get gateway.auth.token` also intentionally
-returns a redacted value. See the [OpenClaw Dashboard documentation](https://docs.openclaw.ai/cli/dashboard)
-for the upstream command behavior.
-
-When Tailscale Serve is enabled, `agentbox` keeps gateway token authentication enabled and explicitly
-sets `gateway.auth.allowTailscale` to `true` in the runner-owned configuration. Open the remote
-Dashboard at the agentbox MagicDNS HTTPS address. Each additional browser profile or device must
-complete its own OpenClaw authorization flow; enter the gateway token in the Dashboard connection
-settings when prompted. Repeat this after clearing that browser's site data or when using another
-browser profile.
-
-If the authenticated Dashboard command cannot transfer the token to the remote device, an admin can
-deliberately reveal the runner-owned token with the following command. Replace `openclaw` with the
-configured runner short name, and treat the output as a secret:
-
-```sh
-sudo jq -r '.gateway.auth.token' /Users/openclaw/.openclaw/openclaw.json
-```
-
-#### Reruns and Later OpenClaw Configuration
-
-On first setup, interactive `agentbox` runs let OpenClaw show its normal onboarding flow. On a later
-run, `agentbox` asks OpenClaw to validate the runner configuration and read `gateway.mode`. When the
-configuration is valid and the gateway mode is `local`, `agentbox` reconciles its managed gateway
-settings through OpenClaw's non-interactive onboarding path instead of reopening the wizard. Missing,
-invalid, or non-local configuration keeps the normal onboarding path so repair remains visible.
-
-Use OpenClaw's native configuration flow for targeted changes after setup. The default runner command
-is:
-
-```sh
-sudo -iu openclaw "$(brew --prefix)/bin/openclaw" configure
-```
-
-Replace `openclaw` with the configured runner short name when using a custom identity. To deliberately
-run the complete OpenClaw onboarding flow again, use `onboard --classic` as that runner:
-
-```sh
-sudo -iu openclaw "$(brew --prefix)/bin/openclaw" onboard --classic
-```
-
-Full OpenClaw onboarding can change gateway or service choices. Rerun `agentbox` afterward to
-reconcile native LaunchAgent activation, loopback bind, gateway port, and Tailscale exposure.
+For remote or non-GUI access, including additional browser authorization, follow the
+[OpenClaw Dashboard documentation](https://docs.openclaw.ai/cli/dashboard). `agentbox` keeps Gateway
+token authentication enabled when using Tailscale Serve.
 
 ## Configuration Reference
 
@@ -290,66 +255,15 @@ runner.
 | Values      | `on`, `off`                                                   |
 | Description | Controls unattended runtime-user login after a normal reboot. |
 
-The native `ai.openclaw.gateway` LaunchAgent is the only supported macOS Gateway service. With the
-default `on` policy, `agentbox` configures the dedicated non-admin runner as the macOS autologin user.
-If FileVault is enabled, or local policy prevents `sysadminctl` from applying autologin, setup stops
-instead of claiming unattended recovery.
-
-```sh
-agentbox \
-  --tailscale-authkey "$TS_AUTHKEY" \
-  --openclaw-autologin on \
-  --hostname TANAABAGENTBOX1
-```
-
-Autologin lowers physical-access security because anyone at the Mac can reach the runner's logged-in
-desktop. The runner remains non-admin, but this does not replace physical security. `off` is the
-alternative for FileVault or stricter login-window policy:
+The default `on` policy lets the native Gateway return after a normal reboot. Use `off` when the Mac
+must retain FileVault or a stricter login-window policy and manual runner login is acceptable:
 
 ```sh
 agentbox --openclaw-autologin off --hostname TANAABAGENTBOX1
 ```
 
-With `off`, a graphical runner login is required after every reboot and after explicitly logging the
-runner out. Fast User Switching is supported because it keeps the runner's Aqua session alive; a
-full logout stops its LaunchAgents.
-
-#### First-login activation
-
-Onboarding always uses `--no-install-daemon --skip-health`. `agentbox` then installs an Aqua-only,
-one-time finalizer at:
-
-- `~/.local/libexec/agentbox-openclaw-finalize`
-- `~/Library/LaunchAgents/dev.tanaab.agentbox.openclaw-finalize.plist`
-- `~/.agentbox/openclaw-gateway-finalizer-state`
-- `~/Library/Logs/agentbox/openclaw-finalize.log`
-
-Before staging a Gateway it owns, `agentbox` writes `OPENCLAW_MDNS_HOSTNAME` and its non-secret
-ownership metadata to the runner's private `~/.openclaw/.env`. OpenClaw copies those durable values
-into its generated native service environment. A healthy native Gateway without the agentbox
-ownership markers is preserved without changing its environment or restarting it.
-
-If the runner's GUI domain already exists, setup runs the finalizer immediately and waits up to 90
-seconds. Otherwise setup succeeds with `openclaw_gateway_state=pending_first_login`; the next reboot
-or graphical login completes installation. The finalizer removes its own plist only after the native
-LaunchAgent is loaded and RPC health succeeds. On failure it retains the plist, state, and logs for
-the next retry. After installation, the native Gateway runtime log is
-`~/Library/Logs/openclaw/gateway.log`; finalizer logs cover only activation and retry work.
-
-#### Migration and rollback
-
-Reruns stop and archive the retired `dev.tanaab.agentbox.openclaw-gateway` system job and its private
-service environment under `/var/db/tanaab/agentbox/migrations/`, with root-only permissions. A
-conflicting invoking-admin native Gateway is uninstalled after a timestamped backup of the admin's
-`~/.openclaw`; non-conflicting admin state is preserved and configured for attach-only access.
-
-If an unexpected process owns the configured Gateway port, `agentbox` reports its PID and owner and
-stops without killing it. To roll back a migration, first stop the native runner Gateway, inspect the
-retained backup, and deliberately restore the archived files; automatic rollback to the retired
-system-service model is not supported.
-
-Messages sign-in and macOS TCC/Automation authorization remain manual. Autologin and Gateway
-activation do not grant Messages, Full Disk Access, or Apple Events permissions.
+See [OpenClaw LaunchAgent](#openclaw-launchagent) for the security tradeoff, FileVault behavior,
+login requirements, and activation details.
 
 ### `--openclaw-gateway-port`
 
@@ -584,19 +498,14 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report
 ```
 
 `openclaw_gateway_activation_ok` is the primary Gateway readiness leaf. The accompanying
-`openclaw_gateway_state` explains whether activation is `not_configured`, `pending_first_login`,
-`installing`, `healthy`, `failed`, `gui_session_inactive`, `legacy_system_service_detected`, or
-`duplicate_gateway_detected`. A deliberately staged first login is a successful bootstrap outcome,
-but strict health remains pending until the native Gateway is healthy.
+`openclaw_gateway_state` distinguishes pending activation, a healthy Gateway, activation failure, an
+inactive GUI session, and service conflicts. A deliberately staged first login is a successful
+bootstrap outcome, but strict health remains pending until the native Gateway is healthy.
 
 For agentbox-managed Gateways, health also verifies the mDNS hostname and agentbox ownership
 metadata in OpenClaw's generated service environment. Native Gateway log ownership and permissions
 are checked after the LaunchAgent is installed. Unmanaged healthy native Gateways report the managed
 environment checks as `skipped`.
-
-Downstream `tnab running` adoption is separate work: it should consume
-`openclaw_gateway_activation_ok` and `openclaw_gateway_state` instead of retired system-service
-fields.
 
 Health ends with `agentbox_ok=1` when all required checks pass and `agentbox_ok=0` when required drift
 is present. Individual checks may be `skipped` when their feature is inactive.

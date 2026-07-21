@@ -39,9 +39,9 @@ grep -F "agentbox setup succeeded" "$TMPDIR/defaults.log"
 ! grep -F "agentbox_ok=" "$TMPDIR/defaults.log"
 ! grep -F "debug agentbox health report" "$TMPDIR/defaults.log"
 
-# should print the resolved openclaw dashboard command
-grep -F "open the openclaw dashboard:" "$TMPDIR/defaults.log"
-grep -F "sudo -iu openclaw $(brew --prefix)/bin/openclaw dashboard" "$TMPDIR/defaults.log"
+# should print the runner graphical session dashboard command
+grep -F "open the openclaw dashboard from the openclaw graphical session:" "$TMPDIR/defaults.log"
+grep -Fx "  openclaw dashboard" "$TMPDIR/defaults.log"
 
 # should install homebrew
 command -v brew >/dev/null

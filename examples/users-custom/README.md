@@ -36,8 +36,9 @@ dscl . -read /Users/luna RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^
 test -d /Users/luna
 test "$(stat -f "%Su" /Users/luna)" = "luna"
 
-# should print the custom runner dashboard command
-grep -F "sudo -iu luna $(brew --prefix)/bin/openclaw dashboard" "$TMPDIR/users-custom.log"
+# should print the custom runner graphical session dashboard command
+grep -F "open the openclaw dashboard from the luna graphical session:" "$TMPDIR/users-custom.log"
+grep -Fx "  openclaw dashboard" "$TMPDIR/users-custom.log"
 
 # should report the openclaw runner as non-admin
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"

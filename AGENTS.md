@@ -46,7 +46,7 @@ This is directional guidance, not the current public contract:
 - `unsupported.sh`: hosted fallback for unsupported or unknown platforms.
 - `Brewfile`: core Homebrew packages; `Brewfile.extras`: optional operator tooling.
 - `bin/health.sh`: source for `/opt/tanaab/agentbox/bin/health.sh` and the machine health contract.
-- `launchd/*.plist.in`: source LaunchDaemon templates rendered by `macos.sh`.
+- `launchd/*.plist.in`: source launchd service templates rendered by `macos.sh`.
 - `.codex-plugin/plugin.json`, `skills/`: Codex plugin metadata and installable skill surface.
 - `assets/composer-icon.svg`, `assets/icon-large.png`: Codex plugin interface assets.
 - `bin/codexsync.js`, `lib/codexsync-*.js`: package-level plugin validation and installed cache
