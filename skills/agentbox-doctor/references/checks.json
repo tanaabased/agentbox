@@ -90,6 +90,12 @@
           "when": [{ "key": "brewgroup_enabled", "equals": "1" }]
         },
         {
+          "key": "brew_prefix_acl_inheritance_ok",
+          "label": "Homebrew prefix inherited access",
+          "issue": false,
+          "when": [{ "key": "brewgroup_enabled", "equals": "1" }]
+        },
+        {
           "key": "brew_prefix_ok",
           "label": "Homebrew prefix access",
           "when": [{ "key": "brewgroup_enabled", "equals": "1" }]

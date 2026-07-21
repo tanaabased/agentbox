@@ -86,9 +86,8 @@
     "command": "sudo /usr/sbin/dseditgroup -o edit -a {{trusted_brewgroup_expected}} -t group {{brewgroup_expected}}"
   },
   "brew_prefix_ok": {
-    "kind": "command",
-    "summary": "Restore group ownership and group read/write/traverse access across the Homebrew prefix.",
-    "command": "sudo /usr/bin/find -x {{brew_prefix}} -exec chgrp -h {{brewgroup_expected}} {} + && sudo /usr/bin/find -x {{brew_prefix}} ! -type l -exec chmod g+rwX {} +"
+    "kind": "reconcile",
+    "summary": "Re-run agentbox to restore recursive ownership, permissions, and inherited ACL access across the Homebrew prefix."
   },
   "homebrew_login_path_file_ok": {
     "kind": "command",

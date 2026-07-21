@@ -52,6 +52,16 @@ test "$(stat -f "%Sg" "$brew_prefix")" = "bobsbrewcrew"
 brew_prefix_mode="$(stat -f "%Lp" "$brew_prefix")"
 test "$((8#$brew_prefix_mode & 8#070))" = "$((8#070))"
 
+# should inherit brewgroup access through restrictive creation modes
+brew_prefix="$(brew --prefix)"
+acl_fixture="$brew_prefix/var/agentbox-brewgroup-inheritance"
+sudo -u bob /bin/sh -c 'umask 077; mkdir -p "$1/child"; printf "%s\n" "created-by-bob" > "$1/child/shared"' _ "$acl_fixture"
+brewgroup_uuid="$(dsmemberutil getuuid -G bobsbrewcrew)"
+ls -lde "$acl_fixture/child" | tee /dev/stderr | grep -F "$brewgroup_uuid inherited allow list,add_file,search,add_subdirectory,delete_child,readattr,writeattr,readextattr,writeextattr,readsecurity,directory_inherit"
+ls -lde "$acl_fixture/child/shared" | tee /dev/stderr | grep -F "$brewgroup_uuid inherited allow read,write,append,readattr,writeattr,readextattr,writeextattr,readsecurity"
+sudo -u "$(id -un)" /bin/sh -c 'printf "%s\n" "written-by-admin" >> "$1"' _ "$acl_fixture/child/shared"
+sudo -u bob grep -Fx "written-by-admin" "$acl_fixture/child/shared"
+
 # should give a future staff user inherited membership in the brewgroup
 sudo dscl . -delete /Users/brewhelper >/dev/null 2>&1 || true
 test_user_uid="$(dscl . -list /Users UniqueID | awk '$2 ~ /^[0-9]+$/ { used[$2] = 1 } END { for (uid = 701; uid < 1000; uid++) { if (!(uid in used)) { print uid; exit } } }')"
@@ -76,6 +86,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tr
 
 # should report homebrew prefix health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix=$(brew --prefix)"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_acl_inheritance_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_rwx_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_ok=1"

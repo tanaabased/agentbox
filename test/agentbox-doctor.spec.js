@@ -56,6 +56,7 @@ const healthyValues = {
   openclaw_unattended_reboot_ready: '1',
   brewgroup_enabled: '0',
   trusted_brewgroup_enabled: '0',
+  brew_prefix_acl_inheritance_ok: 'skipped',
   homebrew_login_path_bin_ok: '1',
   homebrew_login_path_sbin_ok: '1',
   homebrew_login_path_file_ok: '1',
@@ -608,6 +609,26 @@ describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
       remediationCatalog.tailscale_operator_ok.command,
       'sudo {{brew_prefix}}/bin/tailscale set --operator={{openclaw_user}}',
     );
+  });
+
+  it('should route Homebrew prefix ACL drift through agentbox reconciliation', () => {
+    const report = evaluateHealth({
+      ...healthyValues,
+      brewgroup_enabled: '1',
+      brewgroup_expected: 'brewer',
+      brewgroup_admin_user_ok: '1',
+      brewgroup_openclaw_user_ok: '1',
+      brew_prefix_group_ok: '1',
+      brew_prefix_group_rwx_ok: '1',
+      brew_prefix_acl_inheritance_ok: '0',
+      brew_prefix_ok: '0',
+      agentbox_ok: '0',
+    });
+    const issue = report.issues.find((candidate) => candidate.key === 'brew_prefix_ok');
+
+    assert.equal(issue?.remediation.kind, 'reconcile');
+    assert.equal(issue?.remediation.command, null);
+    assert.equal(issue?.remediation.handoff?.skill, '$tanaab-agentbox');
   });
 
   it('should remove persistent Homebrew tailscaled launchd conflicts', () => {

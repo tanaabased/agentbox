@@ -364,6 +364,12 @@ a direct member so the bootstrap account keeps write access to the Homebrew pref
 OpenClaw runner as a direct member so the runner can use the Homebrew-managed OpenClaw CLI and related
 tools.
 
+Every enabled run recursively reconciles existing Homebrew prefix ownership and group write access,
+then installs macOS access-control entries that propagate the same access to future files and
+directories. The health report detects directories that bypass inheritance, including moved-in
+trees, and a later `agentbox` run repairs that drift. A falsey brewgroup value skips this management;
+it does not revoke access granted by an earlier enabled run.
+
 For controlled `agentbox` hosts, you may append a trusted nested group with
 `--brewgroup brewgroup:trusted-group`. For example, `--brewgroup brewer:staff` keeps the Homebrew
 prefix owned by `brewer`, but nests macOS `staff` into `brewer` so future local users in `staff`
