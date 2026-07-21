@@ -205,6 +205,28 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "health_launchd_loaded_ok=1"
 sudo /usr/libexec/PlistBuddy -c "Print :AgentboxVersion" /Library/LaunchDaemons/dev.tanaab.agentbox.health.plist | grep -E '^.+$'
 
+# should publish the latest health report for administrators without sudo
+for attempt in $(seq 1 60); do
+  if test -r /var/db/tanaab/agentbox/health-report; then break; fi
+  sleep 2
+done
+test -r /var/db/tanaab/agentbox/health-report
+test "$(stat -f "%Su:%Sg:%Lp" /var/db/tanaab/agentbox/health-report)" = "root:admin:640"
+grep -E '^timestamp=.+$' /var/db/tanaab/agentbox/health-report
+grep -E '^agentbox_version=.+$' /var/db/tanaab/agentbox/health-report
+tail -n 1 /var/db/tanaab/agentbox/health-report | grep -E '^agentbox_ok=[01]$'
+if sudo -u openclaw test -r /var/db/tanaab/agentbox/health-report; then exit 1; fi
+
+# should diagnose pending first-login health from the published report without sudo
+"$AGENTBOX_PAYLOAD_DIR/scripts/check-plugin-runtime.sh"
+set +e
+doctor_output="$(bun "$AGENTBOX_PAYLOAD_DIR/skills/agentbox-doctor/scripts/check-host.js")"
+doctor_status="$?"
+set -e
+printf '%s\n' "$doctor_output"
+test "$doctor_status" -eq 1
+printf '%s\n' "$doctor_output" | jq -e '.status == "unhealthy" and .source.healthReport == "/var/db/tanaab/agentbox/health-report" and .source.healthAgeSeconds >= 0 and .source.healthAgeSeconds <= 900 and (.issues | any(.key == "openclaw_gateway_activation_ok"))'
+
 # should keep strict health pending until the runtime user logs in
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=0"
 if sudo /opt/tanaab/agentbox/bin/health.sh --check; then exit 1; fi

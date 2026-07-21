@@ -120,9 +120,9 @@ on the local agentbox host and ask:
 Use $tanaab-agentbox-doctor to inspect this local agentbox host.
 ```
 
-The doctor presents grouped status, explains failures and warnings, and recommends focused repairs
-without applying them. Reboot the Mac, confirm the dedicated runtime user logs in automatically and
-the native Gateway returns healthy, then rerun the doctor.
+The doctor reads agentbox's administrator-readable health snapshot without sudo, presents grouped
+status, and recommends focused repairs without applying them. Reboot the Mac, confirm the dedicated
+runtime user logs in automatically and the native Gateway returns healthy, then rerun the doctor.
 
 Without Codex, use the installed health script directly:
 

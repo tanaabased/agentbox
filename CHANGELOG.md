@@ -12,6 +12,7 @@
 ### Improvements
 
 - Updated agentbox-managed native Gateways with durable mDNS and ownership environment while preserving healthy unmanaged services.
+- Updated Doctor to inspect a root-published periodic health snapshot without sudo.
 - Updated Gateway diagnostics and health to cover the native runtime log and its permissions.
 - Updated Gateway conflict reconciliation to back up administrator state and refuse unexpected port owners.
 - Updated health and doctor output with autologin readiness, GUI and finalizer state, native LaunchAgent status, conflict detection, and state-specific remediation.

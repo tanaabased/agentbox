@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-STATE_FILE="/var/db/tanaab/agentbox/health.env"
+AGENTBOX_STATE_DIR="/var/db/tanaab/agentbox"
+STATE_FILE="${AGENTBOX_STATE_DIR}/health.env"
+HEALTH_REPORT_FILE="${AGENTBOX_STATE_DIR}/health-report"
 AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
 LOG_FILE="${AGENTBOX_LOG_DIR}/health.log"
 HEALTH_LABEL="dev.tanaab.agentbox.health"
@@ -43,6 +45,7 @@ AGENTBOX_HEALTH_SSH_ALLOWED_USERS=""
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
 STATE_LOADED="0"
 SSH_HARDENING_DIAGNOSTIC=""
+HEALTH_REPORT_TEMP=""
 
 if [[ -r "${STATE_FILE}" ]]; then
   # shellcheck source=/dev/null
@@ -1364,12 +1367,63 @@ generate_report() {
   return 1
 }
 
+cleanup_health_report_temp() {
+  if [[ -n "${HEALTH_REPORT_TEMP}" ]]; then
+    rm -f "${HEALTH_REPORT_TEMP}"
+  fi
+}
+
+generated_report_complete() {
+  local report_path="$1"
+  local terminal_line
+
+  [[ "$(grep -Ec '^timestamp=.+$' "${report_path}" || true)" == "1" ]] || return 1
+  [[ "$(grep -Ec '^agentbox_version=.+$' "${report_path}" || true)" == "1" ]] || return 1
+  [[ "$(grep -Ec '^agentbox_ok=[01]$' "${report_path}" || true)" == "1" ]] || return 1
+
+  terminal_line="$(tail -n 1 "${report_path}")"
+  [[ "${terminal_line}" =~ ^agentbox_ok=[01]$ ]]
+}
+
+publish_health_report() {
+  local report_status
+
+  HEALTH_REPORT_TEMP="$(mktemp "${HEALTH_REPORT_FILE}.tmp.XXXXXX")"
+  chmod 600 "${HEALTH_REPORT_TEMP}"
+  trap cleanup_health_report_temp EXIT
+  trap 'exit 1' HUP INT TERM
+
+  set +e
+  (
+    set -e
+    generate_report
+  ) > "${HEALTH_REPORT_TEMP}"
+  report_status="$?"
+  set -e
+
+  if [[ "${report_status}" != "0" && "${report_status}" != "1" ]] ||
+    ! generated_report_complete "${HEALTH_REPORT_TEMP}"; then
+    printf 'agentbox health report generation produced an incomplete snapshot\n' >&2
+    return 1
+  fi
+
+  chown root:admin "${HEALTH_REPORT_TEMP}"
+  chmod 640 "${HEALTH_REPORT_TEMP}"
+  exec 3< "${HEALTH_REPORT_TEMP}"
+  mv -f "${HEALTH_REPORT_TEMP}" "${HEALTH_REPORT_FILE}"
+  HEALTH_REPORT_TEMP=""
+  trap - EXIT HUP INT TERM
+
+  {
+    cat <&3
+    printf '%s\n' '---'
+  } >> "${LOG_FILE}"
+  exec 3<&-
+}
+
 case "${1:-}" in
   "")
-    {
-      generate_report || true
-      printf '%s\n' '---'
-    } >> "${LOG_FILE}"
+    publish_health_report
     ;;
   --report)
     generate_report || true

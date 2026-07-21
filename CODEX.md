@@ -110,10 +110,16 @@ After bootstrap or reconciliation succeeds, use the doctor on the local agentbox
 Use $tanaab-agentbox-doctor to inspect this local agentbox host.
 ```
 
-The doctor reads `/opt/tanaab/agentbox/bin/health.sh`, groups the result into host, access,
-dependencies, OpenClaw, Tailscale, and monitoring status, and explains failures and warnings. It
-uses non-prompting sudo first and asks before refreshing authorization when root-readable state is
-unavailable.
+The installed `/opt/tanaab/agentbox/bin/health.sh` remains the host contract, while the root health
+LaunchDaemon publishes its latest complete report to `/var/db/tanaab/agentbox/health-report` every
+five minutes. The doctor reads that fixed administrator-readable snapshot without sudo, groups it
+into host, access, dependencies, OpenClaw, Tailscale, and monitoring status, and explains failures
+and warnings.
+
+Doctor refuses incomplete, unsafe, or malformed snapshots and reports older than 15 minutes. After
+boot or installation, allow one five-minute publication interval; if the report remains unavailable
+or stale, use `$tanaab-agentbox` to reconcile the installed health service. Arbitrary saved reports
+and source-checkout health scripts are not accepted.
 
 The doctor recommends repairs but does not execute them. Apply a recommended command or handoff only
 after a separate confirmation, then rerun the doctor to verify the result.
