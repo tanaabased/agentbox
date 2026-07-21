@@ -33,6 +33,16 @@ agentbox \
 ## Testing
 
 ```bash
+# should report homebrew prefix health after agentbox reconciliation
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix=$(brew --prefix)"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_rwx_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_recursive_access_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -Fx "brew_prefix_recursive_drift_path="
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -Fx "brew_prefix_recursive_drift_reason="
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_ok=1"
+test "$(sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup)" = "bobsbrewcrew"
+
 # should satisfy the extra brewfiles
 brew bundle check --file "$TMPDIR/Brewfile.extra-local" --no-upgrade
 brew bundle check --file "$TMPDIR/Brewfile.extra-url" --no-upgrade
@@ -73,14 +83,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "br
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_enabled=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_expected=staff"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_nested_ok=1"
-
-# should report homebrew prefix health
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix=$(brew --prefix)"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_rwx_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_recursive_access_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_ok=1"
-test "$(sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup)" = "bobsbrewcrew"
 
 # should stage gateway activation without changing CI autologin
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_state=pending_first_login"

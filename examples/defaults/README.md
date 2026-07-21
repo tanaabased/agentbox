@@ -57,6 +57,16 @@ test -x "$(brew --prefix)/bin/tailscale"
 test "$AGENTBOX_PAYLOAD_DIR" = "$GITHUB_WORKSPACE"
 test -f "$AGENTBOX_PAYLOAD_DIR/macos.sh"
 
+# should report homebrew prefix health after agentbox reconciliation
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix=$(brew --prefix)"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_rwx_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_recursive_access_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -Fx "brew_prefix_recursive_drift_path="
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -Fx "brew_prefix_recursive_drift_reason="
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_ok=1"
+test "$(sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup)" = "brewer"
+
 # should satisfy the agentbox brewfile
 brew bundle check --file "$AGENTBOX_PAYLOAD_DIR/Brewfile" --no-upgrade
 
@@ -108,14 +118,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "br
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_enabled=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_expected=off"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "trusted_brewgroup_nested_ok=skipped"
-
-# should report homebrew prefix health
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix=$(brew --prefix)"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_group_rwx_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_recursive_access_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_ok=1"
-test "$(sudo /opt/tanaab/agentbox/bin/health.sh --brewgroup)" = "brewer"
 
 # should report homebrew command health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "homebrew_login_path_file_ok=1"

@@ -35,6 +35,8 @@ chmod 700 "$TMPDIR/agentbox-brewgroup-drift"
 chmod 600 "$TMPDIR/agentbox-brewgroup-drift/shared"
 mv "$TMPDIR/agentbox-brewgroup-drift" "$brew_prefix/var/agentbox-brewgroup-drift"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_recursive_access_ok=0"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -Fx "brew_prefix_recursive_drift_path=$brew_prefix/var/agentbox-brewgroup-drift"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -Fx "brew_prefix_recursive_drift_reason=group_mismatch"
 
 # should register a conflicting official tailscale launchd job before rerun
 sudo /usr/bin/plutil -create xml1 /Library/LaunchDaemons/com.tailscale.tailscaled.plist
@@ -116,6 +118,8 @@ sudo -u rita /bin/sh -c 'printf "%s\n" "written-by-rita" >> "$1"' _ "$brew_prefi
 grep -Fx "written-by-rita" "$brew_prefix/var/agentbox-brewgroup-drift/shared"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_expected=rerunbrew"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_recursive_access_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -Fx "brew_prefix_recursive_drift_path="
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -Fx "brew_prefix_recursive_drift_reason="
 
 # should keep the openclaw runner account
 id -u rita >/dev/null
