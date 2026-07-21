@@ -170,7 +170,7 @@ agentbox --help | grep -F -- "--openclaw-autologin        sets runtime-user auto
 agentbox --help | grep -F -- "--openclaw-autologin" | grep -F "[default: on]"
 AGENTBOX_OPENCLAW_AUTOLOGIN=off agentbox --help | grep -F -- "--openclaw-autologin" | grep -F "[default: off]"
 AGENTBOX_OPENCLAW_AUTOLOGIN=off agentbox --openclaw-autologin on --help | grep -F -- "--openclaw-autologin" | grep -F "[default: on]"
-if AGENTBOX_OPENCLAW_AUTOLOGIN=off agentbox --openclaw-autologin on --help | grep -F "[default: off]"; then exit 1; fi
+if AGENTBOX_OPENCLAW_AUTOLOGIN=off agentbox --openclaw-autologin on --help | grep -F -- "--openclaw-autologin" | grep -F "[default: off]"; then exit 1; fi
 
 # should show openclaw identity input precedence
 AGENTBOX_OPENCLAW_IDENTITY="Env Input Claw <envinput>" agentbox --help | grep -F "Env Input Claw <envinput>"
