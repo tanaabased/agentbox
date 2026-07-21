@@ -19,6 +19,7 @@ agentbox \
   --force \
   --tailscale-authkey off \
   --brewgroup off \
+  --openclaw-autologin off \
   --openclaw-password "SourceOpenClawPass1!" \
   --hostname "TANAABAGENTBOXSOURCE"
 ```
@@ -40,9 +41,9 @@ test -f "$AGENTBOX_PAYLOAD_DIR/assets/profile8.png"
 # should keep payload launchd templates available
 test -f "$AGENTBOX_PAYLOAD_DIR/launchd/dev.tanaab.agentbox.health.plist.in"
 test -f "$AGENTBOX_PAYLOAD_DIR/launchd/dev.tanaab.agentbox.tailscaled.plist.in"
-test -f "$AGENTBOX_PAYLOAD_DIR/launchd/dev.tanaab.agentbox.openclaw-gateway.plist.in"
+test -f "$AGENTBOX_PAYLOAD_DIR/launchd/dev.tanaab.agentbox.openclaw-finalize.plist.in"
+test -f "$AGENTBOX_PAYLOAD_DIR/libexec/agentbox-openclaw-finalize.sh"
 
-# should pass the overall agentbox health check
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --check
+# should stage gateway activation without changing CI autologin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_state=pending_first_login"
 ```

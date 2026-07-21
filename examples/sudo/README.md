@@ -51,11 +51,3 @@ printf "%s\n" "$output" | grep -F "sudo access is required before agentbox can i
 if printf "%s\n" "$output" | grep -F "bootbox finished applying agentbox brewfiles"; then exit 1; fi
 test ! -e /opt/tanaab/agentbox/bin/health.sh
 ```
-
-## Destroy tests
-
-```bash
-# should remove generated sudo password material
-sudo rm -f /private/etc/sudoers.d/zz-agentbox-sudo-example
-sudo rm -f "$TMPDIR/admin-password"
-```

@@ -29,6 +29,8 @@ jobs:
           - users-existing
           - source
           - sudo
+          - codex
+          - finalizer
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -61,4 +63,4 @@ jobs:
         run: |
           brew update
           mkdir -p "$TMPDIR"
-          bun run leia "examples/${{ matrix.example }}/README.md" -c "Destroy tests" --stdin --retry 0
+          bun run leia "examples/${{ matrix.example }}/README.md" --stdin --retry 0

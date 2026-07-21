@@ -46,7 +46,7 @@ This is directional guidance, not the current public contract:
 - `unsupported.sh`: hosted fallback for unsupported or unknown platforms.
 - `Brewfile`: core Homebrew packages; `Brewfile.extras`: optional operator tooling.
 - `bin/health.sh`: source for `/opt/tanaab/agentbox/bin/health.sh` and the machine health contract.
-- `launchd/*.plist.in`: source LaunchDaemon templates rendered by `macos.sh`.
+- `launchd/*.plist.in`: source launchd service templates rendered by `macos.sh`.
 - `.codex-plugin/plugin.json`, `skills/`: Codex plugin metadata and installable skill surface.
 - `assets/composer-icon.svg`, `assets/icon-large.png`: Codex plugin interface assets.
 - `bin/codexsync.js`, `lib/codexsync-*.js`: package-level plugin validation and installed cache
@@ -119,6 +119,13 @@ This is directional guidance, not the current public contract:
 ## Examples And Leia
 
 - Examples are executable Leia specs consumed in CI, not prose-only docs.
+- Keep Mocha `test/**/*.spec.js` limited to JavaScript units. Do not use JavaScript subprocess
+  harnesses to execute shell scripts as unit tests.
+- Put shell CLI, script, file-mutation, permission, exit-status, and other functional or end-to-end
+  behavior in the narrowest owning Leia example. Use shellcheck and `bash -n` only as supporting
+  static checks.
+- A JavaScript unit test may read shell-owned declarations when the JavaScript mapping or parser is
+  the subject under test, but it must not execute the shell script as the tested behavior.
 - Keep `examples/inputs` non-mutating; mutating examples should prove behavior domains rather than
   every input spelling.
 - See `examples/AGENTS.md` before editing examples.
@@ -166,7 +173,7 @@ This is directional guidance, not the current public contract:
 - Prefer the narrowest reliable checks for the touched area.
 - For routine local validation, use `bun run lint`; run `git diff --check` when whitespace or
   generated text churn is plausible.
-- Run `bun run test` for JavaScript runtime changes.
+- Run `bun run test` for JavaScript unit changes. Shell behavior belongs in Leia, not Mocha.
 - Run `bun run codex:validate` for plugin manifest, skill metadata, plugin asset, or plugin workflow
   changes.
 - For managed plugin changes, run `bun run codex:check`. If it reports drift, run

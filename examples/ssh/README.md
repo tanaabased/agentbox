@@ -24,6 +24,7 @@ agentbox \
   --hostname "TANAABAGENTBOXSSH" \
   --tailscale-authkey off \
   --brewgroup off \
+  --openclaw-autologin off \
   --openclaw-identity "Sam SSH Claw <sam>" \
   --openclaw-password "SamSSHClawPass1!" \
   --openclaw-auth-choice skip \
@@ -105,7 +106,6 @@ ssh \
   -i "$TMPDIR/id_agentbox_ssh_file" \
   sam@localhost true
 
-# should pass the overall agentbox health check
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --check
+# should stage gateway activation without changing CI autologin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_state=pending_first_login"
 ```

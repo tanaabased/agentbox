@@ -33,7 +33,7 @@ At a high level, `agentbox`:
 - creates or reuses a non-admin OpenClaw runner user
 - sets macOS system identity and headless power, time, and recovery defaults
 - enables classic SSH
-- launches OpenClaw Gateway in `system` or `user` service mode
+- stages OpenClaw's native user LaunchAgent and enables runtime-user autologin by default
 - installs health checks and logs for post-bootstrap verification
 - optionally installs SSH public keys and hardens SSH to key-only access
 - optionally runs a managed `tailscaled` daemon and connects the Mac to a tailnet
@@ -54,8 +54,10 @@ on the Mac you are preparing:
   --openclaw-password "$OPENCLAW_PASSWORD"
 ```
 
-The OpenClaw runner password is used only when creating the runner account or enabling the optional
-user service mode. `agentbox` never prints, persists, generates, or debug-logs that password.
+The OpenClaw runner password is used only when creating the runner account or configuring autologin.
+`agentbox` never prints, persists, generates, or debug-logs that password. Autologin is enabled by
+default so the Gateway returns after reboot; this reduces physical-access security even though the
+runner remains non-admin. FileVault is incompatible with this unattended-recovery profile.
 
 For the complete option and environment-variable contract, run:
 
@@ -89,41 +91,21 @@ agentbox \
 
 Common inputs:
 
-| Option                    | Environment variable             | Description                                                                                          |
-| ------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `--hostname`              | `AGENTBOX_HOSTNAME`              | macOS hostname and Tailscale hostname source.                                                        |
-| `--tailscale-authkey`     | `AGENTBOX_TAILSCALE_AUTHKEY`     | Tailscale auth key for first join; use `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup. |
-| `--authorized-key`        | `AGENTBOX_AUTHORIZED_KEY`        | Public SSH key or public-key file path; providing keys also enables key-only SSH hardening.          |
-| `--openclaw-password`     | `AGENTBOX_OPENCLAW_PASSWORD`     | Password used only for OpenClaw runner creation or user-service autologin.                           |
-| `--openclaw-identity`     | `AGENTBOX_OPENCLAW_IDENTITY`     | OpenClaw runner identity in `Full Name <shortname>` syntax.                                          |
-| `--openclaw-service-mode` | `AGENTBOX_OPENCLAW_SERVICE_MODE` | OpenClaw Gateway supervision mode: `system` or `user`; defaults to `system`.                         |
-| `--openclaw-auth-choice`  | `AGENTBOX_OPENCLAW_AUTH_CHOICE`  | Initial OpenClaw model auth choice; defaults to `skip`.                                              |
-| `--brewfile`              | `AGENTBOX_BREWFILE`              | Extra Brewfile sources to append after the core `agentbox` Brewfile.                                 |
-| `--yes`                   | `NONINTERACTIVE`                 | Skip interactive prompts.                                                                            |
-| `--debug`                 | `AGENTBOX_DEBUG`                 | Show debug output with secrets masked.                                                               |
+| Option                   | Environment variable            | Description                                                                                          |
+| ------------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `--hostname`             | `AGENTBOX_HOSTNAME`             | macOS hostname and Tailscale hostname source.                                                        |
+| `--tailscale-authkey`    | `AGENTBOX_TAILSCALE_AUTHKEY`    | Tailscale auth key for first join; use `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup. |
+| `--authorized-key`       | `AGENTBOX_AUTHORIZED_KEY`       | Public SSH key or public-key file path; providing keys also enables key-only SSH hardening.          |
+| `--openclaw-password`    | `AGENTBOX_OPENCLAW_PASSWORD`    | Password used only for OpenClaw runner creation or autologin.                                        |
+| `--openclaw-identity`    | `AGENTBOX_OPENCLAW_IDENTITY`    | OpenClaw runner identity in `Full Name <shortname>` syntax.                                          |
+| `--openclaw-autologin`   | `AGENTBOX_OPENCLAW_AUTOLOGIN`   | Runtime-user autologin: `on` or `off`; defaults to `on` for unattended reboot recovery.              |
+| `--openclaw-auth-choice` | `AGENTBOX_OPENCLAW_AUTH_CHOICE` | Initial OpenClaw model auth choice; defaults to `skip`.                                              |
+| `--brewfile`             | `AGENTBOX_BREWFILE`             | Extra Brewfile sources to append after the core `agentbox` Brewfile.                                 |
+| `--yes`                  | `NONINTERACTIVE`                | Skip interactive prompts.                                                                            |
+| `--debug`                | `AGENTBOX_DEBUG`                | Show debug output with secrets masked.                                                               |
 
 Use [ADVANCED.md](./ADVANCED.md) for the full option guide, payload-resolution details, brewgroup
 behavior, OpenClaw auth environment handling, and deeper Tailscale notes.
-
-On rerun, `agentbox` reconciles an existing valid local OpenClaw gateway configuration
-non-interactively instead of reopening the onboarding wizard. See
-[OpenClaw reruns and later configuration](./ADVANCED.md#reruns-and-later-openclaw-configuration).
-
-### Open the OpenClaw Dashboard
-
-After setup succeeds, `agentbox` prints the exact command for opening the authenticated OpenClaw
-Dashboard. With the default runner username, that command is:
-
-```sh
-sudo -iu openclaw "$(brew --prefix)/bin/openclaw" dashboard
-```
-
-Replace `openclaw` with the configured runner short name when using a custom identity. Running the
-command as the runner lets OpenClaw use its runner-owned gateway configuration and token without
-printing the token. Each additional browser profile or device connecting over the tailnet must
-complete its own OpenClaw authorization flow and may need the gateway token on first connection. See
-[Dashboard access](./ADVANCED.md#dashboard-access) for direct runner usage, remote-device
-authorization, the copy-only option, and headless-session behavior.
 
 ## Verification
 
@@ -139,8 +121,8 @@ Use $tanaab-agentbox-doctor to inspect this local agentbox host.
 ```
 
 The doctor presents grouped status, explains failures and warnings, and recommends focused repairs
-without applying them. Reboot the Mac and confirm it returns to the expected network state before
-any GUI login, then rerun the doctor.
+without applying them. Reboot the Mac, confirm the dedicated runtime user logs in automatically and
+the native Gateway returns healthy, then rerun the doctor.
 
 Without Codex, use the installed health script directly:
 

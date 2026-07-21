@@ -20,6 +20,7 @@ agentbox \
   --hostname "TANAABAGENTBOXUSERSCUSTOM" \
   --tailscale-authkey off \
   --brewgroup off \
+  --openclaw-autologin off \
   --openclaw-identity "Luna Fresh Claw <luna>" \
   --openclaw-password "LunaFreshClawPass1!" \
   --openclaw-auth-choice skip \
@@ -35,14 +36,15 @@ dscl . -read /Users/luna RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^
 test -d /Users/luna
 test "$(stat -f "%Su" /Users/luna)" = "luna"
 
-# should print the custom runner dashboard command
-grep -F "sudo -iu luna $(brew --prefix)/bin/openclaw dashboard" "$TMPDIR/users-custom.log"
+# should print the custom runner graphical session dashboard command
+grep -F "open the openclaw dashboard from the luna graphical session:" "$TMPDIR/users-custom.log"
+grep -Fx "  openclaw dashboard" "$TMPDIR/users-custom.log"
 
 # should report the openclaw runner as non-admin
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
 
-# should use system openclaw service mode
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=system"
+# should use native user LaunchAgent mode without changing CI autologin
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_service_mode=user"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"
 
@@ -53,7 +55,6 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_home_ok=1"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_ok=1"
 
-# should pass the overall agentbox health check
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "agentbox_ok=1"
-sudo /opt/tanaab/agentbox/bin/health.sh --check
+# should stage activation until the runtime user logs in
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_state=pending_first_login"
 ```

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>__AGENTBOX_OPENCLAW_FINALIZER_LABEL__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__AGENTBOX_OPENCLAW_FINALIZER_EXECUTABLE__</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+  <key>WorkingDirectory</key>
+  <string>__AGENTBOX_OPENCLAW_HOME__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__AGENTBOX_OPENCLAW_HOME__</string>
+    <key>USER</key>
+    <string>__AGENTBOX_OPENCLAW_USER__</string>
+    <key>LOGNAME</key>
+    <string>__AGENTBOX_OPENCLAW_USER__</string>
+    <key>PATH</key>
+    <string>__AGENTBOX_OPENCLAW_PATH__</string>
+    <key>OPENCLAW_HOME</key>
+    <string>__AGENTBOX_OPENCLAW_HOME__</string>
+    <key>OPENCLAW_STATE_DIR</key>
+    <string>__AGENTBOX_OPENCLAW_STATE_DIR__</string>
+    <key>AGENTBOX_OPENCLAW_BIN</key>
+    <string>__AGENTBOX_OPENCLAW_BIN__</string>
+    <key>AGENTBOX_LAUNCHCTL_BIN</key>
+    <string>/bin/launchctl</string>
+    <key>AGENTBOX_OPENCLAW_GATEWAY_LABEL</key>
+    <string>__AGENTBOX_OPENCLAW_GATEWAY_LABEL__</string>
+    <key>AGENTBOX_FINALIZER_STATE_DIR</key>
+    <string>__AGENTBOX_OPENCLAW_FINALIZER_STATE_DIR__</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__AGENTBOX_OPENCLAW_FINALIZER_STDOUT_LOG__</string>
+  <key>StandardErrorPath</key>
+  <string>__AGENTBOX_OPENCLAW_FINALIZER_STDERR_LOG__</string>
+</dict>
+</plist>

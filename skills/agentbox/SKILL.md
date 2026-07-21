@@ -87,12 +87,16 @@ the doctor workflow for verification.
     enables key-only SSH hardening for managed users.
   - OpenClaw runner identity, or acceptance of the displayed default.
   - OpenClaw runner password through agentbox's hidden prompt or an existing environment variable.
+  - Runtime-user autologin, or acceptance of the default `on` policy. Explain that autologin enables
+    unattended Gateway recovery after reboot but reduces physical-access security and is
+    incompatible with FileVault.
   - Initial OpenClaw model-auth choice, or explicit acceptance of `skip`.
-- Use `system` gateway service mode, port `18789`, and the default Homebrew group unless the user asks
-  for alternatives.
+- Use the native user LaunchAgent, autologin `on`, port `18789`, and the default Homebrew group unless
+  the user asks for alternatives. Use `--openclaw-autologin off` only when the operator accepts a
+  graphical runtime-user login after every reboot or logout.
 - Ask about extra Brewfiles only when the request implies additional operator software or supplies a
   Brewfile source.
-- Treat `--force`, `--debug`, custom brew groups, user service mode, custom gateway ports, and
+- Treat `--force`, `--debug`, custom brew groups, autologin opt-out, custom gateway ports, and
   `--openclaw-auth-env` as advanced overrides rather than routine questions.
 - Use `--yes` only when the user explicitly requests a noninteractive run and all required inputs are
   available without prompting.
@@ -125,8 +129,9 @@ the doctor workflow for verification.
 6. Assemble one command using the exact resolved executable path. Preserve repeated options such as
    `--authorized-key` and `--brewfile` in user-specified order.
 7. Present the command with secret environment-variable references intact. Summarize consequential
-   behavior: account creation, SSH hardening, Tailscale enrollment, Homebrew group changes, OpenClaw
-   service ownership, and any nondefault authentication or port choice.
+   behavior: account creation, SSH hardening, Tailscale enrollment, Homebrew group changes,
+   runtime-user autologin and native LaunchAgent activation, and any nondefault authentication or
+   port choice.
 8. For a normal interactive run, launch agentbox and use its own displayed plan as the final
    confirmation gate. Do not add `--yes` merely to avoid terminal interaction.
 9. For a user-requested `--yes` run, obtain explicit confirmation of the assembled command and
@@ -151,7 +156,7 @@ the doctor workflow for verification.
 ## Checkpoints
 
 - Before running agentbox, confirm the resolved installation key, executable path, hostname,
-  Tailscale choice, SSH-key choice, runner identity, service mode, and auth choice.
+  Tailscale choice, SSH-key choice, runner identity, autologin policy, and auth choice.
 - Before adding `--yes`, confirm that every required prompt has a supplied noninteractive input and
   that the user accepts the complete mutation summary.
 - Before using `--force`, identify the exact replacement operation that requires it and get separate

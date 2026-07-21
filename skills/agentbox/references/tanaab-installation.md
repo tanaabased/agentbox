@@ -33,7 +33,7 @@ the installer resolver:
   --brewgroup brewer:staff \
   --openclaw-identity "Emori Wan <emori>" \
   --openclaw-password "$AGENTBOX_OPENCLAW_PASSWORD" \
-  --openclaw-service-mode system \
+  --openclaw-autologin on \
   --openclaw-auth-choice openai \
   --openclaw-gateway-port 18789
 ```
