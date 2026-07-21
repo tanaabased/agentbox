@@ -205,70 +205,35 @@ path_group_rwx_value() {
   fi
 }
 
-brewgroup_acl_identity() {
-  /usr/bin/dsmemberutil getuuid -G "$1" 2>/dev/null || true
-}
-
-directory_brewgroup_acl_ok() {
-  local path="$1"
-  local group="$2"
-  local identity="$3"
-  local acl_output
-
-  acl_output="$(/bin/ls -lde "${path}" 2>/dev/null || true)"
-  printf "%s\n" "${acl_output}" | awk -v expected_group="${group}" -v expected_identity="${identity}" '
-    index($0, ": " expected_identity " allow ") || index($0, ": " expected_group " allow ") {
-      if (index($0, "list") &&
-          index($0, "search") &&
-          index($0, "add_file") &&
-          index($0, "add_subdirectory") &&
-          index($0, "delete_child") &&
-          index($0, "writeattr") &&
-          index($0, "writeextattr") &&
-          index($0, "directory_inherit")) {
-        directory_access = 1
-      }
-      if (index($0, "list") &&
-          index($0, "add_file") &&
-          index($0, "add_subdirectory") &&
-          index($0, "writeattr") &&
-          index($0, "writeextattr") &&
-          index($0, "file_inherit") &&
-          index($0, "directory_inherit")) {
-        file_inheritance = 1
-      }
-    }
-    END {
-      exit(directory_access && file_inheritance ? 0 : 1)
-    }
-  '
-}
-
-brew_prefix_acl_inheritance_value() {
+brew_prefix_recursive_access_value() {
   local prefix="$1"
   local group="$2"
-  local directory
-  local identity
+  local drift
 
   if [[ ! -d "${prefix}" ]]; then
     printf '0'
     return 0
   fi
 
-  identity="$(brewgroup_acl_identity "${group}")"
-  if [[ -z "${identity}" ]]; then
+  if ! drift="$(
+    /usr/bin/find -x "${prefix}" \
+      \( \
+        ! -group "${group}" \
+        -o \( ! -type l ! -perm -060 \) \
+        -o \( -type d ! -perm -010 \) \
+        -o \( ! -type d ! -type l -perm +111 ! -perm -010 \) \
+      \) \
+      -print -quit 2>/dev/null
+  )"; then
     printf '0'
     return 0
   fi
 
-  while IFS= read -r -d '' directory; do
-    if ! directory_brewgroup_acl_ok "${directory}" "${group}" "${identity}"; then
-      printf '0'
-      return 0
-    fi
-  done < <(find -x "${prefix}" -type d -print0)
-
-  printf '1'
+  if [[ -n "${drift}" ]]; then
+    printf '0'
+  else
+    printf '1'
+  fi
 }
 
 path_owner_group_mode_value() {
@@ -859,10 +824,10 @@ generate_report() {
   local ssh_access_openclaw_user_ok="skipped"
   local ssh_hardening_ok="skipped"
   local ssh_allowed_users=""
-  local brew_prefix_acl_inheritance_ok="skipped"
   local brew_prefix_group=""
   local brew_prefix_group_ok="skipped"
   local brew_prefix_group_rwx_ok="skipped"
+  local brew_prefix_recursive_access_ok="skipped"
   local brew_prefix_ok="skipped"
   local brewgroup_admin_user_ok="skipped"
   local brewgroup_openclaw_user_ok="skipped"
@@ -1114,15 +1079,15 @@ generate_report() {
   fi
   print_kv brew_prefix "${AGENTBOX_HEALTH_BREW_PREFIX}"
   if [[ "${AGENTBOX_HEALTH_BREWGROUP_ENABLED}" == "1" ]]; then
-    brew_prefix_acl_inheritance_ok="0"
     brew_prefix_group_ok="0"
     brew_prefix_group_rwx_ok="0"
+    brew_prefix_recursive_access_ok="0"
     brew_prefix_ok="0"
 
     if [[ -d "${AGENTBOX_HEALTH_BREW_PREFIX}" ]]; then
       brew_prefix_group="$(stat -f "%Sg" "${AGENTBOX_HEALTH_BREW_PREFIX}" 2>/dev/null || true)"
-      brew_prefix_acl_inheritance_ok="$(brew_prefix_acl_inheritance_value "${AGENTBOX_HEALTH_BREW_PREFIX}" "${AGENTBOX_HEALTH_BREWGROUP}")"
       brew_prefix_group_rwx_ok="$(path_group_rwx_value "${AGENTBOX_HEALTH_BREW_PREFIX}")"
+      brew_prefix_recursive_access_ok="$(brew_prefix_recursive_access_value "${AGENTBOX_HEALTH_BREW_PREFIX}" "${AGENTBOX_HEALTH_BREWGROUP}")"
       if [[ "${brew_prefix_group}" == "${AGENTBOX_HEALTH_BREWGROUP}" ]]; then
         brew_prefix_group_ok="1"
       fi
@@ -1130,20 +1095,20 @@ generate_report() {
 
     if [[ "${brew_prefix_group_ok}" == "1" &&
       "${brew_prefix_group_rwx_ok}" == "1" &&
-      "${brew_prefix_acl_inheritance_ok}" == "1" ]]; then
+      "${brew_prefix_recursive_access_ok}" == "1" ]]; then
       brew_prefix_ok="1"
     fi
 
     print_kv brew_prefix_group "${brew_prefix_group}"
-    mark_required brew_prefix_acl_inheritance_ok "${brew_prefix_acl_inheritance_ok}"
     mark_required brew_prefix_group_ok "${brew_prefix_group_ok}"
     mark_required brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
+    mark_required brew_prefix_recursive_access_ok "${brew_prefix_recursive_access_ok}"
     mark_required brew_prefix_ok "${brew_prefix_ok}"
   else
     print_kv brew_prefix_group "${brew_prefix_group}"
-    print_kv brew_prefix_acl_inheritance_ok "${brew_prefix_acl_inheritance_ok}"
     print_kv brew_prefix_group_ok "${brew_prefix_group_ok}"
     print_kv brew_prefix_group_rwx_ok "${brew_prefix_group_rwx_ok}"
+    print_kv brew_prefix_recursive_access_ok "${brew_prefix_recursive_access_ok}"
     print_kv brew_prefix_ok "${brew_prefix_ok}"
   fi
 

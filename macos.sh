@@ -18,9 +18,6 @@ REQUIRED_CURL_VERSION="7.41.0"
 BOOTBOX_URL="https://bootbox.tanaab.sh/bootbox.sh"
 DEFAULT_AGENTBOX_HOSTNAME="TANAABAGENTBOX1"
 DEFAULT_BREWGROUP="brewer"
-BREWGROUP_DIRECTORY_ACL_RIGHTS="list,search,add_file,add_subdirectory,delete_child,readattr,writeattr,readextattr,writeextattr,readsecurity,directory_inherit"
-BREWGROUP_FILE_ACL_RIGHTS="read,write,append,readattr,writeattr,readextattr,writeextattr,readsecurity"
-BREWGROUP_FILE_INHERIT_ACL_RIGHTS="${BREWGROUP_FILE_ACL_RIGHTS},file_inherit,directory_inherit,only_inherit"
 DEFAULT_OPENCLAW_IDENTITY="A Tanaab-based Claw <openclaw>"
 DEFAULT_OPENCLAW_AUTOLOGIN="on"
 DEFAULT_OPENCLAW_GATEWAY_PORT="18789"
@@ -3468,121 +3465,6 @@ path_group_rwx() {
   [[ "${mode}" =~ ^[0-7]+$ ]] && (( (8#${mode} & 8#070) == 8#070 ))
 }
 
-brewgroup_acl_entry() {
-  local group="$1"
-  local rights="$2"
-
-  printf "group:%s allow %s" "${group}" "${rights}"
-}
-
-brewgroup_acl_identity() {
-  /usr/bin/dsmemberutil getuuid -G "$1" 2>/dev/null || true
-}
-
-directory_brewgroup_acl_ok() {
-  local path="$1"
-  local group="$2"
-  local identity="$3"
-  local acl_output
-
-  acl_output="$(/bin/ls -lde "${path}" 2>/dev/null || true)"
-  printf "%s\n" "${acl_output}" | awk -v expected_group="${group}" -v expected_identity="${identity}" '
-    index($0, ": " expected_identity " allow ") || index($0, ": " expected_group " allow ") {
-      if (index($0, "list") &&
-          index($0, "search") &&
-          index($0, "add_file") &&
-          index($0, "add_subdirectory") &&
-          index($0, "delete_child") &&
-          index($0, "writeattr") &&
-          index($0, "writeextattr") &&
-          index($0, "directory_inherit")) {
-        directory_access = 1
-      }
-      if (index($0, "list") &&
-          index($0, "add_file") &&
-          index($0, "add_subdirectory") &&
-          index($0, "writeattr") &&
-          index($0, "writeextattr") &&
-          index($0, "file_inherit") &&
-          index($0, "directory_inherit")) {
-        file_inheritance = 1
-      }
-    }
-    END {
-      exit(directory_access && file_inheritance ? 0 : 1)
-    }
-  '
-}
-
-brew_prefix_acl_inheritance_ok() {
-  local directory
-  local identity
-
-  identity="$(brewgroup_acl_identity "${BREWGROUP_VALUE}")"
-  if [[ -z "${identity}" ]]; then
-    return 1
-  fi
-
-  while IFS= read -r -d '' directory; do
-    if ! directory_brewgroup_acl_ok "${directory}" "${BREWGROUP_VALUE}" "${identity}"; then
-      return 1
-    fi
-  done < <(find -x "${BREW_PREFIX_VALUE}" -type d -print0)
-}
-
-previous_managed_brewgroup() {
-  local previous
-
-  if ! sudo test -f "${AGENTBOX_HEALTH_STATE_PATH}"; then
-    return 0
-  fi
-
-  previous="$(sudo awk -F= '
-    $1 == "AGENTBOX_HEALTH_BREWGROUP_ENABLED" { enabled = $2 }
-    $1 == "AGENTBOX_HEALTH_BREWGROUP" { brewgroup = $2 }
-    END {
-      if (enabled == "1") {
-        print brewgroup
-      }
-    }
-  ' "${AGENTBOX_HEALTH_STATE_PATH}" 2>/dev/null || true)"
-
-  if [[ -n "${previous}" ]] && brewgroup_valid "${previous}"; then
-    printf "%s" "${previous}"
-  fi
-}
-
-remove_brewgroup_acls() {
-  local group="$1"
-  local directory_acl
-  local file_acl
-  local file_inherit_acl
-
-  directory_acl="$(brewgroup_acl_entry "${group}" "${BREWGROUP_DIRECTORY_ACL_RIGHTS}")"
-  file_acl="$(brewgroup_acl_entry "${group}" "${BREWGROUP_FILE_ACL_RIGHTS}")"
-  file_inherit_acl="$(brewgroup_acl_entry "${group}" "${BREWGROUP_FILE_INHERIT_ACL_RIGHTS}")"
-
-  execute sudo find -x "${BREW_PREFIX_VALUE}" -type d -exec chmod -f -a "${file_inherit_acl}" {} +
-  execute sudo find -x "${BREW_PREFIX_VALUE}" -type d -exec chmod -f -a "${directory_acl}" {} +
-  execute sudo find -x "${BREW_PREFIX_VALUE}" ! -type d ! -type l -exec chmod -f -a "${file_acl}" {} +
-}
-
-apply_brewgroup_access() {
-  local directory_acl
-  local file_acl
-  local file_inherit_acl
-
-  directory_acl="$(brewgroup_acl_entry "${BREWGROUP_VALUE}" "${BREWGROUP_DIRECTORY_ACL_RIGHTS}")"
-  file_acl="$(brewgroup_acl_entry "${BREWGROUP_VALUE}" "${BREWGROUP_FILE_ACL_RIGHTS}")"
-  file_inherit_acl="$(brewgroup_acl_entry "${BREWGROUP_VALUE}" "${BREWGROUP_FILE_INHERIT_ACL_RIGHTS}")"
-
-  execute sudo find -x "${BREW_PREFIX_VALUE}" -exec chgrp -h "${BREWGROUP_VALUE}" {} +
-  execute sudo find -x "${BREW_PREFIX_VALUE}" ! -type l -exec chmod g+rwX {} +
-  execute sudo find -x "${BREW_PREFIX_VALUE}" -type d -exec chmod +a "${directory_acl}" {} +
-  execute sudo find -x "${BREW_PREFIX_VALUE}" -type d -exec chmod +a "${file_inherit_acl}" {} +
-  execute sudo find -x "${BREW_PREFIX_VALUE}" ! -type d ! -type l -exec chmod +a "${file_acl}" {} +
-}
-
 brew_prefix_permissions_ok() {
   local current_group
 
@@ -3595,8 +3477,6 @@ brew_prefix_permissions_ok() {
 }
 
 run_agentbox_brewgroup_setup() {
-  local previous_brewgroup
-
   if brewgroup_setup_disabled; then
     log "${tty_tp}skipping${tty_reset} homebrew brewgroup setup because the brewgroup input is disabled"
     return 0
@@ -3610,20 +3490,12 @@ run_agentbox_brewgroup_setup() {
   ensure_brewgroup_openclaw_user
   ensure_trusted_brewgroup_nested
 
-  previous_brewgroup="$(previous_managed_brewgroup)"
-  if [[ -n "${previous_brewgroup}" && "${previous_brewgroup}" != "${BREWGROUP_VALUE}" ]]; then
-    if ! group_exists "${previous_brewgroup}"; then
-      abort "cannot replace homebrew brewgroup ${tty_ts}${previous_brewgroup}${tty_reset} because the previous group no longer exists; restore it before changing to ${tty_ts}${BREWGROUP_VALUE}${tty_reset} so agentbox can remove its managed acl entries."
-    fi
-    log "${tty_tp}removing${tty_reset} homebrew prefix acl access for previous brewgroup ${tty_ts}${previous_brewgroup}${tty_reset}"
-    remove_brewgroup_acls "${previous_brewgroup}"
-  fi
+  log "${tty_tp}reconciling${tty_reset} recursive homebrew prefix access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
+  execute sudo find -x "${BREW_PREFIX_VALUE}" -exec chgrp -h "${BREWGROUP_VALUE}" {} +
+  execute sudo find -x "${BREW_PREFIX_VALUE}" ! -type l -exec chmod g+rwX {} +
 
-  log "${tty_tp}reconciling${tty_reset} recursive and inherited homebrew prefix access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset}"
-  apply_brewgroup_access
-
-  if ! brew_prefix_permissions_ok || ! brew_prefix_acl_inheritance_ok; then
-    abort "homebrew prefix ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} still lacks recursive or inherited access for ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
+  if ! brew_prefix_permissions_ok; then
+    abort "homebrew prefix ${tty_ts}${BREW_PREFIX_VALUE}${tty_reset} is still not group-writable by ${tty_ts}${BREWGROUP_VALUE}${tty_reset} after remediation."
   fi
 }
 

@@ -27,15 +27,14 @@ agentbox \
   --openclaw-auth-choice skip \
   --openclaw-gateway-port 18789
 
-# should seed moved-in homebrew acl drift before rerun
+# should seed moved-in homebrew permission drift before rerun
 brew_prefix="$(brew --prefix)"
 mkdir -p "$TMPDIR/agentbox-brewgroup-drift"
 printf '%s\n' 'preserve-me' > "$TMPDIR/agentbox-brewgroup-drift/shared"
 chmod 700 "$TMPDIR/agentbox-brewgroup-drift"
 chmod 600 "$TMPDIR/agentbox-brewgroup-drift/shared"
 mv "$TMPDIR/agentbox-brewgroup-drift" "$brew_prefix/var/agentbox-brewgroup-drift"
-chmod -RN "$brew_prefix/var/agentbox-brewgroup-drift"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_acl_inheritance_ok=0"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_recursive_access_ok=0"
 
 # should register a conflicting official tailscale launchd job before rerun
 sudo /usr/bin/plutil -create xml1 /Library/LaunchDaemons/com.tailscale.tailscaled.plist
@@ -104,18 +103,19 @@ grep -F -- "--non-interactive" "$TMPDIR/rerun.log"
 grep -F -- "--accept-risk" "$TMPDIR/rerun.log"
 grep -F -- "--json" "$TMPDIR/rerun.log"
 
-# should replace the previous brewgroup acl and repair moved-in drift
+# should replace the previous brewgroup and repair moved-in drift
 brew_prefix="$(brew --prefix)"
-previous_brewgroup_uuid="$(dsmemberutil getuuid -G brewer)"
-current_brewgroup_uuid="$(dsmemberutil getuuid -G rerunbrew)"
 for path in "$brew_prefix" "$brew_prefix/var" "$brew_prefix/var/agentbox-brewgroup-drift" "$brew_prefix/bin/brew"; do
-  ls -lde "$path" | tee /dev/stderr | grep -F "$current_brewgroup_uuid"
-  if ls -lde "$path" | grep -F "$previous_brewgroup_uuid"; then exit 1; fi
+  test "$(stat -f "%Sg" "$path")" = "rerunbrew"
 done
+directory_mode="$(stat -f "%Lp" "$brew_prefix/var/agentbox-brewgroup-drift")"
+file_mode="$(stat -f "%Lp" "$brew_prefix/var/agentbox-brewgroup-drift/shared")"
+test "$((8#$directory_mode & 8#070))" = "$((8#070))"
+test "$((8#$file_mode & 8#060))" = "$((8#060))"
 sudo -u rita /bin/sh -c 'printf "%s\n" "written-by-rita" >> "$1"' _ "$brew_prefix/var/agentbox-brewgroup-drift/shared"
 grep -Fx "written-by-rita" "$brew_prefix/var/agentbox-brewgroup-drift/shared"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brewgroup_expected=rerunbrew"
-sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_acl_inheritance_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix_recursive_access_ok=1"
 
 # should keep the openclaw runner account
 id -u rita >/dev/null
