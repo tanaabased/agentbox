@@ -1,5 +1,7 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+## v1.0.0-beta.9 - [July 30, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.9)
+
 ### Breaking Changes
 
 - Changed OpenClaw setup to own `main` as the default inert fallback and require explicit takeover of existing unowned state. [#28](https://github.com/tanaabased/agentbox/pull/28)
