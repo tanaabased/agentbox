@@ -97,6 +97,34 @@ test "$(stat -f "%Su" /Users/openclaw)" = "openclaw"
 # should report the openclaw runner as non-admin
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_non_admin_ok=1"
 
+# should configure Main and the global UI fallback with the managed identity
+sudo jq -e '[.agents.list[] | select(.default == true)] | length == 1 and .[0].id == "main"' /Users/openclaw/.openclaw/openclaw.json
+test "$(sudo jq -r '.agents.list[] | select(.id == "main") | .identity.name' /Users/openclaw/.openclaw/openclaw.json)" = "MODEL L3-37"
+test "$(sudo jq -r '.ui.assistant.name' /Users/openclaw/.openclaw/openclaw.json)" = "MODEL L3-37"
+sudo jq -r '.agents.list[] | select(.id == "main") | .identity.avatar | sub("^data:image/png;base64,"; "")' /Users/openclaw/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png"
+sudo jq -r '.ui.assistant.avatar | sub("^data:image/png;base64,"; "")' /Users/openclaw/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png"
+
+# should install the inert managed Main workspace and ownership records
+test "$(sudo jq -r '.agents.list[] | select(.id == "main") | .workspace' /Users/openclaw/.openclaw/openclaw.json)" = "/Users/openclaw/.openclaw/workspace-agentbox-main"
+sudo jq -e '.agents.list[] | select(.id == "main") | (.tools == {allow: ["agents_list"]}) and (.subagents == {allowAgents: ["*"]})' /Users/openclaw/.openclaw/openclaw.json
+sudo jq -e '.owner == "@tanaab/agentbox" and .agentId == "main"' /Users/openclaw/.openclaw/workspace-agentbox-main/.agentbox-managed.json
+sudo jq -e '.owner == "@tanaab/agentbox" and .agentId == "main" and (.managedFileSha256["SOUL.md"] | length == 64)' /var/db/tanaab/agentbox/openclaw-main.json
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/HEARTBEAT.md" /Users/openclaw/.openclaw/workspace-agentbox-main/HEARTBEAT.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/IDENTITY.md" /Users/openclaw/.openclaw/workspace-agentbox-main/IDENTITY.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/SOUL.md" /Users/openclaw/.openclaw/workspace-agentbox-main/SOUL.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/TOOLS.md" /Users/openclaw/.openclaw/workspace-agentbox-main/TOOLS.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/USER.md" /Users/openclaw/.openclaw/workspace-agentbox-main/USER.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png" /Users/openclaw/.openclaw/workspace-agentbox-main/assets/default_avatar.png
+
+# should report managed Main health
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_default_agent=main"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_default_agent_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_workspace_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_routing_policy_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_ownership_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_identity_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_ui_assistant_identity_ok=1"
+
 # should use native user LaunchAgent mode without changing CI autologin
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_expected=0"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_autologin_ok=skipped"

@@ -2,17 +2,17 @@
 
 > `agentbox` prepares a Mac to become a managed, headless OpenClaw host with a running OpenClaw Gateway, reasonable security defaults, and optional Tailscale access.
 
-`agentbox` is a hosted macOS bootstrap script for going from a fresh Mac to a running OpenClaw Gateway and a host ready for agent workspaces. It targets macOS 26.x on `x64` and `arm64`, requires a sudo-capable admin user plus physical or admin recovery access, and is best run on a fresh Mac dedicated to the OpenClaw host role.
+`agentbox` is a hosted macOS bootstrap script intended to take a fresh Mac to a running OpenClaw Gateway and a host ready for agent workspaces. It targets macOS 26.x on `x64` and `arm64` and requires a sudo-capable admin user plus physical or admin recovery access. Already provisioned Macs are reconciled on a best-effort basis; back up existing accounts, services, and OpenClaw state first because manual intervention may be required.
 
 Linux and Windows are not supported yet. Linux support is planned.
 
-At a high level, `agentbox` installs Homebrew and core dependencies, creates or reuses a non-admin OpenClaw runner user, sets macOS system identity and headless power/time/recovery defaults, enables classic SSH, stages OpenClaw's native user LaunchAgent with runtime-user autologin enabled by default, installs periodic health snapshots and logs, optionally hardens SSH to key-only access, optionally connects the Mac to a Tailscale tailnet, and optionally configures initial OpenClaw model auth.
+At a high level, `agentbox` installs Homebrew and core dependencies, creates or reuses a non-admin OpenClaw runner user, manages Main as the explicit default inert fallback with a canonical workspace, sets macOS system identity and headless power/time/recovery defaults, enables classic SSH, stages OpenClaw's native user LaunchAgent with runtime-user autologin enabled by default, installs periodic health snapshots and logs, optionally hardens SSH to key-only access, optionally connects the Mac to a Tailscale tailnet, and optionally configures initial OpenClaw model auth. Existing unowned or inconsistently marked Main state requires explicit takeover before replacement.
 
 The optional Codex plugin adds three guided workflows: `$tanaab-agentbox-installer` manages stable and source executables, `$tanaab-agentbox` plans and runs bootstrap or reconciliation, and `$tanaab-agentbox-doctor` reads the fixed agentbox-published health snapshot without sudo and recommends focused remediation for one local installed host. The hosted script remains the primary setup path and does not require Codex.
 
 The advanced reference covers installed components, OpenClaw LaunchAgent and autologin behavior, the full option and environment-variable contract, brewgroup behavior, OpenClaw auth environment handling, Tailscale details, manual verification, and payload resolution. The Codex guide covers plugin installation, workflow ownership, example prompts, and version alignment.
 
-Agent workspaces layer on top of the host and remain out of scope here: no agent-, persona-, or workspace-specific setup, dotfiles, project credentials, trading services, app-specific workloads, router port forwarding, or public WAN exposure. Tailscale is recommended for remote access, but setup can be explicitly disabled.
+Other agent workspaces layer on top of the host and remain out of scope here: no additional persona setup, dotfiles, project credentials, trading services, app-specific workloads, router port forwarding, or public WAN exposure. Tailscale is recommended for remote access, but setup can be explicitly disabled.
 
 ## Primary Resources
 

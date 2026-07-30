@@ -61,6 +61,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.TANAAB_ALTERNATE_MALE_KEY }}
           TMPDIR: ${{ github.workspace }}/examples/${{ matrix.example }}/.tmp
         run: |
-          brew update
+          HOMEBREW_NO_AUTO_UPDATE= brew update-if-needed
           mkdir -p "$TMPDIR"
           bun run leia "examples/${{ matrix.example }}/README.md" --stdin --retry 0

@@ -19,7 +19,7 @@ In scope:
 
 Out of scope:
 
-- Agent, persona, or workspace-specific setup.
+- Agent, persona, or workspace-specific setup beyond the managed OpenClaw Main fallback.
 - Per-agent dotfiles, shell themes, app preferences, project credentials, and trading or workload
   services.
 - Router port forwarding, public WAN exposure, and unrelated machine administration.
@@ -51,6 +51,7 @@ This is directional guidance, not the current public contract:
 - `assets/composer-icon.svg`, `assets/icon-large.png`: Codex plugin interface assets.
 - `bin/codexsync.js`, `lib/codexsync-*.js`: package-level plugin validation and installed cache
   comparison or refresh tooling.
+- `workspace/main/`: managed prompt files for the inert OpenClaw Main fallback workspace.
 - `README.md`: main setup and usage entrypoint; `ADVANCED.md`: deeper operator reference;
   `CODEX.md`: optional Codex plugin installation and workflow guide.
 - `examples/**/README.md`: Leia-backed executable CI contracts.
@@ -111,6 +112,9 @@ This is directional guidance, not the current public contract:
   creation/autologin, and never print, persist, generate, or debug-log that password.
 - Preserve existing OpenClaw runner profile pictures; apply bundled profile assets only when the user
   has no configured picture.
+- Treat OpenClaw Main as an agentbox-managed fallback: require explicit takeover of existing
+  unowned state, keep its workspace and identity managed, and prevent it from executing or
+  delegating user work.
 - Keep real-machine health checks strict. Managed macOS runner skips must be recorded in state, set
   only from known runner environments, and narrowly scoped.
 - Prefer targeted edits to `macos.sh`; avoid whole-file rewrites unless the script contract is being
@@ -132,9 +136,9 @@ This is directional guidance, not the current public contract:
 
 ## JavaScript And Plugin Skills
 
-- Keep skill-owned JavaScript entrypoints and support modules under the owning
-  `skills/<skill>/scripts/` directory. Do not hoist them merely because the full repository ships in
-  the plugin archive.
+- Keep skill-owned JavaScript entrypoints under the owning `skills/<skill>/scripts/` directory and
+  support modules under the nearest role-specific `skills/<skill>/lib/` or `skills/<skill>/utils/`
+  directory. Do not hoist them merely because the full repository ships in the plugin archive.
 - Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
 - Keep the repo-owned Codex plugin contract in `lib/plugin-validation.js` and run it through
   `bun run codex:validate`. Limit that validator to loader-facing requirements for a valid Codex

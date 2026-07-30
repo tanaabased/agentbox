@@ -22,13 +22,19 @@ DEFAULT_OPENCLAW_IDENTITY="A Tanaab-based Claw <openclaw>"
 DEFAULT_OPENCLAW_AUTOLOGIN="on"
 DEFAULT_OPENCLAW_GATEWAY_PORT="18789"
 DEFAULT_OPENCLAW_AUTH_CHOICE="skip"
+OPENCLAW_DEFAULT_AGENT_ID="main"
+OPENCLAW_UI_ASSISTANT_NAME="MODEL L3-37"
 OPENCLAW_UI_SEAM_COLOR="#00c88a"
+OPENCLAW_MAIN_WORKSPACE_TEMPLATE_VERSION="1"
+OPENCLAW_MAIN_WORKSPACE_RELATIVE_PATH=".openclaw/workspace-agentbox-main"
+OPENCLAW_MAIN_WORKSPACE_MARKER_NAME=".agentbox-managed.json"
 AGENTBOX_OPT_DIR="/opt/tanaab/agentbox"
 AGENTBOX_PROFILE_IMAGE_PATH="${AGENTBOX_OPT_DIR}/profile.png"
 AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
 AGENTBOX_STATE_DIR="/var/db/tanaab/agentbox"
 AGENTBOX_TAILSCALED_STATE_DIR="${AGENTBOX_STATE_DIR}/tailscale"
 AGENTBOX_HEALTH_STATE_PATH="${AGENTBOX_STATE_DIR}/health.env"
+AGENTBOX_OPENCLAW_MAIN_STATE_PATH="${AGENTBOX_STATE_DIR}/openclaw-main.json"
 AGENTBOX_HEALTH_LABEL="dev.tanaab.agentbox.health"
 AGENTBOX_TAILSCALED_LABEL="dev.tanaab.agentbox.tailscaled"
 AGENTBOX_TAILSCALED_PLIST_PATH="/Library/LaunchDaemons/${AGENTBOX_TAILSCALED_LABEL}.plist"
@@ -304,6 +310,7 @@ OPENCLAW_GATEWAY_PORT="${AGENTBOX_OPENCLAW_GATEWAY_PORT:-${DEFAULT_OPENCLAW_GATE
 OPENCLAW_GATEWAY_PORT_EXPLICIT="${AGENTBOX_OPENCLAW_GATEWAY_PORT+x}"
 OPENCLAW_AUTH_CHOICE="${AGENTBOX_OPENCLAW_AUTH_CHOICE:-${DEFAULT_OPENCLAW_AUTH_CHOICE}}"
 OPENCLAW_AUTH_ENV="${AGENTBOX_OPENCLAW_AUTH_ENV:-}"
+OPENCLAW_TAKEOVER_MAIN="${AGENTBOX_OPENCLAW_TAKEOVER_MAIN:-}"
 TAILSCALE_AUTHKEY="${AGENTBOX_TAILSCALE_AUTHKEY:-}"
 ADMIN_USER=""
 AUTHORIZED_KEY_CLI_SEEN="0"
@@ -314,6 +321,7 @@ declare -a AUTHORIZED_KEY_LINES=()
 declare -a EXTRA_BREWFILE_SPECS=()
 declare -a RESOLVED_EXTRA_BREWFILES=()
 declare -a AGENTBOX_PROFILE_IMAGE_SOURCES=()
+declare -a OPENCLAW_MAIN_MANAGED_FILES=("HEARTBEAT.md" "IDENTITY.md" "SOUL.md" "TOOLS.md" "USER.md" "assets/default_avatar.png")
 BOOT_TMPDIR=""
 BOOTBOX_SCRIPT_PATH=""
 SUDO_KEEPALIVE_PID=""
@@ -334,9 +342,16 @@ AGENTBOX_TAILSCALED_PLIST_TEMPLATE=""
 AGENTBOX_OPENCLAW_FINALIZER_PLIST_TEMPLATE=""
 AGENTBOX_OPENCLAW_FINALIZER_SOURCE=""
 AGENTBOX_PROFILE_IMAGE_SOURCE=""
+AGENTBOX_DEFAULT_AVATAR_SOURCE=""
+AGENTBOX_OPENCLAW_MAIN_WORKSPACE_SOURCE=""
 BREW_PREFIX_VALUE=""
 TAILSCALE_HOSTNAME_VALUE=""
 OPENCLAW_GATEWAY_SETUP_STATUS="not_configured"
+OPENCLAW_MAIN_OWNERSHIP_STATUS="unknown"
+OPENCLAW_MAIN_PREVIOUS_WORKSPACE=""
+OPENCLAW_PREVIOUS_DEFAULT_AGENT=""
+OPENCLAW_PREVIOUS_DEFAULT_WORKSPACE=""
+OPENCLAW_TAKEOVER_CONFIG_BACKUP=""
 
 if [[ -n "${AGENTBOX_AUTHORIZED_KEY:-}" ]]; then
   append_array_value AUTHORIZED_KEY_SPECS "${AGENTBOX_AUTHORIZED_KEY}"
@@ -360,6 +375,10 @@ debug_enabled() {
 
 force_enabled() {
   value_enabled "${FORCE:-}"
+}
+
+openclaw_takeover_main_enabled() {
+  value_enabled "${OPENCLAW_TAKEOVER_MAIN:-}"
 }
 
 unsupported_macos_allowed() {
@@ -896,6 +915,7 @@ usage() {
   local openclaw_gateway_port_display_value="${DEFAULT_OPENCLAW_GATEWAY_PORT}"
   local openclaw_auth_choice_display_value="${DEFAULT_OPENCLAW_AUTH_CHOICE}"
   local openclaw_auth_env_display_value="none"
+  local openclaw_takeover_main_display="off"
   local extra_brewfiles_display_value="none"
   local authorized_keys_display="none"
 
@@ -905,6 +925,10 @@ usage() {
 
   if force_enabled; then
     force_display="on"
+  fi
+
+  if openclaw_takeover_main_enabled; then
+    openclaw_takeover_main_display="on"
   fi
 
   tailscale_authkey_display_value="$(tailscale_authkey_display)"
@@ -936,6 +960,7 @@ EOS
   usage_option "--openclaw-auth-choice" "sets initial openclaw model auth choice" "${openclaw_auth_choice_display_value}"
   usage_option "--openclaw-auth-env" "passes one extra parent env var to openclaw auth onboarding" "${openclaw_auth_env_display_value}"
   usage_option "--openclaw-gateway-port" "sets openclaw gateway port" "${openclaw_gateway_port_display_value}"
+  usage_option "--openclaw-takeover-main" "allows agentbox to replace an existing unowned main agent and workspace" "${openclaw_takeover_main_display}"
   usage_option "--version" "shows version of this script"
   usage_option "--debug" "shows debug messages" "${debug_display}"
   usage_option "--force" "forces supported replacement operations" "${force_display}"
@@ -956,6 +981,7 @@ ${tty_tp}Environment Variables:${tty_reset}
   AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice
   AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env
   AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port
+  AGENTBOX_OPENCLAW_TAKEOVER_MAIN same as --openclaw-takeover-main
   AGENTBOX_FORCE                 same as --force
   NONINTERACTIVE                 same as --yes
   AGENTBOX_DEBUG                 same as --debug
@@ -1144,6 +1170,10 @@ parse_args() {
         OPENCLAW_GATEWAY_PORT_EXPLICIT="1"
         shift
         ;;
+      --openclaw-takeover-main)
+        OPENCLAW_TAKEOVER_MAIN="1"
+        shift
+        ;;
       --force)
         FORCE="1"
         shift
@@ -1299,6 +1329,7 @@ resolve_existing_dir_path() (
 
 agentbox_payload_valid() {
   local dir="$1"
+  local managed_file
   local profile_image_source
 
   [[ -d "${dir}" ]] || return 1
@@ -1308,6 +1339,13 @@ agentbox_payload_valid() {
   [[ -f "${dir}/launchd/dev.tanaab.agentbox.tailscaled.plist.in" ]] || return 1
   [[ -f "${dir}/launchd/dev.tanaab.agentbox.openclaw-finalize.plist.in" ]] || return 1
   [[ -f "${dir}/libexec/agentbox-openclaw-finalize.sh" ]] || return 1
+  [[ -f "${dir}/assets/default_avatar.png" ]] || return 1
+  for managed_file in "${OPENCLAW_MAIN_MANAGED_FILES[@]}"; do
+    if [[ "${managed_file}" == "assets/default_avatar.png" ]]; then
+      continue
+    fi
+    [[ -f "${dir}/workspace/main/${managed_file}" ]] || return 1
+  done
   for profile_image_source in "${dir}"/assets/profile*.png; do
     if [[ -f "${profile_image_source}" ]]; then
       return 0
@@ -1321,7 +1359,7 @@ validate_agentbox_payload_dir() {
   local dir="$1"
 
   if ! agentbox_payload_valid "${dir}"; then
-    abort "agentbox payload at ${tty_ts}$(display_home_path "${dir}")${tty_reset} must include Brewfile, bin/health.sh, launchd templates, and assets/profile*.png."
+    abort "agentbox payload at ${tty_ts}$(display_home_path "${dir}")${tty_reset} must include Brewfile, bin/health.sh, launchd templates, the managed Main workspace, assets/default_avatar.png, and assets/profile*.png."
   fi
 }
 
@@ -1493,6 +1531,7 @@ resolve_extra_brewfiles() {
 }
 
 discover_agentbox_payload() {
+  local managed_file
   local profile_image_source
 
   AGENTBOX_CORE_BREWFILE="${AGENTBOX_PAYLOAD_DIR}/Brewfile"
@@ -1505,6 +1544,8 @@ discover_agentbox_payload() {
   AGENTBOX_TAILSCALED_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.tailscaled.plist.in"
   AGENTBOX_OPENCLAW_FINALIZER_PLIST_TEMPLATE="${AGENTBOX_LAUNCHD_DIR}/dev.tanaab.agentbox.openclaw-finalize.plist.in"
   AGENTBOX_OPENCLAW_FINALIZER_SOURCE="${AGENTBOX_LIBEXEC_DIR}/agentbox-openclaw-finalize.sh"
+  AGENTBOX_DEFAULT_AVATAR_SOURCE="${AGENTBOX_ASSETS_DIR}/default_avatar.png"
+  AGENTBOX_OPENCLAW_MAIN_WORKSPACE_SOURCE="${AGENTBOX_PAYLOAD_DIR}/workspace/main"
   AGENTBOX_PROFILE_IMAGE_SOURCES=()
   AGENTBOX_PROFILE_IMAGE_SOURCE=""
 
@@ -1527,6 +1568,19 @@ discover_agentbox_payload() {
   if [[ ! -f "${AGENTBOX_OPENCLAW_FINALIZER_PLIST_TEMPLATE}" || ! -f "${AGENTBOX_OPENCLAW_FINALIZER_SOURCE}" ]]; then
     abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing the openclaw Aqua finalizer assets; use a current agentbox checkout or release payload that includes launchd/ and libexec/."
   fi
+
+  if [[ ! -f "${AGENTBOX_DEFAULT_AVATAR_SOURCE}" ]]; then
+    abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing required runtime asset ${tty_ts}assets/default_avatar.png${tty_reset}; use a current agentbox checkout or release payload that includes the bundled default avatar."
+  fi
+
+  for managed_file in "${OPENCLAW_MAIN_MANAGED_FILES[@]}"; do
+    if [[ "${managed_file}" == "assets/default_avatar.png" ]]; then
+      continue
+    fi
+    if [[ ! -f "${AGENTBOX_OPENCLAW_MAIN_WORKSPACE_SOURCE}/${managed_file}" ]]; then
+      abort "agentbox payload at ${tty_ts}$(agentbox_payload_display)${tty_reset} is missing managed Main workspace file ${tty_ts}workspace/main/${managed_file}${tty_reset}."
+    fi
+  done
 
   for profile_image_source in "${AGENTBOX_ASSETS_DIR}"/profile*.png; do
     if [[ -f "${profile_image_source}" ]]; then
@@ -2389,6 +2443,10 @@ AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=$(shell_quote "${OPENCLAW_GATEWAY_BIND_VAL
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE=$(shell_quote "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}")
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT=$(shell_quote "${OPENCLAW_GATEWAY_PORT}")
 AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE=$(shell_quote "${OPENCLAW_AUTH_CHOICE}")
+AGENTBOX_HEALTH_OPENCLAW_DEFAULT_AGENT_ID=$(shell_quote "${OPENCLAW_DEFAULT_AGENT_ID}")
+AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE=$(shell_quote "$(openclaw_main_workspace_path)")
+AGENTBOX_HEALTH_OPENCLAW_UI_ASSISTANT_NAME=$(shell_quote "${OPENCLAW_UI_ASSISTANT_NAME}")
+AGENTBOX_HEALTH_OPENCLAW_UI_ASSISTANT_AVATAR_SHA256=$(shell_quote "$(openclaw_default_avatar_sha256)")
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED=${ssh_hardening_expected}
 AGENTBOX_HEALTH_SSH_ALLOWED_USERS=$(shell_quote "${ssh_allowed_users}")
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER=${managed_macos_runner}
@@ -3221,7 +3279,8 @@ plan_wrapper_execution() {
   if [[ "${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}" == "serve" ]]; then
     plan_action "${tty_tp}allow${tty_reset} verified tailscale identities for openclaw gateway authentication"
   fi
-  plan_action "${tty_tp}configure${tty_reset} the openclaw UI seam color as Tanaab green"
+  plan_action "${tty_tp}manage${tty_reset} openclaw agent ${tty_ts}${OPENCLAW_DEFAULT_AGENT_ID}${tty_reset} as the explicit inert fallback with its canonical workspace and ${tty_ts}${OPENCLAW_UI_ASSISTANT_NAME}${tty_reset} identity"
+  plan_action "${tty_tp}configure${tty_reset} the global openclaw UI assistant fallback as ${tty_ts}${OPENCLAW_UI_ASSISTANT_NAME}${tty_reset} with the bundled default avatar and Tanaab green seam color"
   if user_exists "${OPENCLAW_USER}"; then
     plan_action "${tty_tp}ensure${tty_reset} native runtime-user openclaw LaunchAgent ${tty_ts}${OPENCLAW_NATIVE_GATEWAY_LAUNCH_AGENT_LABEL}${tty_reset} is installed, current, and healthy, using an Aqua-only one-time finalizer only when installation or repair is required"
   else
@@ -4156,9 +4215,440 @@ validate_openclaw_cli_contract() {
   openclaw_help_has_option "${openclaw_bin}" "--skip-health" onboard || missing+=("onboard --skip-health")
   openclaw_help_has_option "${openclaw_bin}" "--force" gateway install || missing+=("gateway install --force")
   openclaw_help_has_option "${openclaw_bin}" "--require-rpc" gateway status || missing+=("gateway status --require-rpc")
+  openclaw_help_has_option "${openclaw_bin}" "--json" agents list || missing+=("agents list --json")
+  openclaw_help_has_option "${openclaw_bin}" "--agent" agents set-identity || missing+=("agents set-identity --agent")
+  openclaw_help_has_option "${openclaw_bin}" "--name" agents set-identity || missing+=("agents set-identity --name")
+  openclaw_help_has_option "${openclaw_bin}" "--avatar" agents set-identity || missing+=("agents set-identity --avatar")
+  openclaw_help_has_option "${openclaw_bin}" "--replace" config set || missing+=("config set --replace")
+  openclaw_help_has_option "${openclaw_bin}" "--batch-file" config set || missing+=("config set --batch-file")
 
   if array_has_values missing; then
-    abort "installed openclaw cli is incompatible with agentbox gateway activation; missing required options: ${tty_ts}$(array_join ", " missing)${tty_reset}. Update openclaw and rerun."
+    abort "installed openclaw cli is incompatible with agentbox setup; missing required options: ${tty_ts}$(array_join ", " missing)${tty_reset}. Update openclaw and rerun."
+  fi
+}
+
+openclaw_agents_list_json() {
+  local agents_json
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+  local openclaw_bin="$1"
+
+  if ! agents_json="$(run_as_openclaw_runner "${openclaw_bin}" agents list --json)"; then
+    abort "failed to inspect configured openclaw agents for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+  fi
+
+  if ! "${jq_bin}" -e '
+    type == "array"
+    and length > 0
+    and ([.[] | select(.isDefault == true)] | length == 1)
+    and all(.[]; (.id | type == "string" and length > 0) and (.workspace | type == "string" and length > 0))
+  ' <<< "${agents_json}" >/dev/null; then
+    abort "openclaw returned an invalid or ambiguous agent list for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}; repair the agent configuration and rerun agentbox."
+  fi
+
+  printf "%s" "${agents_json}"
+}
+
+openclaw_default_agent_id_from_json() {
+  local agents_json="$1"
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+
+  "${jq_bin}" -r '.[] | select(.isDefault == true) | .id' <<< "${agents_json}"
+}
+
+openclaw_agent_workspace_from_json() {
+  local agents_json="$1"
+  local agent_id="$2"
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+
+  # shellcheck disable=SC2016
+  "${jq_bin}" -r --arg agent_id "${agent_id}" '
+    [.[] | select(.id == $agent_id)]
+    | if length == 1 then .[0].workspace else "" end
+  ' <<< "${agents_json}"
+}
+
+openclaw_default_agent_workspace_from_json() {
+  local agents_json="$1"
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+
+  "${jq_bin}" -r '.[] | select(.isDefault == true) | .workspace' <<< "${agents_json}"
+}
+
+openclaw_main_workspace_path() {
+  printf "%s/%s" "$(openclaw_runner_home_required)" "${OPENCLAW_MAIN_WORKSPACE_RELATIVE_PATH}"
+}
+
+openclaw_main_workspace_marker_path() {
+  printf "%s/%s" "$(openclaw_main_workspace_path)" "${OPENCLAW_MAIN_WORKSPACE_MARKER_NAME}"
+}
+
+openclaw_path_has_entries() {
+  local path="$1"
+  local first_entry
+
+  sudo test -d "${path}" || return 1
+  first_entry="$(sudo /usr/bin/find "${path}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)"
+  [[ -n "${first_entry}" ]]
+}
+
+openclaw_main_root_state_valid() {
+  local expected_workspace
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+
+  expected_workspace="$(openclaw_main_workspace_path)"
+  [[ "$(sudo stat -f '%Su:%Sg:%Lp' "${AGENTBOX_OPENCLAW_MAIN_STATE_PATH}" 2>/dev/null || true)" == "root:wheel:600" ]] || return 1
+  sudo "${jq_bin}" -e \
+    --arg owner "@tanaab/agentbox" \
+    --arg surface "openclaw-main-workspace" \
+    --arg agent_id "${OPENCLAW_DEFAULT_AGENT_ID}" \
+    --arg runner "${OPENCLAW_USER}" \
+    --arg workspace "${expected_workspace}" \
+    --argjson template_version "${OPENCLAW_MAIN_WORKSPACE_TEMPLATE_VERSION}" '
+      .schemaVersion == 1
+      and .owner == $owner
+      and .surface == $surface
+      and .agentId == $agent_id
+      and .runner == $runner
+      and .workspace == $workspace
+      and .templateVersion == $template_version
+      and .managedFiles == ["HEARTBEAT.md", "IDENTITY.md", "SOUL.md", "TOOLS.md", "USER.md", "assets/default_avatar.png"]
+      and (.managedFileSha256 | type) == "object"
+    ' "${AGENTBOX_OPENCLAW_MAIN_STATE_PATH}" >/dev/null 2>&1
+}
+
+openclaw_main_workspace_marker_valid() {
+  local expected_workspace
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+  local marker_path
+  local primary_group
+
+  expected_workspace="$(openclaw_main_workspace_path)"
+  marker_path="$(openclaw_main_workspace_marker_path)"
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+  [[ "$(sudo stat -f '%Su:%Sg:%Lp' "${marker_path}" 2>/dev/null || true)" == "${OPENCLAW_USER}:${primary_group}:600" ]] || return 1
+  sudo "${jq_bin}" -e \
+    --arg owner "@tanaab/agentbox" \
+    --arg surface "openclaw-main-workspace" \
+    --arg agent_id "${OPENCLAW_DEFAULT_AGENT_ID}" \
+    --arg runner "${OPENCLAW_USER}" \
+    --arg workspace "${expected_workspace}" \
+    --argjson template_version "${OPENCLAW_MAIN_WORKSPACE_TEMPLATE_VERSION}" '
+      .schemaVersion == 1
+      and .owner == $owner
+      and .surface == $surface
+      and .agentId == $agent_id
+      and .runner == $runner
+      and .workspace == $workspace
+      and .templateVersion == $template_version
+      and .managedFiles == ["HEARTBEAT.md", "IDENTITY.md", "SOUL.md", "TOOLS.md", "USER.md", "assets/default_avatar.png"]
+    ' "${marker_path}" >/dev/null 2>&1
+}
+
+classify_openclaw_main_ownership() {
+  local agents_json="${1:-}"
+  local configured_workspace=""
+  local openclaw_state_dir
+  local root_state_valid="0"
+  local workspace_marker_valid="0"
+
+  openclaw_state_dir="$(openclaw_gateway_state_dir)"
+  if openclaw_main_root_state_valid; then
+    root_state_valid="1"
+  fi
+  if openclaw_main_workspace_marker_valid; then
+    workspace_marker_valid="1"
+  fi
+  if [[ -n "${agents_json}" ]]; then
+    configured_workspace="$(openclaw_agent_workspace_from_json "${agents_json}" "${OPENCLAW_DEFAULT_AGENT_ID}")"
+  fi
+
+  if [[ "${root_state_valid}" == "1" && "${workspace_marker_valid}" == "1" &&
+    "${configured_workspace}" == "$(openclaw_main_workspace_path)" ]]; then
+    printf "managed"
+  elif sudo test -e "${AGENTBOX_OPENCLAW_MAIN_STATE_PATH}" || sudo test -e "$(openclaw_main_workspace_marker_path)"; then
+    printf "inconsistent"
+  elif openclaw_path_has_entries "${openclaw_state_dir}"; then
+    printf "unmanaged"
+  else
+    printf "fresh"
+  fi
+}
+
+require_openclaw_main_takeover_authorized() {
+  local agents_json="${1:-}"
+  local current_main_workspace="none"
+
+  OPENCLAW_PREVIOUS_DEFAULT_AGENT=""
+  OPENCLAW_PREVIOUS_DEFAULT_WORKSPACE=""
+  OPENCLAW_MAIN_PREVIOUS_WORKSPACE=""
+  if [[ -n "${agents_json}" ]]; then
+    OPENCLAW_PREVIOUS_DEFAULT_AGENT="$(openclaw_default_agent_id_from_json "${agents_json}")"
+    OPENCLAW_PREVIOUS_DEFAULT_WORKSPACE="$(openclaw_default_agent_workspace_from_json "${agents_json}")"
+    OPENCLAW_MAIN_PREVIOUS_WORKSPACE="$(openclaw_agent_workspace_from_json "${agents_json}" "${OPENCLAW_DEFAULT_AGENT_ID}")"
+    current_main_workspace="${OPENCLAW_MAIN_PREVIOUS_WORKSPACE:-none}"
+  fi
+
+  OPENCLAW_MAIN_OWNERSHIP_STATUS="$(classify_openclaw_main_ownership "${agents_json}")"
+  case "${OPENCLAW_MAIN_OWNERSHIP_STATUS}" in
+    fresh | managed)
+      return 0
+      ;;
+  esac
+
+  if ! openclaw_takeover_main_enabled; then
+    abort_multi "$(cat <<EOABORT
+openclaw Main is ${tty_ts}${OPENCLAW_MAIN_OWNERSHIP_STATUS}${tty_reset}; its current workspace is ${tty_ts}${current_main_workspace}${tty_reset}.
+agentbox will not replace an existing unowned or inconsistently marked Main agent, even when Main is already the default.
+back up any OpenClaw state you need, then rerun with ${tty_bold}--openclaw-takeover-main${tty_reset} to let agentbox manage Main as the inert fallback agent.
+EOABORT
+)"
+  fi
+
+  if openclaw_path_has_entries "$(openclaw_main_workspace_path)" &&
+    ! openclaw_main_workspace_marker_valid && ! openclaw_main_root_state_valid; then
+    abort_multi "$(cat <<EOABORT
+the managed Main workspace target ${tty_ts}$(openclaw_main_workspace_path)${tty_reset} already contains unowned files.
+agentbox will not overwrite that directory. Move or back it up, then rerun with ${tty_bold}--openclaw-takeover-main${tty_reset}.
+EOABORT
+)"
+  fi
+
+  log "${tty_tp}taking over${tty_reset} openclaw Main from ${tty_ts}${OPENCLAW_MAIN_OWNERSHIP_STATUS}${tty_reset} state; existing non-managed workspaces remain untouched"
+}
+
+preflight_openclaw_main_ownership() {
+  local agents_json=""
+  local openclaw_bin
+  local runner_config
+  local runner_home
+
+  if [[ "${SUDO_SESSION_ACTIVE:-0}" != "1" ]] || ! user_exists "${OPENCLAW_USER}" || ! command -v brew >/dev/null 2>&1; then
+    return 0
+  fi
+
+  runner_home="$(user_home_dir "${OPENCLAW_USER}")"
+  runner_config="${runner_home}/.openclaw/openclaw.json"
+  if ! sudo test -f "${runner_config}" && ! openclaw_path_has_entries "${runner_home}/.openclaw" &&
+    ! sudo test -e "${AGENTBOX_OPENCLAW_MAIN_STATE_PATH}"; then
+    return 0
+  fi
+
+  resolve_brew_prefix
+  openclaw_bin="${BREW_PREFIX_VALUE}/bin/openclaw"
+  [[ -x "${openclaw_bin}" && -x "${BREW_PREFIX_VALUE}/bin/jq" ]] || return 0
+  if sudo test -f "${runner_config}"; then
+    openclaw_help_has_option "${openclaw_bin}" "--json" agents list || return 0
+    agents_json="$(openclaw_agents_list_json "${openclaw_bin}")"
+  fi
+
+  require_openclaw_main_takeover_authorized "${agents_json}"
+}
+
+backup_openclaw_config_for_takeover() {
+  local backup_dir
+  local backup_path
+  local primary_group
+  local runner_config
+  local timestamp
+
+  case "${OPENCLAW_MAIN_OWNERSHIP_STATUS}" in
+    unmanaged | inconsistent) ;;
+    *) return 0 ;;
+  esac
+
+  runner_config="$(openclaw_gateway_state_dir)/openclaw.json"
+  sudo test -f "${runner_config}" || return 0
+  backup_dir="$(openclaw_gateway_state_dir)/agentbox-backups"
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  backup_path="${backup_dir}/openclaw.json.${timestamp}-$$"
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+
+  log "${tty_tp}backing up${tty_reset} the existing openclaw configuration to ${tty_ts}${backup_path}${tty_reset}"
+  execute sudo /usr/bin/install -d -o "${OPENCLAW_USER}" -g "${primary_group}" -m 700 "${backup_dir}"
+  execute sudo /usr/bin/install -o "${OPENCLAW_USER}" -g "${primary_group}" -m 600 "${runner_config}" "${backup_path}"
+  OPENCLAW_TAKEOVER_CONFIG_BACKUP="${backup_path}"
+}
+
+install_openclaw_main_workspace() {
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+  local managed_file
+  local marker_file="${BOOT_TMPDIR}/openclaw-main-workspace-marker.json"
+  local primary_group
+  local source_path
+  local workspace
+
+  workspace="$(openclaw_main_workspace_path)"
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
+  log "${tty_tp}installing${tty_reset} the managed inert Main workspace at ${tty_ts}${workspace}${tty_reset}"
+  execute sudo /usr/bin/install -d -o "${OPENCLAW_USER}" -g "${primary_group}" -m 700 "${workspace}" "${workspace}/assets"
+
+  for managed_file in "${OPENCLAW_MAIN_MANAGED_FILES[@]}"; do
+    if [[ "${managed_file}" == "assets/default_avatar.png" ]]; then
+      source_path="${AGENTBOX_DEFAULT_AVATAR_SOURCE}"
+    else
+      source_path="${AGENTBOX_OPENCLAW_MAIN_WORKSPACE_SOURCE}/${managed_file}"
+    fi
+    execute sudo /usr/bin/install -o "${OPENCLAW_USER}" -g "${primary_group}" -m 600 "${source_path}" "${workspace}/${managed_file}"
+  done
+
+  # shellcheck disable=SC2016
+  if ! "${jq_bin}" -n \
+    --arg owner "@tanaab/agentbox" \
+    --arg surface "openclaw-main-workspace" \
+    --arg agent_id "${OPENCLAW_DEFAULT_AGENT_ID}" \
+    --arg runner "${OPENCLAW_USER}" \
+    --arg workspace "${workspace}" \
+    --arg agentbox_version "${SCRIPT_VERSION}" \
+    --argjson template_version "${OPENCLAW_MAIN_WORKSPACE_TEMPLATE_VERSION}" '
+      {
+        schemaVersion: 1,
+        owner: $owner,
+        surface: $surface,
+        agentId: $agent_id,
+        runner: $runner,
+        workspace: $workspace,
+        agentboxVersion: $agentbox_version,
+        templateVersion: $template_version,
+        managedFiles: ["HEARTBEAT.md", "IDENTITY.md", "SOUL.md", "TOOLS.md", "USER.md", "assets/default_avatar.png"]
+      }
+    ' > "${marker_file}"; then
+    abort "failed to prepare the managed Main workspace marker."
+  fi
+  execute sudo /usr/bin/install -o "${OPENCLAW_USER}" -g "${primary_group}" -m 600 "${marker_file}" "$(openclaw_main_workspace_marker_path)"
+}
+
+write_openclaw_main_ownership_state() {
+  local config_backup="${OPENCLAW_TAKEOVER_CONFIG_BACKUP}"
+  local file_sha256
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+  local managed_file
+  local managed_file_sha256="{}"
+  local previous_default_agent="${OPENCLAW_PREVIOUS_DEFAULT_AGENT}"
+  local previous_default_workspace="${OPENCLAW_PREVIOUS_DEFAULT_WORKSPACE}"
+  local previous_main_workspace="${OPENCLAW_MAIN_PREVIOUS_WORKSPACE}"
+  local state_file="${BOOT_TMPDIR}/openclaw-main-state.json"
+  local workspace
+
+  workspace="$(openclaw_main_workspace_path)"
+  if [[ "${OPENCLAW_MAIN_OWNERSHIP_STATUS}" == "managed" ]] && openclaw_main_root_state_valid; then
+    previous_default_agent="$(sudo "${jq_bin}" -r '.previousDefaultAgent // ""' "${AGENTBOX_OPENCLAW_MAIN_STATE_PATH}")"
+    previous_default_workspace="$(sudo "${jq_bin}" -r '.previousDefaultWorkspace // ""' "${AGENTBOX_OPENCLAW_MAIN_STATE_PATH}")"
+    previous_main_workspace="$(sudo "${jq_bin}" -r '.previousMainWorkspace // ""' "${AGENTBOX_OPENCLAW_MAIN_STATE_PATH}")"
+    config_backup="$(sudo "${jq_bin}" -r '.configBackup // ""' "${AGENTBOX_OPENCLAW_MAIN_STATE_PATH}")"
+  fi
+
+  for managed_file in "${OPENCLAW_MAIN_MANAGED_FILES[@]}"; do
+    file_sha256="$(sudo /usr/bin/shasum -a 256 "${workspace}/${managed_file}" | /usr/bin/awk '{print $1}')"
+    if [[ -z "${file_sha256}" ]]; then
+      abort "failed to hash managed Main workspace file ${tty_ts}${managed_file}${tty_reset}."
+    fi
+    # shellcheck disable=SC2016
+    managed_file_sha256="$("${jq_bin}" -c --arg path "${managed_file}" --arg sha256 "${file_sha256}" '. + {($path): $sha256}' <<< "${managed_file_sha256}")"
+  done
+
+  # shellcheck disable=SC2016
+  if ! "${jq_bin}" -n \
+    --arg owner "@tanaab/agentbox" \
+    --arg surface "openclaw-main-workspace" \
+    --arg agent_id "${OPENCLAW_DEFAULT_AGENT_ID}" \
+    --arg runner "${OPENCLAW_USER}" \
+    --arg workspace "${workspace}" \
+    --arg agentbox_version "${SCRIPT_VERSION}" \
+    --arg previous_default_agent "${previous_default_agent}" \
+    --arg previous_default_workspace "${previous_default_workspace}" \
+    --arg previous_main_workspace "${previous_main_workspace}" \
+    --arg config_backup "${config_backup}" \
+    --argjson managed_file_sha256 "${managed_file_sha256}" \
+    --argjson template_version "${OPENCLAW_MAIN_WORKSPACE_TEMPLATE_VERSION}" '
+      def nullable: if length > 0 then . else null end;
+      {
+        schemaVersion: 1,
+        owner: $owner,
+        surface: $surface,
+        agentId: $agent_id,
+        runner: $runner,
+        workspace: $workspace,
+        agentboxVersion: $agentbox_version,
+        templateVersion: $template_version,
+        managedFiles: ["HEARTBEAT.md", "IDENTITY.md", "SOUL.md", "TOOLS.md", "USER.md", "assets/default_avatar.png"],
+        managedFileSha256: $managed_file_sha256,
+        previousDefaultAgent: ($previous_default_agent | nullable),
+        previousDefaultWorkspace: ($previous_default_workspace | nullable),
+        previousMainWorkspace: ($previous_main_workspace | nullable),
+        configBackup: ($config_backup | nullable)
+      }
+    ' > "${state_file}"; then
+    abort "failed to prepare the managed Main ownership state."
+  fi
+
+  execute sudo /usr/bin/install -d -o root -g wheel -m 755 "${AGENTBOX_STATE_DIR}"
+  execute sudo /usr/bin/install -o root -g wheel -m 600 "${state_file}" "${AGENTBOX_OPENCLAW_MAIN_STATE_PATH}"
+}
+
+reconcile_openclaw_default_agent() {
+  local agents_json="$2"
+  local configured_agents="[]"
+  local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
+  local openclaw_bin="$1"
+  local runner_config
+  local updated_agents
+  local workspace
+
+  workspace="$(openclaw_main_workspace_path)"
+  runner_config="$(openclaw_gateway_state_dir)/openclaw.json"
+  if sudo test -f "${runner_config}"; then
+    configured_agents="$(run_as_openclaw_runner "${jq_bin}" -c '.agents.list // []' "${runner_config}")"
+  fi
+
+  # shellcheck disable=SC2016
+  if ! updated_agents="$("${jq_bin}" -cn \
+    --arg main_agent_id "${OPENCLAW_DEFAULT_AGENT_ID}" \
+    --arg main_workspace "${workspace}" \
+    --argjson configured "${configured_agents}" \
+    --argjson resolved "${agents_json}" '
+      reduce $resolved[] as $agent
+          ($configured;
+            if any(.[]; .id == $agent.id) then . else . + [{id: $agent.id}] end
+          )
+      | if any(.[]; .id == $main_agent_id) then . else . + [{id: $main_agent_id}] end
+      | map(
+          .default = (.id == $main_agent_id)
+          | if .id == $main_agent_id
+            then .workspace = $main_workspace
+              | .tools = {allow: ["agents_list"]}
+              | .subagents = {allowAgents: ["*"]}
+            else .
+            end
+        )
+    ')"; then
+    abort "failed to prepare the explicit openclaw main-agent configuration for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+  fi
+
+  log "${tty_tp}managing${tty_reset} openclaw agent ${tty_ts}${OPENCLAW_DEFAULT_AGENT_ID}${tty_reset} as the explicit inert fallback"
+
+  debug "${tty_tp}running${tty_reset}" "${openclaw_bin}" config set agents.list "[managed agent configuration]" --strict-json --replace
+  if ! DEBUG="" run_as_openclaw_runner "${openclaw_bin}" config set agents.list "${updated_agents}" --strict-json --replace >/dev/null; then
+    abort "failed to configure openclaw agent ${tty_ts}${OPENCLAW_DEFAULT_AGENT_ID}${tty_reset} as the explicit default for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+  fi
+
+  if ! run_as_openclaw_runner "${openclaw_bin}" config validate --json >/dev/null; then
+    abort "openclaw configuration validation failed after setting agent ${tty_ts}${OPENCLAW_DEFAULT_AGENT_ID}${tty_reset} as the explicit default."
+  fi
+
+  agents_json="$(openclaw_agents_list_json "${openclaw_bin}")"
+  # shellcheck disable=SC2016
+  if [[ "$(openclaw_default_agent_id_from_json "${agents_json}")" != "${OPENCLAW_DEFAULT_AGENT_ID}" ]] ||
+    ! run_as_openclaw_runner "${jq_bin}" -e \
+      --arg main_agent_id "${OPENCLAW_DEFAULT_AGENT_ID}" \
+      --arg main_workspace "${workspace}" \
+      '[(.agents.list // [])[] | select(.default == true)] as $defaults
+      | ($defaults | length) == 1
+      and $defaults[0].id == $main_agent_id
+      and $defaults[0].workspace == $main_workspace
+      and $defaults[0].tools == {allow: ["agents_list"]}
+      and $defaults[0].subagents == {allowAgents: ["*"]}' \
+      "${runner_config}" >/dev/null; then
+    abort "openclaw default-agent verification failed for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
   fi
 }
 
@@ -4246,29 +4736,90 @@ configure_openclaw_tailscale_auth() {
   fi
 }
 
-configure_openclaw_ui_seam_color() {
+openclaw_default_avatar_data_uri() {
+  local encoded
+
+  if ! encoded="$(/usr/bin/base64 < "${AGENTBOX_DEFAULT_AVATAR_SOURCE}" | /usr/bin/tr -d '\r\n')" || [[ -z "${encoded}" ]]; then
+    abort "failed to encode the managed openclaw avatar from ${tty_ts}$(display_home_path "${AGENTBOX_DEFAULT_AVATAR_SOURCE}")${tty_reset}."
+  fi
+
+  printf "data:image/png;base64,%s" "${encoded}"
+}
+
+openclaw_default_avatar_sha256() {
+  /usr/bin/shasum -a 256 "${AGENTBOX_DEFAULT_AVATAR_SOURCE}" | /usr/bin/awk '{print $1}'
+}
+
+configure_openclaw_managed_identity() {
+  local avatar_data_uri
+  local batch_file
   local jq_bin="${BREW_PREFIX_VALUE}/bin/jq"
   local openclaw_bin="$1"
+  local primary_group
   local runner_config
 
+  avatar_data_uri="$(openclaw_default_avatar_data_uri)"
+  batch_file="$(openclaw_gateway_state_dir)/.agentbox-ui-assistant.batch.$$.json"
   runner_config="$(openclaw_gateway_state_dir)/openclaw.json"
+  primary_group="$(user_primary_group "${OPENCLAW_USER}")"
 
-  log "${tty_tp}configuring${tty_reset} openclaw UI seam color as ${tty_ts}${OPENCLAW_UI_SEAM_COLOR}${tty_reset}"
-  if ! run_as_openclaw_runner "${openclaw_bin}" config set ui.seamColor "${OPENCLAW_UI_SEAM_COLOR}" >/dev/null; then
-    abort "failed to configure the openclaw UI seam color for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+  log "${tty_tp}configuring${tty_reset} managed identity ${tty_ts}${OPENCLAW_UI_ASSISTANT_NAME}${tty_reset} for openclaw agent ${tty_ts}${OPENCLAW_DEFAULT_AGENT_ID}${tty_reset}"
+  debug "${tty_tp}running${tty_reset}" "${openclaw_bin}" agents set-identity --agent "${OPENCLAW_DEFAULT_AGENT_ID}" --name "${OPENCLAW_UI_ASSISTANT_NAME}" --avatar "data:image/png;base64,****"
+  if ! DEBUG="" run_as_openclaw_runner "${openclaw_bin}" agents set-identity \
+    --agent "${OPENCLAW_DEFAULT_AGENT_ID}" \
+    --name "${OPENCLAW_UI_ASSISTANT_NAME}" \
+    --avatar "${avatar_data_uri}" >/dev/null; then
+    abort "failed to configure the managed identity for openclaw agent ${tty_ts}${OPENCLAW_DEFAULT_AGENT_ID}${tty_reset}."
+  fi
+
+  # shellcheck disable=SC2016
+  if ! "${jq_bin}" -n \
+    --arg assistant_name "${OPENCLAW_UI_ASSISTANT_NAME}" \
+    --arg assistant_avatar "${avatar_data_uri}" \
+    --arg seam_color "${OPENCLAW_UI_SEAM_COLOR}" \
+    '[
+      {"path":"ui.assistant.name","value":$assistant_name},
+      {"path":"ui.assistant.avatar","value":$assistant_avatar},
+      {"path":"ui.seamColor","value":$seam_color}
+    ]' | sudo tee "${batch_file}" >/dev/null; then
+    sudo rm -f "${batch_file}" >/dev/null 2>&1 || true
+    abort "failed to prepare the managed openclaw UI assistant identity for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+  fi
+
+  execute sudo chown "${OPENCLAW_USER}:${primary_group}" "${batch_file}"
+  execute sudo chmod 600 "${batch_file}"
+
+  log "${tty_tp}configuring${tty_reset} global openclaw UI assistant fallback as ${tty_ts}${OPENCLAW_UI_ASSISTANT_NAME}${tty_reset}"
+  if ! run_as_openclaw_runner "${openclaw_bin}" config set --batch-file "${batch_file}" >/dev/null; then
+    sudo rm -f "${batch_file}" >/dev/null 2>&1 || true
+    abort "failed to configure the managed global openclaw UI assistant identity for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
   fi
 
   if ! run_as_openclaw_runner "${openclaw_bin}" config validate --json >/dev/null; then
-    abort "openclaw gateway configuration validation failed after setting the UI seam color for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+    sudo rm -f "${batch_file}" >/dev/null 2>&1 || true
+    abort "openclaw configuration validation failed after setting the managed Main and global UI assistant identities."
   fi
 
   # shellcheck disable=SC2016
   if ! run_as_openclaw_runner "${jq_bin}" -e \
+    --arg main_agent_id "${OPENCLAW_DEFAULT_AGENT_ID}" \
+    --arg expected_name "${OPENCLAW_UI_ASSISTANT_NAME}" \
+    --arg expected_avatar "${avatar_data_uri}" \
     --arg expected_seam_color "${OPENCLAW_UI_SEAM_COLOR}" \
-    '.ui.seamColor == $expected_seam_color' \
+    '. as $config
+    | [($config.agents.list // [])[] | select(.id == $main_agent_id and .default == true)] as $defaults
+    | ($defaults | length) == 1
+    and $defaults[0].identity.name == $expected_name
+    and $defaults[0].identity.avatar == $expected_avatar
+    and $config.ui.assistant.name == $expected_name
+    and $config.ui.assistant.avatar == $expected_avatar
+    and $config.ui.seamColor == $expected_seam_color' \
     "${runner_config}" >/dev/null; then
-    abort "openclaw UI seam color verification failed for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
+    sudo rm -f "${batch_file}" >/dev/null 2>&1 || true
+    abort "openclaw managed Main and global UI assistant identity verification failed for runner ${tty_ts}${OPENCLAW_USER}${tty_reset}."
   fi
+
+  execute sudo rm -f "${batch_file}"
 }
 
 openclaw_native_gateway_launch_agent_plist_path() {
@@ -4864,6 +5415,7 @@ wait_for_openclaw_gateway_tailscale_serve_route() {
 }
 
 run_agentbox_openclaw_gateway_setup() {
+  local agents_json=""
   local existing_token_path="${BOOT_TMPDIR}/openclaw-existing-gateway-token.json"
   local openclaw_bin
   local reconcile_existing="0"
@@ -4873,6 +5425,11 @@ run_agentbox_openclaw_gateway_setup() {
   resolve_brew_prefix
   openclaw_bin="$(openclaw_bin_path)"
   validate_openclaw_cli_contract "${openclaw_bin}"
+  if sudo test -f "$(openclaw_gateway_state_dir)/openclaw.json"; then
+    agents_json="$(openclaw_agents_list_json "${openclaw_bin}")"
+  fi
+  require_openclaw_main_takeover_authorized "${agents_json}"
+  backup_openclaw_config_for_takeover
   if openclaw_gateway_configuration_initialized "${openclaw_bin}"; then
     reconcile_existing="1"
     preserve_existing_openclaw_gateway_configuration "${openclaw_bin}"
@@ -4884,7 +5441,11 @@ run_agentbox_openclaw_gateway_setup() {
   run_openclaw_gateway_onboarding "${openclaw_bin}" "${reconcile_existing}"
   restore_existing_openclaw_gateway_token "${existing_token_path}"
   configure_openclaw_tailscale_auth "${openclaw_bin}"
-  configure_openclaw_ui_seam_color "${openclaw_bin}"
+  install_openclaw_main_workspace
+  agents_json="$(openclaw_agents_list_json "${openclaw_bin}")"
+  reconcile_openclaw_default_agent "${openclaw_bin}" "${agents_json}"
+  configure_openclaw_managed_identity "${openclaw_bin}"
+  write_openclaw_main_ownership_state
   reconcile_openclaw_admin_app_config "${openclaw_bin}"
 
   runner_uid="$(id -u "${OPENCLAW_USER}")"
@@ -4940,6 +5501,7 @@ main() {
   fi
   validate_inputs
   validate_sudo_capability
+  preflight_openclaw_main_ownership
   warn_if_xcode_clt_missing
 
   debug "${tty_tp}running${tty_reset}" "${SCRIPT_NAME}" script version: "${SCRIPT_VERSION}"
@@ -4957,6 +5519,11 @@ main() {
   debug raw AGENTBOX_INTERACTION_MODE="$(openclaw_onboarding_mode_display)"
   debug raw AGENTBOX_OPENCLAW_AUTH_CHOICE="${OPENCLAW_AUTH_CHOICE}"
   debug raw AGENTBOX_OPENCLAW_AUTH_ENV="$(openclaw_auth_env_display)"
+  if openclaw_takeover_main_enabled; then
+    debug raw AGENTBOX_OPENCLAW_TAKEOVER_MAIN="on"
+  else
+    debug raw AGENTBOX_OPENCLAW_TAKEOVER_MAIN="off"
+  fi
   debug raw OPENCLAW_GATEWAY_BIND="${OPENCLAW_GATEWAY_BIND_VALUE}"
   debug raw OPENCLAW_GATEWAY_TAILSCALE_MODE="${OPENCLAW_GATEWAY_TAILSCALE_MODE_VALUE}"
   debug raw AGENTBOX_OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT}"
@@ -4995,6 +5562,7 @@ main() {
   ensure_bootbox_core_requirements
   run_bootbox_for_agentbox_brewfile
   start_sudo_session
+  preflight_openclaw_main_ownership
   run_agentbox_hostname_setup
   run_agentbox_macos_settings
   run_agentbox_homebrew_login_path_setup

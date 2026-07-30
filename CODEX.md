@@ -100,7 +100,8 @@ Use $tanaab-agentbox to plan an interactive bootstrap for this Mac.
 
 For an existing host, ask it to reconcile the installation instead. The skill preserves secret
 environment-variable references, lets `agentbox` own sudo and hidden-password prompts, and does not
-silently add noninteractive or force flags.
+silently add noninteractive or force flags. Updating or selecting an executable alone does not update
+the installed host; complete reconciliation before asking Doctor to verify the new health contract.
 
 ### Diagnose Host Health
 
@@ -124,8 +125,10 @@ and source-checkout health scripts are not accepted.
 To refresh the fixed snapshot immediately instead of waiting for the next interval, use the manual
 publication command in [Verification Details](./ADVANCED.md#verification-details).
 
-The doctor recommends repairs but does not execute them. Apply a recommended command or handoff only
-after a separate confirmation, then rerun the doctor to verify the result.
+The doctor recommends repairs but remains read-only. Even when asked to diagnose and remediate, it
+first presents the exact command or reconciliation handoff for separate confirmation. An approved
+reconciliation continues through `$tanaab-agentbox` in the same task, and Doctor then verifies the
+result.
 
 ## Version Alignment
 

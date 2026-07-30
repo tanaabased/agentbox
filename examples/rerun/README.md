@@ -77,10 +77,42 @@ chmod 700 "$HOME/.openclaw/service-env/ai.openclaw.gateway-env-wrapper.sh"
 # should register stale openclaw gateway tailscale authentication state before rerun
 sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set gateway.auth.allowTailscale false --strict-json
 
-# should seed custom openclaw UI identity and a stale seam color before rerun
+# should seed custom Main and global UI identities before rerun
+sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" agents set-identity --agent main --name "Rita Main Claw" --avatar "data:image/png;base64,$(/usr/bin/base64 < "$AGENTBOX_PAYLOAD_DIR/assets/profile1.png" | /usr/bin/tr -d '\r\n')"
 sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set ui.assistant.name "Rita Custom Claw"
 sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set ui.assistant.avatar "data:image/png;base64,$(/usr/bin/base64 < "$AGENTBOX_PAYLOAD_DIR/assets/profile1.png" | /usr/bin/tr -d '\r\n')"
 sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set ui.seamColor "#db2777"
+
+# should seed an inconsistent Main workspace while keeping Main as the default
+sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" agents add emery --workspace /Users/rita/.openclaw/workspace-emery --non-interactive --json
+sudo -u rita mkdir -p /Users/rita/.openclaw/workspace-main
+printf '%s\n' 'main-preserve-me' | sudo -u rita tee /Users/rita/.openclaw/workspace-main/agentbox-main-fixture >/dev/null
+printf '%s\n' 'emery-preserve-me' | sudo -u rita tee /Users/rita/.openclaw/workspace-emery/agentbox-emery-fixture >/dev/null
+agents_json="$(sudo jq -c '(.agents.list // []) | map(.default = (.id == "main") | if .id == "main" then .workspace = "/Users/rita/.openclaw/workspace-main" else . end)' /Users/rita/.openclaw/openclaw.json)"
+sudo -u rita env HOME=/Users/rita OPENCLAW_STATE_DIR=/Users/rita/.openclaw "$(brew --prefix)/bin/openclaw" config set agents.list "$agents_json" --strict-json --replace
+
+# should refuse an implicit takeover of inconsistent Main state
+set +e
+output="$(
+  AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
+    --force \
+    --hostname "TANAABAGENTBOX-RERUN$GITHUB_RUN_ID" \
+    --brewgroup rerunbrew \
+    --openclaw-autologin off \
+    --openclaw-identity "Rita Rerun Claw <rita>" \
+    --openclaw-password "RitaRerunClawPass1!" \
+    --openclaw-auth-choice skip \
+    --openclaw-gateway-port 18789 \
+    2>&1
+)"
+command_status="$?"
+set -e
+printf '%s\n' "$output"
+printf '%s\n' "$output" | grep -F "openclaw Main is inconsistent"
+printf '%s\n' "$output" | grep -F -- "--openclaw-takeover-main"
+test "$command_status" -ne 0
+test "$(sudo jq -r '.agents.list[] | select(.default == true) | .id' /Users/rita/.openclaw/openclaw.json)" = "main"
+test "$(sudo jq -r '.ui.assistant.name' /Users/rita/.openclaw/openclaw.json)" = "Rita Custom Claw"
 
 # should stop the existing tailscale identity before rerun
 sudo tailscale down
@@ -91,6 +123,7 @@ set -o pipefail
 AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
   --debug \
   --force \
+  --openclaw-takeover-main \
   --hostname "TANAABAGENTBOX-RERUN$GITHUB_RUN_ID" \
   --brewgroup rerunbrew \
   --openclaw-autologin off \
@@ -99,6 +132,24 @@ AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
   --openclaw-auth-choice skip \
   --openclaw-gateway-port 18789 \
   2>&1 | tee "$TMPDIR/rerun.log"
+
+# should seed managed Main file drift beside an unrelated workspace file
+printf '%s\n' 'managed-drift' | sudo -u rita tee /Users/rita/.openclaw/workspace-agentbox-main/SOUL.md >/dev/null
+printf '%s\n' 'preserve-me' | sudo -u rita tee /Users/rita/.openclaw/workspace-agentbox-main/operator-notes.md >/dev/null
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_ownership_ok=0"
+
+# should reconcile managed Main drift without takeover
+set -o pipefail
+AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
+  --force \
+  --hostname "TANAABAGENTBOX-RERUN$GITHUB_RUN_ID" \
+  --brewgroup rerunbrew \
+  --openclaw-autologin off \
+  --openclaw-identity "Rita Rerun Claw <rita>" \
+  --openclaw-password "RitaRerunClawPass1!" \
+  --openclaw-auth-choice skip \
+  --openclaw-gateway-port 18789 \
+  2>&1 | tee "$TMPDIR/managed-main-rerun.log"
 ```
 
 ## Testing
@@ -132,10 +183,36 @@ dscl . -read /Users/rita RealName | sed -e '1s/^RealName:[[:space:]]*//' -e 's/^
 test -d /Users/rita
 test "$(stat -f "%Su" /Users/rita)" = "rita"
 
-# should preserve custom openclaw UI identity and restore the seam color on rerun
-test "$(sudo jq -r '.ui.assistant.name' /Users/rita/.openclaw/openclaw.json)" = "Rita Custom Claw"
+# should take over Main while preserving previous workspaces and the configuration backup
+sudo jq -e '[.agents.list[] | select(.default == true)] | length == 1 and .[0].id == "main"' /Users/rita/.openclaw/openclaw.json
+test "$(sudo jq -r '.agents.list[] | select(.id == "main") | .workspace' /Users/rita/.openclaw/openclaw.json)" = "/Users/rita/.openclaw/workspace-agentbox-main"
+test "$(sudo jq -r '.agents.list[] | select(.id == "emery") | .workspace' /Users/rita/.openclaw/openclaw.json)" = "/Users/rita/.openclaw/workspace-emery"
+sudo grep -Fx "main-preserve-me" /Users/rita/.openclaw/workspace-main/agentbox-main-fixture
+sudo grep -Fx "emery-preserve-me" /Users/rita/.openclaw/workspace-emery/agentbox-emery-fixture
+sudo jq -e '.previousDefaultAgent == "main" and .previousMainWorkspace == "/Users/rita/.openclaw/workspace-main" and (.configBackup | length > 0)' /var/db/tanaab/agentbox/openclaw-main.json
+sudo test -f "$(sudo jq -r '.configBackup' /var/db/tanaab/agentbox/openclaw-main.json)"
+
+# should restore the inert Main routing policy and managed workspace files
+sudo jq -e '.agents.list[] | select(.id == "main") | (.tools == {allow: ["agents_list"]}) and (.subagents == {allowAgents: ["*"]})' /Users/rita/.openclaw/openclaw.json
+sudo jq -e '.owner == "@tanaab/agentbox" and .agentId == "main"' /Users/rita/.openclaw/workspace-agentbox-main/.agentbox-managed.json
+
+# should restore exact managed Main files while preserving unrelated workspace files
+grep -F "installing the managed inert Main workspace" "$TMPDIR/managed-main-rerun.log"
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/HEARTBEAT.md" /Users/rita/.openclaw/workspace-agentbox-main/HEARTBEAT.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/IDENTITY.md" /Users/rita/.openclaw/workspace-agentbox-main/IDENTITY.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/SOUL.md" /Users/rita/.openclaw/workspace-agentbox-main/SOUL.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/TOOLS.md" /Users/rita/.openclaw/workspace-agentbox-main/TOOLS.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/USER.md" /Users/rita/.openclaw/workspace-agentbox-main/USER.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png" /Users/rita/.openclaw/workspace-agentbox-main/assets/default_avatar.png
+sudo grep -Fx "preserve-me" /Users/rita/.openclaw/workspace-agentbox-main/operator-notes.md
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_ownership_ok=1"
+
+# should restore the managed Main and global UI identities on rerun
+test "$(sudo jq -r '.agents.list[] | select(.id == "main") | .identity.name' /Users/rita/.openclaw/openclaw.json)" = "MODEL L3-37"
+test "$(sudo jq -r '.ui.assistant.name' /Users/rita/.openclaw/openclaw.json)" = "MODEL L3-37"
 test "$(sudo jq -r '.ui.seamColor' /Users/rita/.openclaw/openclaw.json)" = "#00c88a"
-sudo jq -r '.ui.assistant.avatar | select(startswith("data:image/png;base64,")) | sub("^data:image/png;base64,"; "")' /Users/rita/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/profile1.png"
+sudo jq -r '.agents.list[] | select(.id == "main") | .identity.avatar | sub("^data:image/png;base64,"; "")' /Users/rita/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png"
+sudo jq -r '.ui.assistant.avatar | sub("^data:image/png;base64,"; "")' /Users/rita/.openclaw/openclaw.json | /usr/bin/base64 -D | cmp - "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png"
 
 # should restore openclaw gateway tailscale identity authentication on rerun
 test "$(sudo jq -r '.gateway.auth.allowTailscale' /Users/rita/.openclaw/openclaw.json)" = "true"
@@ -164,6 +241,13 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "ex
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user=rita"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_full_name=Rita Rerun Claw"
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_user_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_default_agent=main"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_default_agent_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_workspace_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_routing_policy_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_ownership_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_identity_ok=1"
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_ui_assistant_identity_ok=1"
 
 # should report reconciled Gateway configuration pending the next runtime-user login
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_bind=loopback"

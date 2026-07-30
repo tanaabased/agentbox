@@ -8,6 +8,9 @@ Codex plugin, see [CODEX.md](./CODEX.md).
 
 Complete these checks before following the [Quickstart](./README.md#quickstart):
 
+- Prefer a fresh Mac dedicated to the OpenClaw host role. On an already provisioned Mac, back up
+  existing accounts, services, and OpenClaw state first; reconciliation is best effort and may need
+  manual intervention.
 - Put the Mac somewhere ventilated, physically safe, and connected to power.
 - Use Mac hardware you physically control; Mac VPS behavior is unverified.
 - Connect Ethernet and reserve its LAN IP in the router by MAC address.
@@ -78,9 +81,11 @@ SSH hardening, and loopback gateway binding as the access-control boundary.
 `A Tanaab-based Claw <openclaw>`, where the value inside angle brackets is the macOS short username.
 Newly created runners receive one bundled profile image from [`assets/`](./assets/).
 
-OpenClaw Gateway onboarding is gateway-only by default: `agentbox` skips OpenClaw workspace bootstrap files,
-skill installation, UI setup, hooks, and OpenClaw health checks, while keeping gateway token auth
-enabled.
+OpenClaw Gateway onboarding skips general workspace bootstrap, skills, hooks, and interactive UI
+setup. `agentbox` instead owns one narrow workspace for Main, makes it the explicit default, and
+limits it to listing agents so it can recommend a better agent without executing or forwarding work.
+It also manages Main and `ui.assistant` as `MODEL L3-37` with the bundled
+[`assets/default_avatar.png`](./assets/default_avatar.png) data URI.
 
 On reruns, `agentbox` reconciles valid local Gateway configuration without reopening the OpenClaw
 wizard. Make other OpenClaw changes from the runner's interactive session, then rerun `agentbox` to
@@ -223,6 +228,27 @@ agentbox \
   --openclaw-identity "Agentbox OpenClaw <agentboxclaw>" \
   --hostname TANAABAGENTBOX1
 ```
+
+The runner identity selects the local macOS account and is separate from OpenClaw's `main` agent ID
+and managed assistant display identity.
+
+### `--openclaw-takeover-main`
+
+| Field       | Value                                                                            |
+| ----------- | -------------------------------------------------------------------------------- |
+| Environment | `AGENTBOX_OPENCLAW_TAKEOVER_MAIN`                                                |
+| Default     | `off`                                                                            |
+| Description | Allows agentbox to replace existing unowned or inconsistently marked Main state. |
+
+Fresh and already managed setups need no flag. Other existing OpenClaw state stops before takeover:
+
+```sh
+agentbox --openclaw-takeover-main --hostname TANAABAGENTBOX1
+```
+
+The takeover backs up `openclaw.json`, records previous agent and workspace paths in root-owned
+state, leaves old workspace directories untouched, and repoints Main to
+`~/.openclaw/workspace-agentbox-main`. Reruns replace only the declared managed files there.
 
 ### `--openclaw-password`
 
@@ -530,6 +556,9 @@ For agentbox-managed Gateways, health also verifies the mDNS hostname and agentb
 metadata in OpenClaw's generated service environment. Native Gateway log ownership and permissions
 are checked after the LaunchAgent is installed. Unmanaged healthy native Gateways report the managed
 environment checks as `skipped`.
+
+The OpenClaw health contract verifies Main ownership, workspace, inert routing policy, default
+status, and the managed Main and global UI identities.
 
 Health ends with `agentbox_ok=1` when all required checks pass and `agentbox_ok=0` when required drift
 is present. Individual checks may be `skipped` when their feature is inactive.
