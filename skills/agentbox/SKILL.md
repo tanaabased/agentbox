@@ -102,8 +102,8 @@ the doctor workflow for verification.
 - Treat `--force`, `--debug`, custom brew groups, autologin opt-out, custom gateway ports, and
   `--openclaw-auth-env` as advanced overrides rather than routine questions.
 - Treat `--openclaw-takeover-main` as a separate ownership decision, not a routine reconciliation
-  input. Add it only when the user explicitly requests takeover or agentbox reports unowned or
-  inconsistently marked Main state.
+  input. Add it only when the user explicitly requests takeover, selects the Tanaab profile that
+  includes takeover as policy, or agentbox reports unowned or inconsistently marked Main state.
 - Use `--yes` only when the user explicitly requests a noninteractive run and all required inputs are
   available without prompting.
 
@@ -158,6 +158,8 @@ the doctor workflow for verification.
   prior conversation, an existing Tanaab hostname, or previously configured values.
 - Before execution, state that the profile installs its bundled authorized public keys and confirm
   that this is the requested access policy.
+- Keep `--openclaw-takeover-main` in the profile command because agentbox ownership of the inert Main
+  fallback is part of the Tanaab host policy. Confirm that ownership change before execution.
 - Keep the profile's environment-variable references secret-safe and retain its OpenAI browser or
   device-code follow-up caveat even for `--yes` runs.
 

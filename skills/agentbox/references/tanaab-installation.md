@@ -7,7 +7,8 @@ configured values.
 
 This is the baseline Tanaab command for bootstrapping a Mac as an agentbox host. Use the exact
 absolute executable path returned by the agentbox installer resolver. Keep secrets in environment
-variables instead of inline command arguments.
+variables instead of inline command arguments. This profile explicitly lets agentbox take ownership
+of OpenClaw Main as its managed inert fallback.
 
 Confirm before execution that the user intends to install the two bundled authorized public keys
 shown below. They are part of this profile's remote-access policy and enable key-only SSH hardening
@@ -35,7 +36,8 @@ the installer resolver:
   --openclaw-password "$AGENTBOX_OPENCLAW_PASSWORD" \
   --openclaw-autologin on \
   --openclaw-auth-choice openai \
-  --openclaw-gateway-port 18789
+  --openclaw-gateway-port 18789 \
+  --openclaw-takeover-main
 ```
 
 ## Notes
@@ -47,4 +49,7 @@ the installer resolver:
 - `--openclaw-auth-choice openai` is the ChatGPT/Codex subscription route. OpenClaw's default OAuth
   flow uses a browser callback; for headless or callback-hostile setups, use OpenClaw's device-code
   login flow after bootstrap. This follow-up may still be required when `--yes` is present.
+- `--openclaw-takeover-main` makes the profile's ownership policy explicit. When existing Main state
+  is unowned or inconsistent, agentbox backs up `openclaw.json`, records prior paths, leaves old
+  workspaces untouched, and repoints Main to its managed fallback workspace.
 - Add `--debug` when troubleshooting bootstrap output; agentbox keeps supported secret values masked.
