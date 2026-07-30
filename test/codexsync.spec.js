@@ -22,6 +22,8 @@ import { runCodexsyncSync } from '../lib/codexsync-sync.js';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const codexsyncPath = join(repoRoot, 'bin', 'codexsync.js');
+const packageJson = JSON.parse(await readFile(join(repoRoot, 'package.json'), 'utf8'));
+const packageVersion = packageJson.version;
 
 function captureStream() {
   return {
@@ -85,7 +87,7 @@ describe('codexsync cache management', function () {
 
     assert.equal(
       context.cachePath,
-      '/tmp/example-home/.codex/plugins/cache/pirostore/agentbox/1.0.0-beta.7',
+      `/tmp/example-home/.codex/plugins/cache/pirostore/agentbox/${packageVersion}`,
     );
     assert.ok(context.managedPaths.includes('CODEX.md'));
     assert.equal(overridden.pluginCacheRoot, '/tmp/custom-cache');
@@ -172,7 +174,7 @@ describe('codexsync cache management', function () {
     assert.equal(help.status, 0, help.stderr);
     assert.match(help.stdout, /sync never creates a missing plugin cache/);
     assert.equal(version.status, 0, version.stderr);
-    assert.equal(version.stdout.trim(), '1.0.0-beta.7');
+    assert.equal(version.stdout.trim(), packageVersion);
   });
 
   it('should keep CLI check neutral and CLI sync failing when the cache is absent', async () => {
