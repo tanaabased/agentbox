@@ -44,6 +44,7 @@ agentbox --help | grep -F -- "--openclaw-gateway-port"
 agentbox --help | grep -F -- "--version"
 agentbox --help | grep -F -- "--debug"
 agentbox --help | grep -F -- "--force"
+agentbox --help | grep -F -- "--openclaw-takeover-main"
 agentbox --help | grep -F -- "--yes"
 
 # should document brewfile environment variables
@@ -62,6 +63,7 @@ agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTOLOGIN    same as --openclaw-aut
 agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTH_CHOICE  same as --openclaw-auth-choice"
 agentbox --help | grep -F "AGENTBOX_OPENCLAW_AUTH_ENV     same as --openclaw-auth-env"
 agentbox --help | grep -F "AGENTBOX_OPENCLAW_GATEWAY_PORT same as --openclaw-gateway-port"
+agentbox --help | grep -F "AGENTBOX_OPENCLAW_TAKEOVER_MAIN same as --openclaw-takeover-main"
 
 # should document operational environment variables
 agentbox --help | grep -F "AGENTBOX_FORCE                 same as --force"
@@ -189,6 +191,11 @@ AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY agentbox --help | grep -F -- "--
 AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY agentbox --openclaw-auth-env CLI_OPENCLAW_API_KEY --help | grep -F -- "--openclaw-auth-env" | grep -F "[default: CLI_OPENCLAW_API_KEY]"
 if AGENTBOX_OPENCLAW_AUTH_ENV=ENV_OPENCLAW_API_KEY agentbox --openclaw-auth-env CLI_OPENCLAW_API_KEY --help | grep -F "ENV_OPENCLAW_API_KEY"; then exit 1; fi
 AGENTBOX_OPENCLAW_GATEWAY_PORT=18888 agentbox --help | grep -F -- "--openclaw-gateway-port" | grep -F "[default: 18888]"
+
+# should show openclaw main takeover input precedence
+agentbox --help | grep -F -- "--openclaw-takeover-main" | grep -F "[default: off]"
+AGENTBOX_OPENCLAW_TAKEOVER_MAIN=1 agentbox --help | grep -F -- "--openclaw-takeover-main" | grep -F "[default: on]"
+AGENTBOX_OPENCLAW_TAKEOVER_MAIN=off agentbox --openclaw-takeover-main --help | grep -F -- "--openclaw-takeover-main" | grep -F "[default: on]"
 
 # should show openclaw gateway port input precedence
 AGENTBOX_OPENCLAW_GATEWAY_PORT=18888 agentbox --openclaw-gateway-port 19999 --help | grep -F -- "--openclaw-gateway-port" | grep -F "[default: 19999]"

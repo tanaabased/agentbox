@@ -110,6 +110,30 @@
     "summary": "Install or repair ripgrep.",
     "command": "{{brew_prefix}}/bin/brew install ripgrep"
   },
+  "openclaw_default_agent_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox to restore the managed Main fallback as the explicit default."
+  },
+  "openclaw_main_ownership_ok": {
+    "kind": "reconcile",
+    "summary": "Review and back up the reported OpenClaw state, then rerun agentbox with --openclaw-takeover-main to restore Main ownership."
+  },
+  "openclaw_main_workspace_ok": {
+    "kind": "reconcile",
+    "summary": "Review the reported Main workspace, then rerun agentbox with --openclaw-takeover-main if its managed path drifted."
+  },
+  "openclaw_main_routing_policy_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox to restrict Main to agent discovery without execution or delegation tools."
+  },
+  "openclaw_main_identity_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox to restore the managed Main agent name and avatar."
+  },
+  "openclaw_ui_assistant_identity_ok": {
+    "kind": "reconcile",
+    "summary": "Re-run agentbox to restore the managed global UI assistant name and avatar."
+  },
   "openclaw_gateway_activation_ok": {
     "kind": "reconcile",
     "summary": "Re-run agentbox to reconcile native Gateway activation and preserve its diagnostic state.",

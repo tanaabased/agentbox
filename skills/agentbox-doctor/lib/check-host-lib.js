@@ -425,6 +425,8 @@ export function evaluateHealth(values, options = {}) {
       },
       openclaw: {
         user: values.openclaw_user || null,
+        defaultAgent: values.openclaw_default_agent || null,
+        mainWorkspace: values.openclaw_main_workspace || null,
         gatewayBind: values.openclaw_gateway_bind || null,
         gatewayPort: values.openclaw_gateway_port || null,
         tailscaleMode: values.openclaw_gateway_tailscale_mode || null,

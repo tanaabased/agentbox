@@ -116,6 +116,15 @@
       "id": "openclaw",
       "label": "OpenClaw",
       "checks": [
+        { "key": "openclaw_default_agent_ok", "label": "Explicit Main default agent" },
+        { "key": "openclaw_main_ownership_ok", "label": "Managed Main ownership" },
+        { "key": "openclaw_main_workspace_ok", "label": "Managed Main workspace" },
+        { "key": "openclaw_main_routing_policy_ok", "label": "Inert Main routing policy" },
+        { "key": "openclaw_main_identity_ok", "label": "Managed Main identity" },
+        {
+          "key": "openclaw_ui_assistant_identity_ok",
+          "label": "Managed global UI assistant identity"
+        },
         {
           "key": "openclaw_gateway_tailscale_auth_ok",
           "label": "Gateway Tailscale identity authentication",

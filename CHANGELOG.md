@@ -1,5 +1,13 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
+### Breaking Changes
+
+- Changed OpenClaw setup to own `main` as the default inert fallback and require explicit takeover of existing unowned state.
+
+### New Features
+
+- Added `--openclaw-takeover-main`, managed Main workspace files, ownership records, and UI assistant identity reconciliation.
+
 ## v1.0.0-beta.8 - [July 21, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.8)
 
 ### Breaking Changes

@@ -34,6 +34,7 @@ At a high level, `agentbox`:
 - sets macOS system identity and headless power, time, and recovery defaults
 - enables classic SSH
 - stages OpenClaw's native user LaunchAgent and enables runtime-user autologin by default
+- owns OpenClaw Main as an inert fallback with a managed workspace, identity, and routing policy
 - installs health checks and logs for post-bootstrap verification
 - optionally installs SSH public keys and hardens SSH to key-only access
 - optionally runs a managed `tailscaled` daemon and connects the Mac to a tailnet
@@ -91,18 +92,19 @@ agentbox \
 
 Common inputs:
 
-| Option                   | Environment variable            | Description                                                                                          |
-| ------------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `--hostname`             | `AGENTBOX_HOSTNAME`             | macOS hostname and Tailscale hostname source.                                                        |
-| `--tailscale-authkey`    | `AGENTBOX_TAILSCALE_AUTHKEY`    | Tailscale auth key for first join; use `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup. |
-| `--authorized-key`       | `AGENTBOX_AUTHORIZED_KEY`       | Public SSH key or public-key file path; providing keys also enables key-only SSH hardening.          |
-| `--openclaw-password`    | `AGENTBOX_OPENCLAW_PASSWORD`    | Password used only for OpenClaw runner creation or autologin.                                        |
-| `--openclaw-identity`    | `AGENTBOX_OPENCLAW_IDENTITY`    | OpenClaw runner identity in `Full Name <shortname>` syntax.                                          |
-| `--openclaw-autologin`   | `AGENTBOX_OPENCLAW_AUTOLOGIN`   | Runtime-user autologin: `on` or `off`; defaults to `on` for unattended reboot recovery.              |
-| `--openclaw-auth-choice` | `AGENTBOX_OPENCLAW_AUTH_CHOICE` | Initial OpenClaw model auth choice; defaults to `skip`.                                              |
-| `--brewfile`             | `AGENTBOX_BREWFILE`             | Extra Brewfile sources to append after the core `agentbox` Brewfile.                                 |
-| `--yes`                  | `NONINTERACTIVE`                | Skip interactive prompts.                                                                            |
-| `--debug`                | `AGENTBOX_DEBUG`                | Show debug output with secrets masked.                                                               |
+| Option                     | Environment variable              | Description                                                                                          |
+| -------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `--hostname`               | `AGENTBOX_HOSTNAME`               | macOS hostname and Tailscale hostname source.                                                        |
+| `--tailscale-authkey`      | `AGENTBOX_TAILSCALE_AUTHKEY`      | Tailscale auth key for first join; use `off`, `false`, `no`, `0`, or `null` to skip Tailscale setup. |
+| `--authorized-key`         | `AGENTBOX_AUTHORIZED_KEY`         | Public SSH key or public-key file path; providing keys also enables key-only SSH hardening.          |
+| `--openclaw-password`      | `AGENTBOX_OPENCLAW_PASSWORD`      | Password used only for OpenClaw runner creation or autologin.                                        |
+| `--openclaw-identity`      | `AGENTBOX_OPENCLAW_IDENTITY`      | OpenClaw runner identity in `Full Name <shortname>` syntax.                                          |
+| `--openclaw-autologin`     | `AGENTBOX_OPENCLAW_AUTOLOGIN`     | Runtime-user autologin: `on` or `off`; defaults to `on` for unattended reboot recovery.              |
+| `--openclaw-auth-choice`   | `AGENTBOX_OPENCLAW_AUTH_CHOICE`   | Initial OpenClaw model auth choice; defaults to `skip`.                                              |
+| `--openclaw-takeover-main` | `AGENTBOX_OPENCLAW_TAKEOVER_MAIN` | Allow agentbox to replace existing unowned Main state after backing up its configuration.            |
+| `--brewfile`               | `AGENTBOX_BREWFILE`               | Extra Brewfile sources to append after the core `agentbox` Brewfile.                                 |
+| `--yes`                    | `NONINTERACTIVE`                  | Skip interactive prompts.                                                                            |
+| `--debug`                  | `AGENTBOX_DEBUG`                  | Show debug output with secrets masked.                                                               |
 
 Use [ADVANCED.md](./ADVANCED.md) for the full option guide, payload-resolution details, brewgroup
 behavior, OpenClaw auth environment handling, and deeper Tailscale notes.

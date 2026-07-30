@@ -89,6 +89,14 @@ const healthyValues = {
   openclaw_gateway_status_ok: '1',
   openclaw_gateway_activation_ok: '1',
   openclaw_gateway_ok: '1',
+  openclaw_default_agent: 'main',
+  openclaw_default_agent_ok: '1',
+  openclaw_main_workspace: '/Users/emori/.openclaw/workspace-agentbox-main',
+  openclaw_main_workspace_ok: '1',
+  openclaw_main_routing_policy_ok: '1',
+  openclaw_main_ownership_ok: '1',
+  openclaw_main_identity_ok: '1',
+  openclaw_ui_assistant_identity_ok: '1',
   tailscale_expected: '0',
   tailscale_firewall_warning: 'skipped',
   health_launchd_loaded_ok: '1',
@@ -572,6 +580,43 @@ describe('skills/agentbox-doctor/lib/check-host-lib', () => {
     assert.equal(report.summary.failed, 1);
     assert.equal(report.groups.find((group) => group.id === 'openclaw')?.status, 'unhealthy');
     assert.ok(report.issues.some((issue) => issue.key === 'health_contract_mismatch'));
+  });
+
+  it('should surface managed OpenClaw Main drift', () => {
+    const report = evaluateHealth({
+      ...healthyValues,
+      openclaw_default_agent: 'emery',
+      openclaw_default_agent_ok: '0',
+      openclaw_main_workspace: '/Users/emori/.openclaw/workspace-main',
+      openclaw_main_workspace_ok: '0',
+      openclaw_main_routing_policy_ok: '0',
+      openclaw_main_ownership_ok: '0',
+      openclaw_main_identity_ok: '0',
+      openclaw_ui_assistant_identity_ok: '0',
+      agentbox_ok: '0',
+    });
+
+    assert.equal(report.status, 'unhealthy');
+    assert.equal(report.facts.openclaw.defaultAgent, 'emery');
+    assert.equal(report.facts.openclaw.mainWorkspace, '/Users/emori/.openclaw/workspace-main');
+    assert.deepEqual(
+      report.issues
+        .filter((issue) => issue.key.startsWith('openclaw_') && issue.key.endsWith('_ok'))
+        .map((issue) => issue.key),
+      [
+        'openclaw_default_agent_ok',
+        'openclaw_main_ownership_ok',
+        'openclaw_main_workspace_ok',
+        'openclaw_main_routing_policy_ok',
+        'openclaw_main_identity_ok',
+        'openclaw_ui_assistant_identity_ok',
+      ],
+    );
+    assert.match(
+      report.issues.find((issue) => issue.key === 'openclaw_main_ownership_ok')?.remediation
+        .summary || '',
+      /--openclaw-takeover-main/,
+    );
   });
 
   it('should cover every health check marked required by the installed contract source', () => {
