@@ -21,9 +21,17 @@ OpenClaw Gateway with reasonable security defaults and a host ready for agent wo
 
 > Supports macOS 26.x on `x64` and `arm64`.
 > Requires a sudo-capable admin user and physical or admin recovery access.
-> Best run on a fresh Mac dedicated to the OpenClaw host role.
+> **Intended environment:** a fresh Mac dedicated to the OpenClaw host role. On an already
+> provisioned Mac, agentbox reconciles its managed surfaces on a best-effort basis. Back up first;
+> existing accounts, services, or OpenClaw state may require manual intervention, and your mileage
+> may vary.
 >
 > **Platform note:** Linux and Windows are not supported yet; Linux support is planned.
+
+agentbox takes ownership of OpenClaw's `main` agent, makes it the explicit default, and seeds
+`~/.openclaw/workspace-agentbox-main` as an inert fallback that routes users toward more appropriate
+agents. Existing unowned or inconsistently marked Main state requires the explicit
+[`--openclaw-takeover-main`](./ADVANCED.md#--openclaw-takeover-main) gate before agentbox replaces it.
 
 ## Overview
 

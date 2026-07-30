@@ -8,6 +8,11 @@
 
 - Added `--openclaw-takeover-main`, managed Main workspace files, ownership records, and UI assistant identity reconciliation.
 
+### Improvements
+
+- Updated Doctor reconciliation handoffs with the failing check and an explicit confirmation requirement.
+- Clarified the fresh-machine operating target, existing-host caveat, and managed Main fallback contract.
+
 ## v1.0.0-beta.8 - [July 21, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.8)
 
 ### Breaking Changes

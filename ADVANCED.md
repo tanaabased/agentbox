@@ -8,6 +8,9 @@ Codex plugin, see [CODEX.md](./CODEX.md).
 
 Complete these checks before following the [Quickstart](./README.md#quickstart):
 
+- Prefer a fresh Mac dedicated to the OpenClaw host role. On an already provisioned Mac, back up
+  existing accounts, services, and OpenClaw state first; reconciliation is best effort and may need
+  manual intervention.
 - Put the Mac somewhere ventilated, physically safe, and connected to power.
 - Use Mac hardware you physically control; Mac VPS behavior is unverified.
 - Connect Ethernet and reserve its LAN IP in the router by MAC address.

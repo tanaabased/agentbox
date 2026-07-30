@@ -38,6 +38,9 @@ remediation without changing the host.
 - Do not use it for general OpenClaw or Tailscale troubleshooting that is unrelated to the agentbox
   health contract.
 - Do not execute a recommended repair as part of this skill. Ask for separate confirmation first.
+- An upfront request to diagnose and remediate does not replace that confirmation. Diagnose first,
+  present the exact mutation, then hand approved reconciliation to `$tanaab-agentbox` in the same
+  task.
 
 ## Preconditions
 
@@ -80,7 +83,10 @@ remediation without changing the host.
     are intentional when a direct command would require unavailable secrets or original install
     inputs.
 12. For a `reconcile` remediation, use its handoff to `$tanaab-agentbox` and preserve the returned
-    installation key when present. Do not run reconciliation without separate user confirmation.
+    failing check and installation key when present. Do not run reconciliation without separate user
+    confirmation. A Main ownership or workspace failure starts as a normal reconciliation; add
+    `--openclaw-takeover-main` only after agentbox reports unowned or inconsistently marked state and
+    the user separately approves takeover.
 13. If the report contains a contract mismatch or plugin/host version warning, say that the installed
     health contract may be newer than this skill's check catalog and avoid claiming the host is fully
     healthy.

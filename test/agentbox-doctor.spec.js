@@ -117,6 +117,16 @@ const publishedReportMetadata = {
   size: Buffer.byteLength(publishedReport),
   uid: 0,
 };
+const availableSourceInstaller = {
+  status: 'available',
+  default: 'source',
+  installation: {
+    key: 'source',
+    kind: 'source',
+    path: '/Users/example/agentbox/macos.sh',
+    version: 'v1.0.0-beta.6',
+  },
+};
 
 describe('skills/agentbox-doctor/lib/check-host-lib', () => {
   it('should keep the latest key and preserve equals signs in values', () => {
@@ -221,6 +231,7 @@ describe('skills/agentbox-doctor/lib/check-host-lib', () => {
     );
 
     assert.equal(report.error.remediation.command, null);
+    assert.equal(report.error.remediation.requiresConfirmation, true);
     assert.doesNotMatch(JSON.stringify(report), /sudo/i);
     assert.equal(report.error.handoff.skill, '$tanaab-agentbox');
   });
@@ -469,16 +480,6 @@ describe('skills/agentbox-doctor/lib/check-host-lib', () => {
   });
 
   it('should attach the configured default installer only to reconcile remediation', () => {
-    const installer = {
-      status: 'available',
-      default: 'source',
-      installation: {
-        key: 'source',
-        kind: 'source',
-        path: '/Users/example/agentbox/macos.sh',
-        version: 'v1.0.0-beta.6',
-      },
-    };
     const report = evaluateHealth(
       {
         ...healthyValues,
@@ -487,7 +488,7 @@ describe('skills/agentbox-doctor/lib/check-host-lib', () => {
         openclaw_gateway_ok: '0',
         agentbox_ok: '0',
       },
-      { installer },
+      { installer: availableSourceInstaller },
     );
     const issue = report.issues.find(
       (candidate) => candidate.key === 'openclaw_gateway_activation_ok',
@@ -500,8 +501,11 @@ describe('skills/agentbox-doctor/lib/check-host-lib', () => {
     });
     assert.deepEqual(issue?.remediation.handoff, {
       skill: '$tanaab-agentbox',
+      intent: 'reconcile',
+      check: 'openclaw_gateway_activation_ok',
       installationKey: 'source',
     });
+    assert.equal(issue?.remediation.requiresConfirmation, true);
     assert.equal(report.source.installer.key, 'source');
   });
 
@@ -582,19 +586,25 @@ describe('skills/agentbox-doctor/lib/check-host-lib', () => {
     assert.ok(report.issues.some((issue) => issue.key === 'health_contract_mismatch'));
   });
 
-  it('should surface managed OpenClaw Main drift', () => {
-    const report = evaluateHealth({
-      ...healthyValues,
-      openclaw_default_agent: 'emery',
-      openclaw_default_agent_ok: '0',
-      openclaw_main_workspace: '/Users/emori/.openclaw/workspace-main',
-      openclaw_main_workspace_ok: '0',
-      openclaw_main_routing_policy_ok: '0',
-      openclaw_main_ownership_ok: '0',
-      openclaw_main_identity_ok: '0',
-      openclaw_ui_assistant_identity_ok: '0',
-      agentbox_ok: '0',
-    });
+  it('should surface managed OpenClaw Main drift with an explicit reconcile handoff', () => {
+    const report = evaluateHealth(
+      {
+        ...healthyValues,
+        openclaw_default_agent: 'emery',
+        openclaw_default_agent_ok: '0',
+        openclaw_main_workspace: '/Users/emori/.openclaw/workspace-main',
+        openclaw_main_workspace_ok: '0',
+        openclaw_main_routing_policy_ok: '0',
+        openclaw_main_ownership_ok: '0',
+        openclaw_main_identity_ok: '0',
+        openclaw_ui_assistant_identity_ok: '0',
+        agentbox_ok: '0',
+      },
+      { installer: availableSourceInstaller },
+    );
+    const ownershipIssue = report.issues.find(
+      (issue) => issue.key === 'openclaw_main_ownership_ok',
+    );
 
     assert.equal(report.status, 'unhealthy');
     assert.equal(report.facts.openclaw.defaultAgent, 'emery');
@@ -612,11 +622,27 @@ describe('skills/agentbox-doctor/lib/check-host-lib', () => {
         'openclaw_ui_assistant_identity_ok',
       ],
     );
-    assert.match(
-      report.issues.find((issue) => issue.key === 'openclaw_main_ownership_ok')?.remediation
-        .summary || '',
-      /--openclaw-takeover-main/,
+    assert.deepEqual(
+      {
+        kind: ownershipIssue?.remediation.kind,
+        command: ownershipIssue?.remediation.command,
+        requiresConfirmation: ownershipIssue?.remediation.requiresConfirmation,
+        handoff: ownershipIssue?.remediation.handoff,
+      },
+      {
+        kind: 'reconcile',
+        command: null,
+        requiresConfirmation: true,
+        handoff: {
+          skill: '$tanaab-agentbox',
+          intent: 'reconcile',
+          check: 'openclaw_main_ownership_ok',
+          installationKey: 'source',
+        },
+      },
     );
+    assert.match(ownershipIssue?.remediation.summary || '', /separately confirm/);
+    assert.match(ownershipIssue?.remediation.summary || '', /--openclaw-takeover-main/);
   });
 
   it('should cover every health check marked required by the installed contract source', () => {

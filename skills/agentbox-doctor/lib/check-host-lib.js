@@ -54,18 +54,21 @@ function remediationFor(key, values, installer) {
   const selected = variant ? { ...remediation, ...variant } : remediation;
   const command = selected.command ? renderCommand(selected.command, values) : null;
   const missingCommandInput = Boolean(selected.command) && !command;
+  const kind = missingCommandInput ? 'investigate' : selected.kind;
 
   const result = {
-    kind: missingCommandInput ? 'investigate' : selected.kind,
+    kind,
     summary: missingCommandInput
       ? `${selected.summary} The installed report omitted a value required to render the command.`
       : selected.summary,
     command,
-    requiresConfirmation: Boolean(command),
+    requiresConfirmation: Boolean(command) || kind === 'reconcile',
   };
   if (result.kind === 'reconcile') {
     result.handoff = {
       skill: '$tanaab-agentbox',
+      intent: 'reconcile',
+      check: key,
       installationKey: installer?.status === 'available' ? installer.installation.key : null,
     };
     if (installer?.status === 'available') {
@@ -468,7 +471,7 @@ export function unavailableReport(status, detail, options = {}) {
             options.remediationSummary ||
             'Rerun agentbox to restore the published health report before diagnosing this host.',
           command: null,
-          requiresConfirmation: false,
+          requiresConfirmation: true,
           handoff,
         }
       : status === 'report_stale'
@@ -477,7 +480,7 @@ export function unavailableReport(status, detail, options = {}) {
             summary:
               'Wait through one five-minute health interval. If the report remains stale, rerun agentbox to reconcile the health LaunchDaemon.',
             command: null,
-            requiresConfirmation: false,
+            requiresConfirmation: true,
             handoff,
           }
         : null;

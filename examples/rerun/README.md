@@ -132,6 +132,24 @@ AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
   --openclaw-auth-choice skip \
   --openclaw-gateway-port 18789 \
   2>&1 | tee "$TMPDIR/rerun.log"
+
+# should seed managed Main file drift beside an unrelated workspace file
+printf '%s\n' 'managed-drift' | sudo -u rita tee /Users/rita/.openclaw/workspace-agentbox-main/SOUL.md >/dev/null
+printf '%s\n' 'preserve-me' | sudo -u rita tee /Users/rita/.openclaw/workspace-agentbox-main/operator-notes.md >/dev/null
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_ownership_ok=0"
+
+# should reconcile managed Main drift without takeover
+set -o pipefail
+AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
+  --force \
+  --hostname "TANAABAGENTBOX-RERUN$GITHUB_RUN_ID" \
+  --brewgroup rerunbrew \
+  --openclaw-autologin off \
+  --openclaw-identity "Rita Rerun Claw <rita>" \
+  --openclaw-password "RitaRerunClawPass1!" \
+  --openclaw-auth-choice skip \
+  --openclaw-gateway-port 18789 \
+  2>&1 | tee "$TMPDIR/managed-main-rerun.log"
 ```
 
 ## Testing
@@ -177,7 +195,17 @@ sudo test -f "$(sudo jq -r '.configBackup' /var/db/tanaab/agentbox/openclaw-main
 # should restore the inert Main routing policy and managed workspace files
 sudo jq -e '.agents.list[] | select(.id == "main") | (.tools == {allow: ["agents_list"]}) and (.subagents == {allowAgents: ["*"]})' /Users/rita/.openclaw/openclaw.json
 sudo jq -e '.owner == "@tanaab/agentbox" and .agentId == "main"' /Users/rita/.openclaw/workspace-agentbox-main/.agentbox-managed.json
-sudo grep -F "Do not perform the user's requested work" /Users/rita/.openclaw/workspace-agentbox-main/SOUL.md
+
+# should restore exact managed Main files while preserving unrelated workspace files
+grep -F "installing the managed inert Main workspace" "$TMPDIR/managed-main-rerun.log"
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/HEARTBEAT.md" /Users/rita/.openclaw/workspace-agentbox-main/HEARTBEAT.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/IDENTITY.md" /Users/rita/.openclaw/workspace-agentbox-main/IDENTITY.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/SOUL.md" /Users/rita/.openclaw/workspace-agentbox-main/SOUL.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/TOOLS.md" /Users/rita/.openclaw/workspace-agentbox-main/TOOLS.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/USER.md" /Users/rita/.openclaw/workspace-agentbox-main/USER.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png" /Users/rita/.openclaw/workspace-agentbox-main/assets/default_avatar.png
+sudo grep -Fx "preserve-me" /Users/rita/.openclaw/workspace-agentbox-main/operator-notes.md
+sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_main_ownership_ok=1"
 
 # should restore the managed Main and global UI identities on rerun
 test "$(sudo jq -r '.agents.list[] | select(.id == "main") | .identity.name' /Users/rita/.openclaw/openclaw.json)" = "MODEL L3-37"

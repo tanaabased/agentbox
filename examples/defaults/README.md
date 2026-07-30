@@ -109,7 +109,12 @@ test "$(sudo jq -r '.agents.list[] | select(.id == "main") | .workspace' /Users/
 sudo jq -e '.agents.list[] | select(.id == "main") | (.tools == {allow: ["agents_list"]}) and (.subagents == {allowAgents: ["*"]})' /Users/openclaw/.openclaw/openclaw.json
 sudo jq -e '.owner == "@tanaab/agentbox" and .agentId == "main"' /Users/openclaw/.openclaw/workspace-agentbox-main/.agentbox-managed.json
 sudo jq -e '.owner == "@tanaab/agentbox" and .agentId == "main" and (.managedFileSha256["SOUL.md"] | length == 64)' /var/db/tanaab/agentbox/openclaw-main.json
-sudo grep -F "Do not perform the user's requested work" /Users/openclaw/.openclaw/workspace-agentbox-main/SOUL.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/HEARTBEAT.md" /Users/openclaw/.openclaw/workspace-agentbox-main/HEARTBEAT.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/IDENTITY.md" /Users/openclaw/.openclaw/workspace-agentbox-main/IDENTITY.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/SOUL.md" /Users/openclaw/.openclaw/workspace-agentbox-main/SOUL.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/TOOLS.md" /Users/openclaw/.openclaw/workspace-agentbox-main/TOOLS.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/workspace/main/USER.md" /Users/openclaw/.openclaw/workspace-agentbox-main/USER.md
+sudo cmp "$AGENTBOX_PAYLOAD_DIR/assets/default_avatar.png" /Users/openclaw/.openclaw/workspace-agentbox-main/assets/default_avatar.png
 
 # should report managed Main health
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_default_agent=main"

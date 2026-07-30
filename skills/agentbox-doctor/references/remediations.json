@@ -116,11 +116,11 @@
   },
   "openclaw_main_ownership_ok": {
     "kind": "reconcile",
-    "summary": "Review and back up the reported OpenClaw state, then rerun agentbox with --openclaw-takeover-main to restore Main ownership."
+    "summary": "Re-run agentbox to restore managed Main ownership and workspace files. If agentbox reports unowned or inconsistently marked Main state, review its backup behavior and separately confirm --openclaw-takeover-main."
   },
   "openclaw_main_workspace_ok": {
     "kind": "reconcile",
-    "summary": "Review the reported Main workspace, then rerun agentbox with --openclaw-takeover-main if its managed path drifted."
+    "summary": "Re-run agentbox to restore Main's canonical workspace. If agentbox reports unowned or inconsistently marked Main state, separately confirm --openclaw-takeover-main."
   },
   "openclaw_main_routing_policy_ok": {
     "kind": "reconcile",
