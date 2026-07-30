@@ -9,6 +9,9 @@ metadata:
     - tanaab
     - workflow
     - operations
+  openclaw:
+    emoji: '🧰'
+    homepage: https://github.com/tanaabased/agentbox/tree/main/skills/agentbox
 ---
 
 # agentbox
@@ -98,6 +101,9 @@ the doctor workflow for verification.
   Brewfile source.
 - Treat `--force`, `--debug`, custom brew groups, autologin opt-out, custom gateway ports, and
   `--openclaw-auth-env` as advanced overrides rather than routine questions.
+- Treat `--openclaw-takeover-main` as a separate ownership decision, not a routine reconciliation
+  input. Add it only when the user explicitly requests takeover or agentbox reports unowned or
+  inconsistently marked Main state.
 - Use `--yes` only when the user explicitly requests a noninteractive run and all required inputs are
   available without prompting.
 
@@ -129,17 +135,19 @@ the doctor workflow for verification.
 6. Assemble one command using the exact resolved executable path. Preserve repeated options such as
    `--authorized-key` and `--brewfile` in user-specified order.
 7. Present the command with secret environment-variable references intact. Summarize consequential
-   behavior: account creation, SSH hardening, Tailscale enrollment, Homebrew group changes,
-   runtime-user autologin and native LaunchAgent activation, and any nondefault authentication or
-   port choice.
+   behavior: account creation, SSH hardening, Tailscale enrollment, Homebrew group changes, managed
+   inert Main fallback setup, runtime-user autologin and native LaunchAgent activation, and any
+   nondefault authentication or port choice.
 8. For a normal interactive run, launch agentbox and use its own displayed plan as the final
    confirmation gate. Do not add `--yes` merely to avoid terminal interaction.
 9. For a user-requested `--yes` run, obtain explicit confirmation of the assembled command and
    summarized mutations before launching it.
 10. Let agentbox own sudo and hidden password prompts. Never attempt to supply either password on the
     user's behalf.
-11. Preserve the complete exit status and actionable failure text. Do not claim success from partial
-    output.
+11. Preserve the complete exit status and actionable failure text. If agentbox requires Main
+    takeover, stop and get confirmation before rerunning with `--openclaw-takeover-main`; explain
+    that it backs up `openclaw.json`, records prior paths, leaves old workspaces untouched, and
+    repoints Main to the agentbox-managed fallback workspace.
 12. After a successful run, use `$tanaab-agentbox-doctor` for installed-host verification. Do not
     substitute this skill's own ad hoc health checks.
 
@@ -161,6 +169,9 @@ the doctor workflow for verification.
   that the user accepts the complete mutation summary.
 - Before using `--force`, identify the exact replacement operation that requires it and get separate
   confirmation.
+- Before using `--openclaw-takeover-main`, confirm that the user accepts agentbox ownership of Main
+  and replacement of its managed workspace files. Main already being the default is not evidence of
+  agentbox ownership.
 - If the executable's `--help` output conflicts with this skill, follow the executable and report the
   contract drift.
 

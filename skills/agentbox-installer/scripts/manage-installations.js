@@ -7,7 +7,7 @@ import {
   resolveAgentboxExecutable,
   statusAgentboxInstallations,
   useAgentboxInstallation,
-} from './manage-installations-lib.js';
+} from '../lib/manage-installations-lib.js';
 
 function usage() {
   return `Usage: manage-installations.js <command> [options]

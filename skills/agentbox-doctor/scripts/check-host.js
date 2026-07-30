@@ -19,7 +19,7 @@ import {
   unavailableReport,
   validatePublishedHealthReport,
   validatePublishedHealthReportMetadata,
-} from './check-host-lib.js';
+} from '../lib/check-host-lib.js';
 
 const skillRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const pluginRoot = resolve(skillRoot, '..', '..');

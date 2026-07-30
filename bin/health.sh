@@ -3,6 +3,7 @@ set -euo pipefail
 
 AGENTBOX_STATE_DIR="/var/db/tanaab/agentbox"
 STATE_FILE="${AGENTBOX_STATE_DIR}/health.env"
+OPENCLAW_MAIN_STATE_FILE="${AGENTBOX_STATE_DIR}/openclaw-main.json"
 HEALTH_REPORT_FILE="${AGENTBOX_STATE_DIR}/health-report"
 AGENTBOX_LOG_DIR="/var/log/tanaab/agentbox"
 LOG_FILE="${AGENTBOX_LOG_DIR}/health.log"
@@ -40,6 +41,10 @@ AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND=""
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_TAILSCALE_MODE=""
 AGENTBOX_HEALTH_OPENCLAW_GATEWAY_PORT=""
 AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE=""
+AGENTBOX_HEALTH_OPENCLAW_DEFAULT_AGENT_ID="main"
+AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE=""
+AGENTBOX_HEALTH_OPENCLAW_UI_ASSISTANT_NAME=""
+AGENTBOX_HEALTH_OPENCLAW_UI_ASSISTANT_AVATAR_SHA256=""
 AGENTBOX_HEALTH_SSH_HARDENING_EXPECTED="0"
 AGENTBOX_HEALTH_SSH_ALLOWED_USERS=""
 AGENTBOX_HEALTH_MANAGED_MACOS_RUNNER="0"
@@ -590,6 +595,232 @@ openclaw_gateway_tailscale_auth_ok_value() {
   fi
 }
 
+openclaw_default_agent_id_value() {
+  local openclaw_home=""
+  local runner_config=""
+
+  openclaw_home="$(user_home_dir_value "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
+  runner_config="${openclaw_home}/.openclaw/openclaw.json"
+  if [[ ! -x "${JQ_BIN}" || ! -f "${runner_config}" ]]; then
+    return 0
+  fi
+
+  "${JQ_BIN}" -r '
+    [(.agents.list // [])[] | select(.default == true)]
+    | if length == 1 then .[0].id else "" end
+  ' "${runner_config}" 2>/dev/null || true
+}
+
+openclaw_avatar_sha256_value() {
+  local avatar_filter="$1"
+  local agent_id="${2:-}"
+  local avatar_value=""
+  local openclaw_home=""
+  local runner_config=""
+
+  openclaw_home="$(user_home_dir_value "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
+  runner_config="${openclaw_home}/.openclaw/openclaw.json"
+  if [[ ! -x "${JQ_BIN}" || ! -f "${runner_config}" ]]; then
+    return 0
+  fi
+
+  avatar_value="$("${JQ_BIN}" -er \
+    --arg agent_id "${agent_id}" \
+    "${avatar_filter} | select(type == \"string\" and startswith(\"data:image/png;base64,\")) | sub(\"^data:image/png;base64,\"; \"\")" \
+    "${runner_config}" 2>/dev/null || true)"
+  if [[ -z "${avatar_value}" ]]; then
+    return 0
+  fi
+
+  printf '%s' "${avatar_value}" | /usr/bin/base64 -D 2>/dev/null | /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}' || true
+}
+
+openclaw_main_identity_ok_value() {
+  local avatar_sha256=""
+  local openclaw_home=""
+  local runner_config=""
+
+  openclaw_home="$(user_home_dir_value "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
+  runner_config="${openclaw_home}/.openclaw/openclaw.json"
+  if [[ ! -x "${JQ_BIN}" || ! -f "${runner_config}" ]]; then
+    printf '0'
+    return 0
+  fi
+
+  # shellcheck disable=SC2016
+  if ! "${JQ_BIN}" -e \
+    --arg agent_id "${AGENTBOX_HEALTH_OPENCLAW_DEFAULT_AGENT_ID}" \
+    --arg assistant_name "${AGENTBOX_HEALTH_OPENCLAW_UI_ASSISTANT_NAME}" '
+      [(.agents.list // [])[] | select(.id == $agent_id and .default == true)] as $defaults
+      | ($defaults | length) == 1
+      and $defaults[0].identity.name == $assistant_name
+    ' "${runner_config}" >/dev/null 2>&1; then
+    printf '0'
+    return 0
+  fi
+
+  # shellcheck disable=SC2016
+  avatar_sha256="$(openclaw_avatar_sha256_value '(.agents.list // [])[] | select(.id == $agent_id) | .identity.avatar' "${AGENTBOX_HEALTH_OPENCLAW_DEFAULT_AGENT_ID}")"
+  if [[ -n "${AGENTBOX_HEALTH_OPENCLAW_UI_ASSISTANT_AVATAR_SHA256}" &&
+    "${avatar_sha256}" == "${AGENTBOX_HEALTH_OPENCLAW_UI_ASSISTANT_AVATAR_SHA256}" ]]; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+openclaw_main_workspace_ok_value() {
+  local openclaw_home=""
+  local runner_config=""
+
+  openclaw_home="$(user_home_dir_value "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
+  runner_config="${openclaw_home}/.openclaw/openclaw.json"
+  if [[ ! -x "${JQ_BIN}" || ! -f "${runner_config}" || -z "${AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE}" ]]; then
+    printf '0'
+    return 0
+  fi
+
+  # shellcheck disable=SC2016
+  if "${JQ_BIN}" -e \
+    --arg agent_id "${AGENTBOX_HEALTH_OPENCLAW_DEFAULT_AGENT_ID}" \
+    --arg workspace "${AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE}" '
+      [(.agents.list // [])[] | select(.id == $agent_id and .workspace == $workspace)]
+      | length == 1
+    ' "${runner_config}" >/dev/null 2>&1; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+openclaw_main_routing_policy_ok_value() {
+  local openclaw_home=""
+  local runner_config=""
+
+  openclaw_home="$(user_home_dir_value "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
+  runner_config="${openclaw_home}/.openclaw/openclaw.json"
+  if [[ ! -x "${JQ_BIN}" || ! -f "${runner_config}" ]]; then
+    printf '0'
+    return 0
+  fi
+
+  # shellcheck disable=SC2016
+  if "${JQ_BIN}" -e \
+    --arg agent_id "${AGENTBOX_HEALTH_OPENCLAW_DEFAULT_AGENT_ID}" '
+      [(.agents.list // [])[] | select(.id == $agent_id)] as $main
+      | ($main | length) == 1
+      and $main[0].tools == {allow: ["agents_list"]}
+      and $main[0].subagents == {allowAgents: ["*"]}
+    ' "${runner_config}" >/dev/null 2>&1; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
+openclaw_main_ownership_ok_value() {
+  local actual_sha256
+  local expected_sha256
+  local managed_file
+  local marker_path="${AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE}/.agentbox-managed.json"
+  local openclaw_group=""
+
+  if [[ ! -x "${JQ_BIN}" || -z "${AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE}" ]]; then
+    printf '0'
+    return 0
+  fi
+
+  openclaw_group="$(id -gn "${AGENTBOX_HEALTH_OPENCLAW_USER}" 2>/dev/null || true)"
+  if [[ -z "${openclaw_group}" ]] ||
+    [[ "$(path_owner_group_mode_value "${OPENCLAW_MAIN_STATE_FILE}" root wheel 600)" != "1" ]] ||
+    [[ "$(path_owner_group_mode_value "${AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_group}" 700)" != "1" ]] ||
+    [[ "$(path_owner_group_mode_value "${marker_path}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_group}" 600)" != "1" ]]; then
+    printf '0'
+    return 0
+  fi
+
+  for managed_file in HEARTBEAT.md IDENTITY.md SOUL.md TOOLS.md USER.md assets/default_avatar.png; do
+    if [[ "$(path_owner_group_mode_value "${AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE}/${managed_file}" "${AGENTBOX_HEALTH_OPENCLAW_USER}" "${openclaw_group}" 600)" != "1" ]]; then
+      printf '0'
+      return 0
+    fi
+    # shellcheck disable=SC2016
+    expected_sha256="$("${JQ_BIN}" -r --arg path "${managed_file}" '.managedFileSha256[$path] // ""' "${OPENCLAW_MAIN_STATE_FILE}" 2>/dev/null || true)"
+    actual_sha256="$(/usr/bin/shasum -a 256 "${AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE}/${managed_file}" 2>/dev/null | /usr/bin/awk '{print $1}')"
+    if [[ -z "${expected_sha256}" || "${actual_sha256}" != "${expected_sha256}" ]]; then
+      printf '0'
+      return 0
+    fi
+  done
+
+  # shellcheck disable=SC2016
+  if ! "${JQ_BIN}" -e \
+    --arg owner "@tanaab/agentbox" \
+    --arg surface "openclaw-main-workspace" \
+    --arg agent_id "${AGENTBOX_HEALTH_OPENCLAW_DEFAULT_AGENT_ID}" \
+    --arg runner "${AGENTBOX_HEALTH_OPENCLAW_USER}" \
+    --arg workspace "${AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE}" \
+    --arg agentbox_version "${AGENTBOX_HEALTH_AGENTBOX_VERSION}" '
+      .schemaVersion == 1
+      and .owner == $owner
+      and .surface == $surface
+      and .agentId == $agent_id
+      and .runner == $runner
+      and .workspace == $workspace
+      and .agentboxVersion == $agentbox_version
+      and .templateVersion == 1
+      and .managedFiles == ["HEARTBEAT.md", "IDENTITY.md", "SOUL.md", "TOOLS.md", "USER.md", "assets/default_avatar.png"]
+      and (.managedFileSha256 | type) == "object"
+    ' "${OPENCLAW_MAIN_STATE_FILE}" >/dev/null 2>&1 ||
+    ! "${JQ_BIN}" -e \
+      --arg owner "@tanaab/agentbox" \
+      --arg surface "openclaw-main-workspace" \
+      --arg agent_id "${AGENTBOX_HEALTH_OPENCLAW_DEFAULT_AGENT_ID}" \
+      --arg runner "${AGENTBOX_HEALTH_OPENCLAW_USER}" \
+      --arg workspace "${AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE}" \
+      --arg agentbox_version "${AGENTBOX_HEALTH_AGENTBOX_VERSION}" '
+        .schemaVersion == 1
+        and .owner == $owner
+        and .surface == $surface
+        and .agentId == $agent_id
+        and .runner == $runner
+        and .workspace == $workspace
+        and .agentboxVersion == $agentbox_version
+        and .templateVersion == 1
+        and .managedFiles == ["HEARTBEAT.md", "IDENTITY.md", "SOUL.md", "TOOLS.md", "USER.md", "assets/default_avatar.png"]
+      ' "${marker_path}" >/dev/null 2>&1; then
+    printf '0'
+    return 0
+  fi
+
+  printf '1'
+}
+
+openclaw_ui_assistant_identity_ok_value() {
+  local avatar_sha256=""
+  local openclaw_home=""
+  local runner_config=""
+
+  openclaw_home="$(user_home_dir_value "${AGENTBOX_HEALTH_OPENCLAW_USER}")"
+  runner_config="${openclaw_home}/.openclaw/openclaw.json"
+  # shellcheck disable=SC2016
+  if [[ ! -x "${JQ_BIN}" || ! -f "${runner_config}" ]] ||
+    ! "${JQ_BIN}" -e \
+      --arg assistant_name "${AGENTBOX_HEALTH_OPENCLAW_UI_ASSISTANT_NAME}" \
+      '.ui.assistant.name == $assistant_name' "${runner_config}" >/dev/null 2>&1; then
+    printf '0'
+    return 0
+  fi
+
+  avatar_sha256="$(openclaw_avatar_sha256_value '.ui.assistant.avatar')"
+  if [[ -n "${AGENTBOX_HEALTH_OPENCLAW_UI_ASSISTANT_AVATAR_SHA256}" &&
+    "${avatar_sha256}" == "${AGENTBOX_HEALTH_OPENCLAW_UI_ASSISTANT_AVATAR_SHA256}" ]]; then
+    printf '1'
+  else
+    printf '0'
+  fi
+}
+
 autologin_user_value() {
   /usr/bin/defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true
 }
@@ -899,6 +1130,13 @@ generate_report() {
   local openclaw_gateway_status_ok="0"
   local openclaw_gateway_tailscale_serve_route_ok="skipped"
   local openclaw_gateway_ok="0"
+  local openclaw_default_agent=""
+  local openclaw_default_agent_ok="0"
+  local openclaw_main_identity_ok="0"
+  local openclaw_main_ownership_ok="0"
+  local openclaw_main_routing_policy_ok="0"
+  local openclaw_main_workspace_ok="0"
+  local openclaw_ui_assistant_identity_ok="0"
   local openclaw_admin_app_attach_only_ok="skipped"
   local openclaw_admin_app_gateway_config_expected="0"
   local openclaw_admin_app_gateway_config_ok="skipped"
@@ -1180,6 +1418,15 @@ generate_report() {
   openclaw_finalizer_log_dir="${openclaw_home}/Library/Logs/agentbox"
   openclaw_gateway_log_dir="${openclaw_home}/Library/Logs/openclaw"
   openclaw_gateway_log_path="${openclaw_gateway_log_dir}/gateway.log"
+  openclaw_default_agent="$(openclaw_default_agent_id_value)"
+  if [[ "${openclaw_default_agent}" == "${AGENTBOX_HEALTH_OPENCLAW_DEFAULT_AGENT_ID}" ]]; then
+    openclaw_default_agent_ok="1"
+  fi
+  openclaw_main_identity_ok="$(openclaw_main_identity_ok_value)"
+  openclaw_main_workspace_ok="$(openclaw_main_workspace_ok_value)"
+  openclaw_main_routing_policy_ok="$(openclaw_main_routing_policy_ok_value)"
+  openclaw_main_ownership_ok="$(openclaw_main_ownership_ok_value)"
+  openclaw_ui_assistant_identity_ok="$(openclaw_ui_assistant_identity_ok_value)"
 
   if [[ -n "${openclaw_uid}" ]]; then
     openclaw_gui_domain_present="$(launchd_job_loaded_value gui "${openclaw_uid}")"
@@ -1268,6 +1515,14 @@ generate_report() {
   fi
 
   print_kv openclaw_auth_choice "${AGENTBOX_HEALTH_OPENCLAW_AUTH_CHOICE}"
+  print_kv openclaw_default_agent "${openclaw_default_agent}"
+  mark_required openclaw_default_agent_ok "${openclaw_default_agent_ok}"
+  print_kv openclaw_main_workspace "${AGENTBOX_HEALTH_OPENCLAW_MAIN_WORKSPACE}"
+  mark_required openclaw_main_workspace_ok "${openclaw_main_workspace_ok}"
+  mark_required openclaw_main_routing_policy_ok "${openclaw_main_routing_policy_ok}"
+  mark_required openclaw_main_ownership_ok "${openclaw_main_ownership_ok}"
+  mark_required openclaw_main_identity_ok "${openclaw_main_identity_ok}"
+  mark_required openclaw_ui_assistant_identity_ok "${openclaw_ui_assistant_identity_ok}"
   print_kv openclaw_gateway_state "${openclaw_gateway_state}"
   print_kv openclaw_gateway_label "${openclaw_gateway_label}"
   print_kv openclaw_gateway_bind "${AGENTBOX_HEALTH_OPENCLAW_GATEWAY_BIND}"

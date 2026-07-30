@@ -27,7 +27,7 @@ import {
   statusAgentboxInstallations,
   useAgentboxInstallation,
   validateArchiveEntryNames,
-} from '../skills/agentbox-installer/scripts/manage-installations-lib.js';
+} from '../skills/agentbox-installer/lib/manage-installations-lib.js';
 
 const managerPath = new URL(
   '../skills/agentbox-installer/scripts/manage-installations.js',
@@ -114,7 +114,7 @@ async function createReleaseFetch(home, tag = 'v1.2.1', digestOverride = null, m
   };
 }
 
-describe('skills/agentbox-installer/scripts/manage-installations-lib', function () {
+describe('skills/agentbox-installer/lib/manage-installations-lib', function () {
   this.timeout(10_000);
 
   let env;
