@@ -2,16 +2,19 @@
 
 ### Breaking Changes
 
-- Changed OpenClaw setup to own `main` as the default inert fallback and require explicit takeover of existing unowned state.
+- Changed OpenClaw setup to own `main` as the default inert fallback and require explicit takeover of existing unowned state. [#28](https://github.com/tanaabased/agentbox/pull/28)
+- Changed reconciliation to restore `MODEL L3-37` for `main` and the global UI fallback, replacing custom fallback identities. [#28](https://github.com/tanaabased/agentbox/pull/28)
 
 ### New Features
 
-- Added `--openclaw-takeover-main`, managed Main workspace files, ownership records, and UI assistant identity reconciliation.
+- Added `--openclaw-takeover-main`, a canonical inert workspace for `main`, and explicit ownership records. [#28](https://github.com/tanaabased/agentbox/pull/28)
+- Added health and Doctor checks for `main`'s default status, ownership, workspace, routing policy, and identity, plus the global UI fallback. [#28](https://github.com/tanaabased/agentbox/pull/28)
 
 ### Improvements
 
-- Updated Doctor reconciliation handoffs with the failing check and an explicit confirmation requirement.
-- Clarified the fresh-machine operating target, existing-host caveat, and managed Main fallback contract.
+- Clarified the fresh-machine operating target, existing-host caveat, and managed `main` fallback contract. [#28](https://github.com/tanaabased/agentbox/pull/28)
+- Hardened release preparation by formatting stamped plugin metadata before validating the prepared repository. [#28](https://github.com/tanaabased/agentbox/pull/28)
+- Updated Doctor reconciliation handoffs with the failing check and an explicit confirmation requirement. [#28](https://github.com/tanaabased/agentbox/pull/28)
 
 ## v1.0.0-beta.8 - [July 21, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.8)
 
