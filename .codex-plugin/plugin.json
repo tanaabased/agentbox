@@ -10,12 +10,7 @@
   "homepage": "https://agentbox.tanaab.sh",
   "repository": "https://github.com/tanaabased/agentbox",
   "license": "MIT",
-  "keywords": [
-    "agentbox",
-    "macos",
-    "openclaw",
-    "codex"
-  ],
+  "keywords": ["agentbox", "macos", "openclaw", "codex"],
   "skills": "./skills/",
   "interface": {
     "displayName": "agentbox",
@@ -23,10 +18,7 @@
     "longDescription": "Codex plugin surface for provisioning and operating managed headless OpenClaw hosts with agentbox.",
     "developerName": "@tanaabased",
     "category": "Tanaab-based",
-    "capabilities": [
-      "Interactive",
-      "Write"
-    ],
+    "capabilities": ["Interactive", "Write"],
     "defaultPrompt": [
       "Help me prepare a Mac as a managed headless OpenClaw host with agentbox.",
       "Use $tanaab-agentbox to plan and run agentbox bootstrap or reconciliation using the configured executable.",
