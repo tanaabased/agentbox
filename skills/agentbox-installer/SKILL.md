@@ -9,6 +9,9 @@ metadata:
     - tanaab
     - workflow
     - automation
+  openclaw:
+    emoji: '📦'
+    homepage: https://github.com/tanaabased/agentbox/tree/main/skills/agentbox-installer
 ---
 
 # agentbox installer
@@ -126,7 +129,7 @@ maintain a lowercase `agentbox` command link without running the host bootstrap 
 ## Bundled Resources
 
 - [Installation manager](scripts/manage-installations.js): deterministic skill entrypoint.
-- [Installer operations](scripts/manage-installations-lib.js): release, source, shim, and status
+- [Installer operations](lib/manage-installations-lib.js): release, source, shim, and status
   orchestration.
 - [Shared installation contract](../../lib/agentbox-installations.js): XDG paths, config schema,
   atomic writes, payload validation, and resolution shared with other skills.

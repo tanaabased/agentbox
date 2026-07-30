@@ -9,6 +9,9 @@ metadata:
     - tanaab
     - workflow
     - validation
+  openclaw:
+    emoji: '🩺'
+    homepage: https://github.com/tanaabased/agentbox/tree/main/skills/agentbox-doctor
 ---
 
 # agentbox doctor
@@ -105,7 +108,7 @@ remediation without changing the host.
 
 - [Health probe](scripts/check-host.js): validates the agentbox-published snapshot and emits
   normalized JSON without sudo.
-- [Probe library](scripts/check-host-lib.js): validates, parses, and evaluates snapshot content.
+- [Probe library](lib/check-host-lib.js): validates, parses, and evaluates snapshot content.
 - [Plugin runtime preflight](../../scripts/check-plugin-runtime.sh): non-mutating Bun availability
   gate shared by Bun-dependent skills.
 - Repository unit tests under `test/`: cover snapshot validation, grouping, conditions, warnings,

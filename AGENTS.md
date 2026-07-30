@@ -132,9 +132,9 @@ This is directional guidance, not the current public contract:
 
 ## JavaScript And Plugin Skills
 
-- Keep skill-owned JavaScript entrypoints and support modules under the owning
-  `skills/<skill>/scripts/` directory. Do not hoist them merely because the full repository ships in
-  the plugin archive.
+- Keep skill-owned JavaScript entrypoints under the owning `skills/<skill>/scripts/` directory and
+  support modules under the nearest role-specific `skills/<skill>/lib/` or `skills/<skill>/utils/`
+  directory. Do not hoist them merely because the full repository ships in the plugin archive.
 - Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
 - Keep the repo-owned Codex plugin contract in `lib/plugin-validation.js` and run it through
   `bun run codex:validate`. Limit that validator to loader-facing requirements for a valid Codex

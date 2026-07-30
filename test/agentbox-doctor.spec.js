@@ -9,7 +9,7 @@ import {
   unavailableReport,
   validatePublishedHealthReport,
   validatePublishedHealthReportMetadata,
-} from '../skills/agentbox-doctor/scripts/check-host-lib.js';
+} from '../skills/agentbox-doctor/lib/check-host-lib.js';
 
 const checkCatalog = JSON.parse(
   readFileSync(
@@ -110,7 +110,7 @@ const publishedReportMetadata = {
   uid: 0,
 };
 
-describe('skills/agentbox-doctor/scripts/check-host-lib', () => {
+describe('skills/agentbox-doctor/lib/check-host-lib', () => {
   it('should keep the latest key and preserve equals signs in values', () => {
     const values = parseHealthReport('agentbox_ok=0\nignored line\nnote=a=b\n---\nagentbox_ok=1\n');
 

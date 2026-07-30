@@ -9,6 +9,9 @@ metadata:
     - tanaab
     - workflow
     - operations
+  openclaw:
+    emoji: '🧰'
+    homepage: https://github.com/tanaabased/agentbox/tree/main/skills/agentbox
 ---
 
 # agentbox
