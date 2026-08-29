@@ -206,7 +206,7 @@ set +e
 output="$(agentbox --openclaw-identity 2>&1)"
 command_status="$?"
 set -e
-printf "%s\n" "$output"
+printf "%s\n" "${output}"
 printf "%s\n" "$output" | grep -F "option --openclaw-identity requires a value."
 printf "%s\n" "$output" | grep -F "Usage:"
 test "$command_status" -ne 0
