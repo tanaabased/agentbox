@@ -22,7 +22,6 @@ DEFAULT_OPENCLAW_IDENTITY="A Tanaab-based Claw <openclaw>"
 DEFAULT_OPENCLAW_AUTOLOGIN="on"
 DEFAULT_OPENCLAW_GATEWAY_PORT="18789"
 DEFAULT_OPENCLAW_AUTH_CHOICE="skip"
-# Advance this compatibility baseline deliberately, together with its Homebrew formula.
 OPENCLAW_PINNED_VERSION="2026.7.1"
 OPENCLAW_FORMULA_REVISION="839cf6b638237cbc675d1ce9ddc0ba3d82487189"
 OPENCLAW_DEFAULT_AGENT_ID="main"
@@ -3324,7 +3323,7 @@ verify_agentbox_openclaw_version() {
     installed_version="$("${openclaw_bin}" --version 2>/dev/null | awk '$1 == "OpenClaw" {print $2}' || true)"
   fi
   if [[ "${installed_version}" != "${OPENCLAW_PINNED_VERSION}" ]]; then
-    abort "agentbox requires OpenClaw ${OPENCLAW_PINNED_VERSION}; found ${installed_version:-no usable CLI} at ${openclaw_bin}. No automatic upgrade or downgrade will be attempted. Reconcile the Homebrew installation deliberately before rerunning; see ADVANCED.md#openclaw-version-pin."
+    abort "agentbox requires OpenClaw ${OPENCLAW_PINNED_VERSION}; found ${installed_version:-no usable CLI} at ${openclaw_bin}. No automatic upgrade or downgrade will be attempted. Reconcile the Homebrew installation deliberately before rerunning; see README.md."
   fi
 }
 

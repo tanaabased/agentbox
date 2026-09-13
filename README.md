@@ -36,8 +36,7 @@ agents. Existing unowned or inconsistently marked Main state requires the explic
 > [!IMPORTANT]
 > agentbox currently pins the Homebrew OpenClaw CLI to **2026.7.1** for compatibility.
 > It does not install the latest OpenClaw release or automatically change an existing different
-> version. See [OpenClaw version pin](./ADVANCED.md#openclaw-version-pin) before using an already
-> provisioned host.
+> version.
 
 ## Overview
 

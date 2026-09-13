@@ -94,12 +94,6 @@ restore its managed LaunchAgent, loopback bind, gateway port, and Tailscale expo
 
 OpenClaw Gateway uses OpenClaw's native per-user LaunchAgent.
 
-### OpenClaw version pin
-
-`macos.sh` pins OpenClaw to **2026.7.1** using `OPENCLAW_PINNED_VERSION` and
-`OPENCLAW_FORMULA_REVISION`. Existing different versions are rejected, not replaced. Advance both
-constants together and verify the macOS tests before updating the supported version.
-
 ### OpenClaw LaunchAgent
 
 The native `ai.openclaw.gateway` LaunchAgent is the only supported macOS Gateway service. It runs in
