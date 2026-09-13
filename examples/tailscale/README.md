@@ -58,7 +58,7 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_activation_ok=0"
 ```
 
-## Resolver ownership
+### Resolver ownership
 
 The helper runs the prepared installer's resolver function and the installed health function against
 controlled files. These cases retain ownership coverage independently of whether a live Tailscale
