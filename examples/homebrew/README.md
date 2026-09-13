@@ -35,18 +35,9 @@ agentbox \
 ```bash
 # should install the supported openclaw version through homebrew
 "$(brew --prefix)/bin/openclaw" --version | tee /dev/stderr | awk '{print $2}' | grep -Fx '2026.7.1'
-brew list --pinned | tee /dev/stderr | grep -Fx openclaw-cli
-
-# should refuse a different openclaw baseline before bootstrap mutation
-sed 's/^OPENCLAW_PINNED_VERSION=".*"/OPENCLAW_PINNED_VERSION="0.0.0"/' "$(command -v agentbox)" > "$TMPDIR/agentbox-other-version.sh"
-if /bin/bash "$TMPDIR/agentbox-other-version.sh" --force --tailscale-authkey off --openclaw-autologin off --openclaw-password 'BobHomebrewClawPass1!' > "$TMPDIR/version-mismatch.log" 2>&1; then
-  cat "$TMPDIR/version-mismatch.log"
-  exit 1
-fi
-cat "$TMPDIR/version-mismatch.log"
-grep -F 'agentbox requires OpenClaw 0.0.0; found 2026.7.1' "$TMPDIR/version-mismatch.log"
-grep -F 'No automatic upgrade or downgrade will be attempted.' "$TMPDIR/version-mismatch.log"
-"$(brew --prefix)/bin/openclaw" --version | awk '{print $2}' | grep -Fx '2026.7.1'
+pin_path="$(brew --prefix)/var/homebrew/pinned/openclaw-cli"
+test -L "$pin_path"
+test "$(cd "$pin_path" && pwd -P)" = "$(brew --cellar)/openclaw-cli/2026.7.1"
 
 # should report homebrew prefix health after agentbox reconciliation
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "brew_prefix=$(brew --prefix)"
@@ -101,4 +92,15 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "tr
 
 # should stage gateway activation without changing CI autologin
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_state=pending_first_login"
+
+# should reject a different openclaw baseline without replacing the installed version
+sed 's/^OPENCLAW_PINNED_VERSION=".*"/OPENCLAW_PINNED_VERSION="0.0.0"/' "$(command -v agentbox)" > "$TMPDIR/agentbox-other-version.sh"
+if /bin/bash "$TMPDIR/agentbox-other-version.sh" --force --tailscale-authkey off --openclaw-autologin off --openclaw-password 'BobHomebrewClawPass1!' > "$TMPDIR/version-mismatch.log" 2>&1; then
+  cat "$TMPDIR/version-mismatch.log"
+  exit 1
+fi
+cat "$TMPDIR/version-mismatch.log"
+grep -F 'agentbox requires OpenClaw 0.0.0; found 2026.7.1' "$TMPDIR/version-mismatch.log"
+grep -F 'No automatic upgrade or downgrade will be attempted.' "$TMPDIR/version-mismatch.log"
+"$(brew --prefix)/bin/openclaw" --version | awk '{print $2}' | grep -Fx '2026.7.1'
 ```
