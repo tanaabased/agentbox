@@ -33,6 +33,11 @@ agentbox takes ownership of OpenClaw's `main` agent, makes it the explicit defau
 agents. Existing unowned or inconsistently marked Main state requires the explicit
 [`--openclaw-takeover-main`](./ADVANCED.md#--openclaw-takeover-main) gate before agentbox replaces it.
 
+> [!IMPORTANT]
+> agentbox currently pins the Homebrew OpenClaw CLI to **2026.7.1** for compatibility.
+> It does not install the latest OpenClaw release or automatically change an existing different
+> version.
+
 ## Overview
 
 At a high level, `agentbox`:

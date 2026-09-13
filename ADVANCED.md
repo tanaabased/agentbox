@@ -42,9 +42,10 @@ sudo softwareupdate --install --all --restart
 
 ### Dependencies
 
-[`Brewfile`](./Brewfile) is the source of truth for core host packages. It installs the OpenClaw CLI,
-`ripgrep`, Tailscale, and the supporting tools needed by the bootstrap. Homebrew `bin` and `sbin`
-paths are published for login shells through `/etc/paths.d/00-agentbox-homebrew`.
+[`Brewfile`](./Brewfile) declares the core host packages, including `ripgrep`, Tailscale, and the
+supporting tools needed by the bootstrap. agentbox installs the pinned OpenClaw CLI before applying
+the Brewfile. Homebrew `bin` and `sbin` paths are published for login shells through
+`/etc/paths.d/00-agentbox-homebrew`.
 
 The host Brewfile does not pin a `node@24` formula. The Homebrew `openclaw-cli` formula owns its Node
 dependency; the repository's Node tool version is for development rather than the installed host

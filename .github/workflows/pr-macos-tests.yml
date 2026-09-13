@@ -53,6 +53,9 @@ jobs:
         run: |
           install -m 755 dist/macos.sh dist/agentbox
           echo "$PWD/dist" >> "$GITHUB_PATH"
+      - name: Refresh Homebrew metadata
+        shell: bash
+        run: HOMEBREW_NO_AUTO_UPDATE='' brew update-if-needed
       - name: Run Leia-backed example
         shell: bash
         env:
@@ -61,6 +64,5 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.TANAAB_ALTERNATE_MALE_KEY }}
           TMPDIR: ${{ github.workspace }}/examples/${{ matrix.example }}/.tmp
         run: |
-          HOMEBREW_NO_AUTO_UPDATE= brew update-if-needed
           mkdir -p "$TMPDIR"
           bun run leia "examples/${{ matrix.example }}/README.md" --stdin --retry 0

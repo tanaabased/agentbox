@@ -155,6 +155,12 @@ AGENTBOX_TAILSCALE_AUTHKEY="" agentbox \
 ## Testing
 
 ```bash
+# should preserve the supported openclaw version across reruns
+"$(brew --prefix)/bin/openclaw" --version | tee /dev/stderr | awk '{print $2}' | grep -Fx '2026.7.1'
+pin_path="$(brew --prefix)/var/homebrew/pinned/openclaw-cli"
+test -L "$pin_path"
+test "$(cd "$pin_path" && pwd -P)" = "$(brew --cellar)/openclaw-cli/2026.7.1"
+
 # should reconcile existing openclaw gateway configuration non-interactively
 grep -F "reconciling existing openclaw gateway configuration non-interactively" "$TMPDIR/rerun.log"
 grep -F -- "--non-interactive" "$TMPDIR/rerun.log"
