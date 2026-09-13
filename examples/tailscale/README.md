@@ -1,8 +1,9 @@
 # Tailscale Example
 
 This example verifies the explicit disabled-Tailscale path while keeping the Tailscale formula
-available for later use. It is intended for CI by default because it mutates system settings,
-Homebrew state, SSH, launchd, and OpenClaw.
+available for later use. With the daemon stopped, it also checks resolver creation, repair, and
+preservation using reserved `.invalid` names. It is intended for CI by default because it mutates
+system settings, Homebrew state, SSH, launchd, and OpenClaw.
 
 ## Setup
 
@@ -55,4 +56,57 @@ sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "op
 
 # should keep gateway activation pending until the runtime user logs in
 sudo /opt/tanaab/agentbox/bin/health.sh --report | tee /dev/stderr | grep -F "openclaw_gateway_activation_ok=0"
+```
+
+## Resolver ownership
+
+The helper runs the prepared installer's resolver function and the installed health function against
+controlled files. These cases retain ownership coverage independently of whether a live Tailscale
+version creates the real tailnet resolver before agentbox reaches it.
+
+```bash
+# should create an owned resolver when none exists
+set -o pipefail
+resolver=/etc/resolver/created.agentbox-resolver.invalid
+sudo test ! -e "$resolver"
+bash "$AGENTBOX_PAYLOAD_DIR/examples/tailscale/resolver-case.sh" reconcile created
+sudo cat "$resolver"
+sudo grep -Fx "# Managed by agentbox." "$resolver"
+sudo grep -Fx "nameserver 100.100.100.100" "$resolver"
+test "$(sudo stat -f '%Su:%Sg:%Lp' "$resolver")" = root:wheel:644
+bash "$AGENTBOX_PAYLOAD_DIR/examples/tailscale/resolver-case.sh" health created | tee /dev/stderr | grep -Fx resolver_ok=1
+
+# should repair an incorrect owned resolver
+set -o pipefail
+resolver=/etc/resolver/repaired.agentbox-resolver.invalid
+printf '%s\n' '# Managed by agentbox.' 'nameserver 192.0.2.1' | sudo tee "$resolver" >/dev/null
+sudo chmod 600 "$resolver"
+bash "$AGENTBOX_PAYLOAD_DIR/examples/tailscale/resolver-case.sh" reconcile repaired
+sudo cat "$resolver"
+sudo grep -Fx "# Managed by agentbox." "$resolver"
+sudo grep -Fx "nameserver 100.100.100.100" "$resolver"
+test "$(sudo stat -f '%Su:%Sg:%Lp' "$resolver")" = root:wheel:644
+bash "$AGENTBOX_PAYLOAD_DIR/examples/tailscale/resolver-case.sh" health repaired | tee /dev/stderr | grep -Fx resolver_ok=1
+
+# should preserve a correct resolver owned by another tool
+set -o pipefail
+resolver=/etc/resolver/preserved.agentbox-resolver.invalid
+mkdir -p "$TMPDIR"
+printf '%s\n' '# Added by tailscaled' 'nameserver 100.100.100.100' 'port 53' > "$TMPDIR/resolver-preserved"
+sudo install -o "$(id -un)" -g staff -m 640 "$TMPDIR/resolver-preserved" "$resolver"
+bash "$AGENTBOX_PAYLOAD_DIR/examples/tailscale/resolver-case.sh" reconcile preserved | tee /dev/stderr | grep -F 'already points to tailscale dns'
+sudo cmp "$TMPDIR/resolver-preserved" "$resolver"
+test "$(sudo stat -f '%Su:%Sg:%Lp' "$resolver")" = "$(id -un):staff:640"
+bash "$AGENTBOX_PAYLOAD_DIR/examples/tailscale/resolver-case.sh" health preserved | tee /dev/stderr | grep -Fx resolver_ok=1
+
+# should leave an unowned conflicting resolver unhealthy without overwriting it
+set -o pipefail
+resolver=/etc/resolver/conflict.agentbox-resolver.invalid
+mkdir -p "$TMPDIR"
+printf '%s\n' '# Operator configuration' 'nameserver 192.0.2.1' > "$TMPDIR/resolver-conflict"
+sudo install -o "$(id -un)" -g staff -m 640 "$TMPDIR/resolver-conflict" "$resolver"
+bash "$AGENTBOX_PAYLOAD_DIR/examples/tailscale/resolver-case.sh" reconcile conflict 2>&1 | tee /dev/stderr | grep -F 'not managed by agentbox; leaving it unchanged.'
+sudo cmp "$TMPDIR/resolver-conflict" "$resolver"
+test "$(sudo stat -f '%Su:%Sg:%Lp' "$resolver")" = "$(id -un):staff:640"
+bash "$AGENTBOX_PAYLOAD_DIR/examples/tailscale/resolver-case.sh" health conflict | tee /dev/stderr | grep -Fx resolver_ok=0
 ```

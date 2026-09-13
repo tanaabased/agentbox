@@ -204,12 +204,12 @@ sudo test -d /var/db/tanaab/agentbox/tailscale
 sudo test -s /var/db/tanaab/agentbox/tailscale/tailscaled.state
 test "$(sudo stat -f "%Su:%Sg:%Lp" /var/db/tanaab/agentbox/tailscale)" = "root:wheel:700"
 
-# should install the tailnet magicdns resolver
+# should provide the tailnet magicdns resolver
 set -o pipefail
 tailnet_suffix="$(tailscale status --json --peers=false | tee /dev/stderr | jq -r '.CurrentTailnet.MagicDNSSuffix // ""' | sed 's/[.]$//')"
 test -n "$tailnet_suffix"
 sudo test -f "/etc/resolver/$tailnet_suffix"
-sudo grep -Fx "# Managed by agentbox." "/etc/resolver/$tailnet_suffix"
+sudo cat "/etc/resolver/$tailnet_suffix"
 sudo grep -E '^[[:space:]]*nameserver[[:space:]]+100[.]100[.]100[.]100([[:space:]]|$)' "/etc/resolver/$tailnet_suffix"
 
 # should resolve and ping the local tailscale magicdns name

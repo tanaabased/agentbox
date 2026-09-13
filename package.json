@@ -13,6 +13,14 @@
   },
   "private": true,
   "type": "module",
+  "config": {
+    "ci": {
+      "openclaw": {
+        "version": "2026.7.1",
+        "homebrewFormulaRevision": "839cf6b638237cbc675d1ce9ddc0ba3d82487189"
+      }
+    }
+  },
   "bin": {
     "codexsync": "./bin/codexsync.js"
   },
