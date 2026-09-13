@@ -42,9 +42,10 @@ sudo softwareupdate --install --all --restart
 
 ### Dependencies
 
-[`Brewfile`](./Brewfile) is the source of truth for core host packages. It installs the OpenClaw CLI,
-`ripgrep`, Tailscale, and the supporting tools needed by the bootstrap. Homebrew `bin` and `sbin`
-paths are published for login shells through `/etc/paths.d/00-agentbox-homebrew`.
+[`Brewfile`](./Brewfile) declares the core host packages, including `ripgrep`, Tailscale, and the
+supporting tools needed by the bootstrap. agentbox installs the pinned OpenClaw CLI before applying
+the Brewfile. Homebrew `bin` and `sbin` paths are published for login shells through
+`/etc/paths.d/00-agentbox-homebrew`.
 
 The host Brewfile does not pin a `node@24` formula. The Homebrew `openclaw-cli` formula owns its Node
 dependency; the repository's Node tool version is for development rather than the installed host
@@ -92,6 +93,28 @@ wizard. Make other OpenClaw changes from the runner's interactive session, then 
 restore its managed LaunchAgent, loopback bind, gateway port, and Tailscale exposure.
 
 OpenClaw Gateway uses OpenClaw's native per-user LaunchAgent.
+
+### OpenClaw version pin
+
+agentbox currently supports **OpenClaw 2026.7.1**. The version and immutable Homebrew formula
+revision are declared together in `macos.sh` (`OPENCLAW_PINNED_VERSION` and
+`OPENCLAW_FORMULA_REVISION`). CI runs the same installer; it does not preinstall a separate baseline.
+
+After ensuring Homebrew is available, agentbox installs that historical formula through the local
+`agentbox/pinned` tap, verifies the CLI version, and uses `brew pin openclaw-cli` to prevent ordinary
+Homebrew upgrades. It then applies the Brewfiles and verifies the version again. An existing
+Homebrew installation of the supported version is preserved and pinned.
+
+If the Homebrew prefix contains a different OpenClaw version, an unusable CLI, or an executable not
+managed by the `openclaw-cli` formula, agentbox stops rather than replacing it. Back up the runner's
+OpenClaw configuration and state before reconciling an existing installation. Prefer a fresh host
+for this baseline; do not downgrade a newer OpenClaw configuration in place merely to pass this
+check. Removing a Homebrew package does not reverse OpenClaw configuration migrations.
+
+There is no version override option. Updating the supported version is an agentbox compatibility
+change: update both constants, this documentation, and the version expectations in the examples,
+then verify the complete macOS matrix before release. Unpinning or running OpenClaw's own updater
+outside agentbox can leave the supported baseline; a later agentbox run will reject that mismatch.
 
 ### OpenClaw LaunchAgent
 

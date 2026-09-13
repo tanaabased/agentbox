@@ -56,25 +56,6 @@ jobs:
       - name: Refresh Homebrew metadata
         shell: bash
         run: HOMEBREW_NO_AUTO_UPDATE='' brew update-if-needed
-      - name: Read the OpenClaw CI baseline
-        if: matrix.example != 'inputs'
-        shell: bash
-        run: |
-          jq -er '.config.ci.openclaw |
-            "OPENCLAW_CI_VERSION=\(.version)\nOPENCLAW_CI_FORMULA_REVISION=\(.homebrewFormulaRevision)"' \
-            package.json >> "$GITHUB_ENV"
-      - name: Install the OpenClaw CI baseline
-        if: matrix.example != 'inputs'
-        shell: bash
-        run: |
-          # Keep the Leia migration on the previous OpenClaw baseline without changing the shipped Brewfile.
-          brew tap-new --no-git agentbox/ci
-          curl --fail --silent --show-error --location \
-            "https://raw.githubusercontent.com/Homebrew/homebrew-core/$OPENCLAW_CI_FORMULA_REVISION/Formula/o/openclaw-cli.rb" \
-            --output "$(brew --repo agentbox/ci)/Formula/openclaw-cli.rb"
-          brew install --force-bottle agentbox/ci/openclaw-cli
-          brew pin agentbox/ci/openclaw-cli
-          "$(brew --prefix)/bin/openclaw" --version | tee /dev/stderr | awk '{print $2}' | grep -Fx "$OPENCLAW_CI_VERSION"
       - name: Run Leia-backed example
         shell: bash
         env:
@@ -85,8 +66,3 @@ jobs:
         run: |
           mkdir -p "$TMPDIR"
           bun run leia "examples/${{ matrix.example }}/README.md" --stdin --retry 0
-      - name: Verify the OpenClaw CI baseline was preserved
-        if: always() && matrix.example != 'inputs'
-        shell: bash
-        run: |
-          "$(brew --prefix)/bin/openclaw" --version | tee /dev/stderr | awk '{print $2}' | grep -Fx "$OPENCLAW_CI_VERSION"

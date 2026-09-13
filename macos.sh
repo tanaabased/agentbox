@@ -22,6 +22,9 @@ DEFAULT_OPENCLAW_IDENTITY="A Tanaab-based Claw <openclaw>"
 DEFAULT_OPENCLAW_AUTOLOGIN="on"
 DEFAULT_OPENCLAW_GATEWAY_PORT="18789"
 DEFAULT_OPENCLAW_AUTH_CHOICE="skip"
+# Advance this compatibility baseline deliberately, together with its Homebrew formula.
+OPENCLAW_PINNED_VERSION="2026.7.1"
+OPENCLAW_FORMULA_REVISION="839cf6b638237cbc675d1ce9ddc0ba3d82487189"
 OPENCLAW_DEFAULT_AGENT_ID="main"
 OPENCLAW_UI_ASSISTANT_NAME="MODEL L3-37"
 OPENCLAW_UI_SEAM_COLOR="#00c88a"
@@ -3234,6 +3237,7 @@ plan_wrapper_execution() {
   fi
 
   plan_agentbox_payload
+  plan_action "${tty_tp}install or preserve${tty_reset} homebrew OpenClaw ${tty_ts}${OPENCLAW_PINNED_VERSION}${tty_reset} and pin it against automatic upgrades"
   plan_action "${tty_tp}ensure${tty_reset} macos ComputerName, HostName, and LocalHostName are ${tty_ts}${AGENTBOX_HOSTNAME_VALUE}${tty_reset}"
   plan_action "${tty_tp}ensure${tty_reset} headless power, time, and recovery settings"
   if array_has_values EXTRA_BREWFILE_SPECS; then
@@ -3310,6 +3314,56 @@ run_bootbox_check_core() {
   CORE_NEEDS_REMEDIATION="1"
   debug "bootbox core requirements need remediation"
   return 1
+}
+
+verify_agentbox_openclaw_version() {
+  local installed_version=""
+  local openclaw_bin="${BREW_PREFIX_VALUE}/bin/openclaw"
+
+  if [[ -x "${openclaw_bin}" ]]; then
+    installed_version="$("${openclaw_bin}" --version 2>/dev/null | awk '$1 == "OpenClaw" {print $2}' || true)"
+  fi
+  if [[ "${installed_version}" != "${OPENCLAW_PINNED_VERSION}" ]]; then
+    abort "agentbox requires OpenClaw ${OPENCLAW_PINNED_VERSION}; found ${installed_version:-no usable CLI} at ${openclaw_bin}. No automatic upgrade or downgrade will be attempted. Reconcile the Homebrew installation deliberately before rerunning; see ADVANCED.md#openclaw-version-pin."
+  fi
+}
+
+preflight_agentbox_openclaw_version() {
+  if ! command -v brew >/dev/null 2>&1; then
+    return 0
+  fi
+  resolve_brew_prefix
+  if [[ -n "$(brew list --versions openclaw-cli 2>/dev/null || true)" ||
+    -e "${BREW_PREFIX_VALUE}/bin/openclaw" ||
+    -L "${BREW_PREFIX_VALUE}/bin/openclaw" ]]; then
+    verify_agentbox_openclaw_version
+  fi
+}
+
+run_agentbox_openclaw_install() {
+  local formula_path=""
+
+  resolve_brew_prefix
+  preflight_agentbox_openclaw_version
+  if [[ -z "$(brew list --versions openclaw-cli 2>/dev/null || true)" ]]; then
+    if [[ -e "${BREW_PREFIX_VALUE}/bin/openclaw" || -L "${BREW_PREFIX_VALUE}/bin/openclaw" ]]; then
+      abort "OpenClaw already exists in the homebrew prefix but is not managed by the openclaw-cli formula; reconcile it before rerunning."
+    fi
+    log "${tty_tp}installing${tty_reset} pinned homebrew OpenClaw ${tty_ts}${OPENCLAW_PINNED_VERSION}${tty_reset}"
+    if ! brew tap | grep -Fxq "agentbox/pinned"; then
+      execute brew tap-new --no-git agentbox/pinned
+    fi
+    formula_path="$(brew --repo agentbox/pinned)/Formula/openclaw-cli.rb"
+    execute "${CURL}" -fsSL \
+      "https://raw.githubusercontent.com/Homebrew/homebrew-core/${OPENCLAW_FORMULA_REVISION}/Formula/o/openclaw-cli.rb" \
+      -o "${BOOT_TMPDIR}/openclaw-cli.rb"
+    execute install -m 644 "${BOOT_TMPDIR}/openclaw-cli.rb" "${formula_path}"
+    execute brew install --force-bottle agentbox/pinned/openclaw-cli
+  else
+    log "${tty_tp}preserving${tty_reset} installed homebrew OpenClaw ${tty_ts}${OPENCLAW_PINNED_VERSION}${tty_reset}"
+  fi
+  verify_agentbox_openclaw_version
+  execute brew pin openclaw-cli
 }
 
 ensure_bootbox_core_requirements() {
@@ -5542,6 +5596,7 @@ main() {
   debug raw ARCH="${ARCH}"
   debug raw OS="${OS}"
 
+  preflight_agentbox_openclaw_version
   prepare_bootbox_script
   resolve_agentbox_payload
   discover_agentbox_payload
@@ -5560,7 +5615,9 @@ main() {
   fi
 
   ensure_bootbox_core_requirements
+  run_agentbox_openclaw_install
   run_bootbox_for_agentbox_brewfile
+  verify_agentbox_openclaw_version
   start_sudo_session
   preflight_openclaw_main_ownership
   run_agentbox_hostname_setup
