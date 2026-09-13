@@ -8,6 +8,7 @@ permissions:
 
 env:
   HOMEBREW_NO_AUTO_UPDATE: '1'
+  OPENCLAW_CI_VERSION: '2026.7.1'
   STAMPED_VERSION: v9.9.9-ci.${{ github.event.pull_request.head.sha }}
 
 jobs:
@@ -53,6 +54,19 @@ jobs:
         run: |
           install -m 755 dist/macos.sh dist/agentbox
           echo "$PWD/dist" >> "$GITHUB_PATH"
+      - name: Install the OpenClaw CI baseline
+        if: matrix.example != 'inputs'
+        shell: bash
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE='' brew update-if-needed
+          # Keep the Leia migration on the previous OpenClaw baseline without changing the shipped Brewfile.
+          brew tap-new --no-git agentbox/ci
+          curl --fail --silent --show-error --location \
+            https://raw.githubusercontent.com/Homebrew/homebrew-core/839cf6b638237cbc675d1ce9ddc0ba3d82487189/Formula/o/openclaw-cli.rb \
+            --output "$(brew --repo agentbox/ci)/Formula/openclaw-cli.rb"
+          brew install --force-bottle agentbox/ci/openclaw-cli
+          brew pin agentbox/ci/openclaw-cli
+          "$(brew --prefix)/bin/openclaw" --version | tee /dev/stderr | grep -Fx "$OPENCLAW_CI_VERSION"
       - name: Run Leia-backed example
         shell: bash
         env:
@@ -64,3 +78,7 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE= brew update-if-needed
           mkdir -p "$TMPDIR"
           bun run leia "examples/${{ matrix.example }}/README.md" --stdin --retry 0
+      - name: Verify the OpenClaw CI baseline was preserved
+        if: always() && matrix.example != 'inputs'
+        shell: bash
+        run: '"$(brew --prefix)/bin/openclaw" --version | tee /dev/stderr | grep -Fx "$OPENCLAW_CI_VERSION"'
