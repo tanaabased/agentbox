@@ -19,7 +19,7 @@
   "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@lando/leia": "^1.0.0-beta.9",
+    "@lando/leia": "2.0.0-beta.1",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.1",
     "globals": "^17.12.0",
@@ -34,7 +34,7 @@
     "codex:validate": "bun ./bin/codexsync.js validate",
     "format:check": "prettier . --check --ignore-unknown",
     "format:write": "prettier . --write --ignore-unknown",
-    "leia": "leia",
+    "leia": "bun ./node_modules/.bin/leia",
     "lint": "bun run lint:eslint && bun run format:check && bun run lint:shellcheck",
     "lint:eslint": "eslint .",
     "lint:shellcheck": "shellcheck *.sh bin/*.sh libexec/*.sh scripts/*.sh",
