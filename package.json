@@ -34,7 +34,7 @@
     "codex:validate": "bun ./bin/codexsync.js validate",
     "format:check": "prettier . --check --ignore-unknown",
     "format:write": "prettier . --write --ignore-unknown",
-    "leia": "leia",
+    "leia": "bun ./node_modules/.bin/leia",
     "lint": "bun run lint:eslint && bun run format:check && bun run lint:shellcheck",
     "lint:eslint": "eslint .",
     "lint:shellcheck": "shellcheck *.sh bin/*.sh libexec/*.sh scripts/*.sh",
