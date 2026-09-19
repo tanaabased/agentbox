@@ -40,14 +40,14 @@ jobs:
             bun run format:write
             bun run lint
             bun run test
-            bun run codex:validate
             bun run build
             version-injector dist/macos.sh --style sh --version "${{ env.STAMPED_VERSION }}"
       - name: Verify prepared repository
         run: |
           bun run lint
           bun run test
-          bun run codex:validate
+      - name: Validate Codex plugin
+        uses: tanaabased/actions/validate-codex-plugin@v1
       - name: Verify stamped release entrypoint
         shell: bash
         run: |

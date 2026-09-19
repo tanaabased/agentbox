@@ -31,7 +31,6 @@ jobs:
             bun run format:write
             bun run lint
             bun run test
-            bun run codex:validate
             bun run build
             version-injector dist/macos.sh --style sh --version "$PREPARE_RELEASE_VERSION"
           sync-token: ${{ secrets.TANAAB_COAXIUM_INJECTOR }}
@@ -39,7 +38,8 @@ jobs:
         run: |
           bun run lint
           bun run test
-          bun run codex:validate
+      - name: Validate Codex plugin
+        uses: tanaabased/actions/validate-codex-plugin@v1
       - name: Publish Codex plugin archive
         uses: tanaabased/actions/publish-codex-plugin@v1
         with:
