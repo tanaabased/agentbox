@@ -49,8 +49,8 @@ This is directional guidance, not the current public contract:
 - `launchd/*.plist.in`: source launchd service templates rendered by `macos.sh`.
 - `.codex-plugin/plugin.json`, `skills/`: Codex plugin metadata and installable skill surface.
 - `assets/composer-icon.svg`, `assets/icon-large.png`: Codex plugin interface assets.
-- `bin/codexsync.js`, `lib/codexsync-*.js`: package-level plugin validation and installed cache
-  comparison or refresh tooling.
+- `package.json#codexTools`, `@tanaab/codex-tools`: installed plugin cache comparison and refresh
+  configuration.
 - `workspace/main/`: managed prompt files for the inert OpenClaw Main fallback workspace.
 - `README.md`: main setup and usage entrypoint; `ADVANCED.md`: deeper operator reference;
   `CODEX.md`: optional Codex plugin installation and workflow guide.
@@ -140,16 +140,12 @@ This is directional guidance, not the current public contract:
   support modules under the nearest role-specific `skills/<skill>/lib/` or `skills/<skill>/utils/`
   directory. Do not hoist them merely because the full repository ships in the plugin archive.
 - Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
-- Keep the repo-owned Codex plugin contract in `lib/plugin-validation.js` and run it through
-  `bun run codex:validate`. Limit that validator to loader-facing requirements for a valid Codex
-  plugin: a parseable manifest, valid declared local resources, parseable optional app and MCP
-  configuration, and bundled skills with required `name` and `description` frontmatter. Do not use it
-  to enforce Tanaab authoring conventions, documentation links, prompt content, release version
-  alignment, GitHub workflow wiring, or general dependency and runtime-version policy. Keep
-  validation read-only and separate from cache synchronization.
+- Keep Codex plugin validation in CI through `tanaabased/actions/validate-codex-plugin@v1`; do not
+  maintain a repository-local validator or duplicate the action's checks.
 - Treat `.codex-plugin/`, `.mcp.json`, `AGENTS.md`, `ADVANCED.md`, `CODEX.md`, `README.md`, `assets/`,
-  `bin/codexsync.js`, `lib/`, `package.json`, `scripts/check-plugin-runtime.sh`, and `skills/` as the
-  managed Codex plugin cache surface for `bun run codex:check` and `bun run codex:sync`.
+  `lib/`, `package.json`, `scripts/check-plugin-runtime.sh`, and `skills/` as the managed Codex plugin
+  cache surface declared in `package.json#codexTools` for `bun run codex:check` and
+  `bun run codex:sync`.
 - Keep plugin cache refresh installation-aware. `codex:check` must report an absent exact-version
   cache as neutral `not_installed`; `codex:sync` must refuse to create it. A source symlink or an
   older cached version does not authorize initialization of the current cache.
@@ -180,8 +176,8 @@ This is directional guidance, not the current public contract:
 - For routine local validation, use `bun run lint`; run `git diff --check` when whitespace or
   generated text churn is plausible.
 - Run `bun run test` for JavaScript unit changes. Shell behavior belongs in Leia, not Mocha.
-- Run `bun run codex:validate` for plugin manifest, skill metadata, plugin asset, or plugin workflow
-  changes.
+- Rely on the shared Codex plugin validator action for plugin manifest, skill metadata, plugin asset,
+  or plugin workflow changes; report that validation as CI-owned until its check completes.
 - For managed plugin changes, run `bun run codex:check`. If it reports drift, run
   `bun run codex:sync` and then `bun run codex:check` again before committing. If it reports
   `not_installed`, do not sync; report that cache refresh was skipped because the plugin is not

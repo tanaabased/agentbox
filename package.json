@@ -13,10 +13,26 @@
   },
   "private": true,
   "type": "module",
-  "bin": {
-    "codexsync": "./bin/codexsync.js"
+  "codexTools": {
+    "managedPaths": [
+      ".codex-plugin",
+      ".mcp.json",
+      "AGENTS.md",
+      "ADVANCED.md",
+      "CODEX.md",
+      "README.md",
+      "assets",
+      "lib",
+      "package.json",
+      "scripts/check-plugin-runtime.sh",
+      "skills"
+    ],
+    "missingTarget": "require-installed",
+    "absentCheck": "neutral"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@tanaab/codex-tools": "^1.0.0-beta.1"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@lando/leia": "2.0.0",
@@ -29,9 +45,8 @@
   },
   "scripts": {
     "build": "bun ./scripts/build-dist.js",
-    "codex:check": "bun ./bin/codexsync.js check",
-    "codex:sync": "bun ./bin/codexsync.js sync",
-    "codex:validate": "bun ./bin/codexsync.js validate",
+    "codex:check": "codex-tools cache check --repo-root . --marketplace pirostore",
+    "codex:sync": "codex-tools cache sync --repo-root . --marketplace pirostore",
     "format:check": "prettier . --check --ignore-unknown",
     "format:write": "prettier . --write --ignore-unknown",
     "leia": "bun ./node_modules/.bin/leia",
