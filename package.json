@@ -45,8 +45,8 @@
   },
   "scripts": {
     "build": "bun ./scripts/build-dist.js",
-    "codex:check": "codex-tools cache check --repo-root . --marketplace pirostore",
-    "codex:sync": "codex-tools cache sync --repo-root . --marketplace pirostore",
+    "codex:check": "codex-tools cache check --repo-root .",
+    "codex:sync": "codex-tools cache sync --repo-root .",
     "format:check": "prettier . --check --ignore-unknown",
     "format:write": "prettier . --write --ignore-unknown",
     "leia": "bun ./node_modules/.bin/leia",
