@@ -13,23 +13,6 @@
   },
   "private": true,
   "type": "module",
-  "codexTools": {
-    "managedPaths": [
-      ".codex-plugin",
-      ".mcp.json",
-      "AGENTS.md",
-      "ADVANCED.md",
-      "CODEX.md",
-      "README.md",
-      "assets",
-      "lib",
-      "package.json",
-      "scripts/check-plugin-runtime.sh",
-      "skills"
-    ],
-    "missingTarget": "require-installed",
-    "absentCheck": "neutral"
-  },
   "dependencies": {
     "@tanaab/codex-tools": "^1.0.0-beta.1"
   },
@@ -55,5 +38,22 @@
     "lint:shellcheck": "shellcheck *.sh bin/*.sh libexec/*.sh scripts/*.sh",
     "test": "bun run test:unit",
     "test:unit": "mocha \"test/**/*.spec.js\""
+  },
+  "codexTools": {
+    "managedPaths": [
+      ".codex-plugin",
+      ".mcp.json",
+      "AGENTS.md",
+      "ADVANCED.md",
+      "CODEX.md",
+      "README.md",
+      "assets",
+      "lib",
+      "package.json",
+      "scripts/check-plugin-runtime.sh",
+      "skills"
+    ],
+    "missingTarget": "require-installed",
+    "absentCheck": "neutral"
   }
 }
