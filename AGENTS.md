@@ -49,8 +49,8 @@ This is directional guidance, not the current public contract:
 - `launchd/*.plist.in`: source launchd service templates rendered by `macos.sh`.
 - `.codex-plugin/plugin.json`, `skills/`: Codex plugin metadata and installable skill surface.
 - `assets/composer-icon.svg`, `assets/icon-large.png`: Codex plugin interface assets.
-- `package.json#codexTools`, `@tanaab/codex-tools`: installed plugin cache comparison and refresh
-  configuration.
+- `package.json#codexTools`, `@tanaab/codex-tools`: development-time installed plugin cache
+  comparison and refresh configuration.
 - `workspace/main/`: managed prompt files for the inert OpenClaw Main fallback workspace.
 - `README.md`: main setup and usage entrypoint; `ADVANCED.md`: deeper operator reference;
   `CODEX.md`: optional Codex plugin installation and workflow guide.
@@ -142,6 +142,8 @@ This is directional guidance, not the current public contract:
 - Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
 - Keep Codex plugin validation in CI through `tanaabased/actions/validate-codex-plugin@v1`; do not
   maintain a repository-local validator or duplicate the action's checks.
+- Keep `@tanaab/codex-tools` development-only and exclude `node_modules` from release archives;
+  installed plugin payloads do not own source-cache maintenance tooling.
 - Treat `.codex-plugin/`, `.mcp.json`, `AGENTS.md`, `ADVANCED.md`, `CODEX.md`, `README.md`, `assets/`,
   `lib/`, `package.json`, `scripts/check-plugin-runtime.sh`, and `skills/` as the managed Codex plugin
   cache surface declared in `package.json#codexTools` for `bun run codex:check` and

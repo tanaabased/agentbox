@@ -17,8 +17,6 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - name: Install Node.js
-        uses: tanaabased/actions/setup-node@v1
       - name: Install Bun
         uses: tanaabased/actions/setup-bun@v1
       - name: Install dependencies
@@ -46,6 +44,6 @@ jobs:
         uses: tanaabased/actions/publish-codex-plugin@v1
         with:
           archive-name: agentbox-${{ github.event.release.tag_name }}.tar.gz
-          dependency-policy: include-production
+          dependency-policy: exclude-node-modules
           release-tag: ${{ github.event.release.tag_name }}
           github-token: ${{ github.token }}

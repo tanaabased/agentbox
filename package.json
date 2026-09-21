@@ -13,10 +13,8 @@
   },
   "private": true,
   "type": "module",
-  "dependencies": {
-    "@tanaab/codex-tools": "^1.0.0-beta.1"
-  },
   "devDependencies": {
+    "@tanaab/codex-tools": "^1.0.0-beta.1",
     "@eslint/js": "^10.0.1",
     "@lando/leia": "2.0.0",
     "eslint": "^10.10.0",
