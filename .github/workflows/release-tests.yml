@@ -71,6 +71,7 @@ jobs:
           dependency-policy: exclude-node-modules
           release-tag: ${{ env.STAMPED_VERSION }}
       - name: Verify release archive contents
+        id: archive
         env:
           RELEASE_ARCHIVE: ${{ steps.publish-plugin.outputs.archive-path }}
         run: |
@@ -82,3 +83,10 @@ jobs:
             echo 'release archive must not include node_modules' >&2
             exit 1
           fi
+          archive_root="$(mktemp -d)"
+          tar -xzf "$RELEASE_ARCHIVE" -C "$archive_root"
+          echo "path=$archive_root" >> "$GITHUB_OUTPUT"
+      - name: Validate extracted Codex plugin
+        uses: tanaabased/actions/validate-codex-plugin@v1
+        with:
+          plugin-directory: ${{ steps.archive.outputs.path }}
