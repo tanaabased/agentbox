@@ -11,7 +11,26 @@
   "engines": {
     "bun": ">=1.3.0 <1.4.0"
   },
-  "private": true,
+  "files": [
+    ".codex-plugin/",
+    "ADVANCED.md",
+    "AGENTS.md",
+    "Brewfile",
+    "Brewfile.extras",
+    "CODEX.md",
+    "README.md",
+    "assets/",
+    "bin/",
+    "dist/",
+    "launchd/",
+    "lib/",
+    "libexec/",
+    "macos.sh",
+    "scripts/check-plugin-runtime.sh",
+    "skills/",
+    "unsupported.sh",
+    "workspace/main/"
+  ],
   "type": "module",
   "devDependencies": {
     "@tanaab/codex-tools": "^1.0.0-beta.1",
