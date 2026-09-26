@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -40,10 +41,66 @@ jobs:
           bun run test
       - name: Validate Codex plugin
         uses: tanaabased/actions/validate-codex-plugin@v1
-      - name: Publish Codex plugin archive
-        uses: tanaabased/actions/publish-codex-plugin@v1
+      - name: Package release archive
+        id: archive
+        shell: bash
+        run: |
+          archive="$RUNNER_TEMP/agentbox-${{ github.event.release.tag_name }}.tar.gz"
+          tar --exclude-vcs --exclude='./node_modules' -czf "$archive" -C "$GITHUB_WORKSPACE" .
+          echo "path=$archive" >> "$GITHUB_OUTPUT"
+      - name: Pack Codex plugin for npm
+        id: pack
+        uses: tanaabased/actions/npm-pack@v1
+      - name: Verify extracted npm package
+        id: npm-package
+        shell: bash
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball-path }}
+          EXPECTED_VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          package_root="$(mktemp -d)"
+          tar -xzf "$TARBALL" -C "$package_root"
+          package_root="$package_root/package"
+          test ! -d "$package_root/node_modules"
+          for path in .codex-plugin/plugin.json assets/composer-icon.svg assets/icon-large.png \
+            skills/agentbox/SKILL.md skills/agentbox-installer/SKILL.md \
+            skills/agentbox-doctor/SKILL.md lib/agentbox-installations.js \
+            scripts/check-plugin-runtime.sh \
+            skills/agentbox-installer/scripts/manage-installations.js \
+            skills/agentbox-doctor/scripts/check-host.js; do
+            test -f "$package_root/$path"
+          done
+          test -x "$package_root/scripts/check-plugin-runtime.sh"
+          test -x "$package_root/skills/agentbox-installer/scripts/manage-installations.js"
+          test -x "$package_root/skills/agentbox-doctor/scripts/check-host.js"
+          PACKAGE_ROOT="$package_root" node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const read = file => JSON.parse(fs.readFileSync(path.join(process.env.PACKAGE_ROOT, file)));
+            const pkg = read("package.json");
+            const plugin = read(".codex-plugin/plugin.json");
+            if (pkg.name !== "@tanaab/agentbox" || pkg.private ||
+                `v${pkg.version}` !== process.env.EXPECTED_VERSION ||
+                pkg.version !== plugin.version) process.exit(1);
+          '
+          "$package_root/scripts/check-plugin-runtime.sh"
+          bun "$package_root/skills/agentbox-installer/scripts/manage-installations.js" --help
+          bun "$package_root/skills/agentbox-doctor/scripts/check-host.js" --help
+          echo "path=$package_root" >> "$GITHUB_OUTPUT"
+      - name: Validate extracted Codex plugin
+        uses: tanaabased/actions/validate-codex-plugin@v1
         with:
-          archive-name: agentbox-${{ github.event.release.tag_name }}.tar.gz
-          dependency-policy: exclude-node-modules
-          release-tag: ${{ github.event.release.tag_name }}
-          github-token: ${{ github.token }}
+          plugin-directory: ${{ steps.npm-package.outputs.path }}
+      - name: Upload release archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ARCHIVE: ${{ steps.archive.outputs.path }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" "$RELEASE_ARCHIVE" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Publish npm package
+        uses: tanaabased/actions/publish-npm@v1
+        with:
+          tarball: ${{ steps.pack.outputs.tarball-path }}
+          update-prerelease-tag-on-stable: false
