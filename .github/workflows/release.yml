@@ -83,4 +83,4 @@ jobs:
         uses: tanaabased/actions/publish-npm@v1
         with:
           tarball: ${{ steps.pack.outputs.tarball-path }}
-          sync-edge-tag: false
+          channel-token: ${{ secrets.TANAAB_NPM_DEPLOY }}
