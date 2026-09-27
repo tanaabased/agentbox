@@ -53,6 +53,18 @@ for (const path of [
   assert.notEqual(statSync(join(root, path)).mode & 0o111, 0, `Not executable: ${path}`);
 }
 
+const entrypoint = spawnSync('bash', [join(root, 'dist/macos.sh'), '--version'], {
+  cwd: root,
+  encoding: 'utf8',
+  timeout: 30_000,
+});
+assert.equal(entrypoint.status, 0, entrypoint.error?.message || entrypoint.stderr);
+assert.equal(
+  entrypoint.stdout.trim(),
+  expectedTag,
+  'The packaged entrypoint must match the release tag',
+);
+
 for (const [command, args] of [
   [join(root, 'scripts/check-plugin-runtime.sh'), []],
   ['bun', [join(root, 'skills/agentbox-installer/scripts/manage-installations.js'), '--help']],

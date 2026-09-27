@@ -6,8 +6,28 @@ on:
       - published
 
 jobs:
+  validate-source:
+    name: Validate source
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Install Bun
+        uses: tanaabased/actions/setup-bun@v1
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Validate source
+        run: |
+          bun run lint
+          bun run test
+
   publish-repo:
     name: Publish repo
+    needs: validate-source
     runs-on: ubuntu-24.04
     env:
       SITEMAP_LASTMOD: ${{ github.event.release.published_at }}
@@ -23,10 +43,6 @@ jobs:
         uses: tanaabased/actions/setup-bun@v1
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Validate source
-        run: |
-          bun run lint
-          bun run test
       - name: Publish repo
         uses: tanaabased/actions/publish-repo@v1
         with:
@@ -39,6 +55,7 @@ jobs:
 
   publish-npm:
     name: Publish npm
+    needs: validate-source
     runs-on: ubuntu-24.04
     env:
       SITEMAP_LASTMOD: ${{ github.event.release.published_at }}
@@ -55,10 +72,6 @@ jobs:
         uses: tanaabased/actions/setup-bun@v1
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Validate source
-        run: |
-          bun run lint
-          bun run test
       - name: Prepare release
         uses: tanaabased/actions/prepare-release@v1
         with:
