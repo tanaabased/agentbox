@@ -32,8 +32,7 @@ import {
   writeAgentboxInstallationConfig,
 } from '../../../lib/agentbox-installations.js';
 
-export const AGENTBOX_RELEASE_API_URL =
-  'https://api.github.com/repos/tanaabased/agentbox/releases/latest';
+export const AGENTBOX_PACKAGE_API_URL = 'https://registry.npmjs.org/@tanaab%2Fagentbox/latest';
 const DEFAULT_METADATA_TIMEOUT_MS = 30_000;
 const DEFAULT_ARCHIVE_TIMEOUT_MS = 120_000;
 const DEFAULT_FETCH_RETRIES = 2;
@@ -97,9 +96,8 @@ async function fetchResponseOnce(fetchImpl, url, responseType, options) {
   try {
     const response = await fetchImpl(url, {
       headers: {
-        Accept: 'application/vnd.github+json',
+        Accept: 'application/json',
         'User-Agent': 'agentbox-installer',
-        'X-GitHub-Api-Version': '2026-03-10',
       },
       signal: controller.signal,
     });
@@ -143,44 +141,47 @@ export async function resolveLatestStableRelease(options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   const metadata = await fetchResponse(
     fetchImpl,
-    options.releaseApiUrl || AGENTBOX_RELEASE_API_URL,
+    options.packageApiUrl || AGENTBOX_PACKAGE_API_URL,
     'json',
     options,
   );
-  const tag = metadata.tag_name;
-  if (!tag || metadata.draft || metadata.prerelease || !Array.isArray(metadata.assets)) {
-    throw operationError('release_invalid', 'latest agentbox release metadata is not stable.');
+  if (metadata.name !== '@tanaab/agentbox' || !metadata.version) {
+    throw operationError('release_invalid', 'latest agentbox npm package metadata is invalid.');
   }
+  const tag = `v${metadata.version}`;
   assertReleaseTag(tag);
+  if (tag.includes('-')) {
+    throw operationError('release_invalid', 'latest agentbox npm package is not stable.');
+  }
 
-  const archiveName = `agentbox-${tag}.tar.gz`;
-  const archive = metadata.assets.find((asset) => asset.name === archiveName);
-  if (!archive?.browser_download_url) {
+  const archiveName = `agentbox-${tag}.tgz`;
+  const archiveUrl = metadata.dist?.tarball;
+  if (!archiveUrl || !archiveUrl.startsWith('https://registry.npmjs.org/')) {
     throw operationError(
-      'release_assets_missing',
-      `agentbox release ${tag} must include ${archiveName}.`,
+      'release_package_missing',
+      `agentbox npm package ${tag} must include a registry tarball URL.`,
     );
   }
-  const digestMatch = archive.digest?.match(/^sha256:([a-fA-F0-9]{64})$/);
+  const digestMatch = metadata.dist.integrity?.match(/^sha512:([A-Za-z0-9+/]+={0,2})$/);
   if (!digestMatch) {
     throw operationError(
       'release_digest_missing',
-      `agentbox release asset ${archiveName} must include a GitHub SHA-256 digest.`,
+      `agentbox npm package ${tag} must include a SHA-512 integrity digest.`,
     );
   }
 
   return {
     tag,
     archiveName,
-    archiveUrl: archive.browser_download_url,
-    archiveDigest: digestMatch[1].toLowerCase(),
+    archiveUrl,
+    archiveDigest: digestMatch[1],
   };
 }
 
-async function fileSha256(path) {
-  return createHash('sha256')
+async function fileSha512(path) {
+  return createHash('sha512')
     .update(await readFile(path))
-    .digest('hex');
+    .digest('base64');
 }
 
 async function downloadArchive(release, cacheDir, options = {}) {
@@ -190,7 +191,7 @@ async function downloadArchive(release, cacheDir, options = {}) {
 
   await mkdir(downloadsDir, { recursive: true, mode: 0o700 });
   if (await lstat(archivePath).catch(() => null)) {
-    if ((await fileSha256(archivePath)) === release.archiveDigest) return archivePath;
+    if ((await fileSha512(archivePath)) === release.archiveDigest) return archivePath;
     await rm(archivePath, { force: true });
   }
 
@@ -199,11 +200,11 @@ async function downloadArchive(release, cacheDir, options = {}) {
   );
   const tempPath = join(downloadsDir, `.${release.archiveName}.${randomUUID()}.tmp`);
   await writeFile(tempPath, archiveContent, { flag: 'wx', mode: 0o600 });
-  if ((await fileSha256(tempPath)) !== release.archiveDigest) {
+  if ((await fileSha512(tempPath)) !== release.archiveDigest) {
     await rm(tempPath, { force: true });
     throw operationError(
       'release_digest_mismatch',
-      `downloaded agentbox release ${release.tag} failed SHA-256 verification.`,
+      `downloaded agentbox npm package ${release.tag} failed SHA-512 verification.`,
     );
   }
   await rename(tempPath, archivePath);
@@ -234,21 +235,18 @@ function runTar(args, detail) {
 }
 
 async function extractArchive(archivePath, stagingDir) {
-  const entries = runTar(['-tzf', archivePath], 'could not list agentbox release archive')
+  const entries = runTar(['-tzf', archivePath], 'could not list agentbox npm package')
     .split(/\r?\n/)
     .filter(Boolean);
   validateArchiveEntryNames(entries);
-  const entryDetails = runTar(['-tvzf', archivePath], 'could not inspect agentbox release archive')
+  const entryDetails = runTar(['-tvzf', archivePath], 'could not inspect agentbox npm package')
     .split(/\r?\n/)
     .filter(Boolean);
   if (entryDetails.some((entry) => !['-', 'd'].includes(entry[0]))) {
-    throw operationError(
-      'archive_unsafe',
-      'agentbox release archive contains links or special files.',
-    );
+    throw operationError('archive_unsafe', 'agentbox npm package contains links or special files.');
   }
   await mkdir(stagingDir, { recursive: true, mode: 0o700 });
-  runTar(['-xzf', archivePath, '-C', stagingDir], 'could not extract agentbox release archive');
+  runTar(['-xzf', archivePath, '-C', stagingDir], 'could not extract agentbox npm package');
   await validateExtractedArchive(stagingDir);
 }
 
@@ -257,10 +255,7 @@ async function validateExtractedArchive(root) {
     const entryPath = join(root, entry.name);
     const entryStat = await lstat(entryPath);
     if (entryStat.isSymbolicLink()) {
-      throw operationError(
-        'archive_unsafe',
-        `agentbox release archive contains a link: ${entryPath}.`,
-      );
+      throw operationError('archive_unsafe', `agentbox npm package contains a link: ${entryPath}.`);
     }
     if (entryStat.isDirectory()) {
       await validateExtractedArchive(entryPath);
@@ -269,7 +264,7 @@ async function validateExtractedArchive(root) {
     if (!entryStat.isFile() || entryStat.nlink !== 1) {
       throw operationError(
         'archive_unsafe',
-        `agentbox release archive contains an unsupported entry: ${entryPath}.`,
+        `agentbox npm package contains an unsupported entry: ${entryPath}.`,
       );
     }
   }
@@ -284,7 +279,7 @@ async function assertPayloadContained(stagingDir, payloadRoot) {
   if (relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
     throw operationError(
       'archive_unsafe',
-      `agentbox release payload resolves outside extraction staging: ${resolvedPayload}.`,
+      `agentbox npm payload resolves outside extraction staging: ${resolvedPayload}.`,
     );
   }
 }
@@ -304,10 +299,7 @@ async function findExtractedPayload(stagingDir, options = {}) {
       }
     }
   }
-  throw operationError(
-    'archive_invalid',
-    'agentbox release archive does not contain a valid payload.',
-  );
+  throw operationError('archive_invalid', 'agentbox npm package does not contain a valid payload.');
 }
 
 async function assertShimReplaceable(shimPath) {

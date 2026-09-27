@@ -82,33 +82,30 @@ function fakeResponse(body, type) {
 }
 
 async function createReleaseFetch(home, tag = 'v1.2.1', digestOverride = null, mutate = null) {
-  const releaseRoot = join(home, 'release-fixture');
+  const releaseRoot = join(home, 'release-fixture', 'package');
   await createPayload(releaseRoot, tag, 'dist/macos.sh');
   if (mutate) await mutate(releaseRoot);
-  const archiveName = `agentbox-${tag}.tar.gz`;
+  const archiveName = `agentbox-${tag}.tgz`;
   const archivePath = join(home, archiveName);
-  const tarResult = spawnSync('tar', ['-czf', archivePath, '-C', releaseRoot, '.'], {
-    encoding: 'utf8',
-  });
+  const tarResult = spawnSync(
+    'tar',
+    ['-czf', archivePath, '-C', join(home, 'release-fixture'), 'package'],
+    {
+      encoding: 'utf8',
+    },
+  );
   if (tarResult.status !== 0) throw new Error(tarResult.stderr);
   const archive = await readFile(archivePath);
-  const digest = digestOverride || createHash('sha256').update(archive).digest('hex');
-  const archiveUrl = `https://downloads.example/${archiveName}`;
+  const digest = digestOverride || createHash('sha512').update(archive).digest('base64');
+  const archiveUrl = `https://registry.npmjs.org/@tanaab/agentbox/-/${archiveName}`;
   const metadata = {
-    tag_name: tag,
-    draft: false,
-    prerelease: false,
-    assets: [
-      {
-        name: archiveName,
-        browser_download_url: archiveUrl,
-        digest: `sha256:${digest}`,
-      },
-    ],
+    name: '@tanaab/agentbox',
+    version: tag.slice(1),
+    dist: { tarball: archiveUrl, integrity: `sha512:${digest}` },
   };
 
   return async (url) => {
-    if (url.endsWith('/releases/latest')) return fakeResponse(metadata, 'json');
+    if (url.endsWith('/latest')) return fakeResponse(metadata, 'json');
     if (url === archiveUrl) return fakeResponse(archive, 'buffer');
     return { ok: false, status: 404 };
   };
@@ -148,43 +145,56 @@ describe('skills/agentbox-installer/lib/manage-installations-lib', function () {
     assert.match(result.stderr, /--bin-dir requires --link-command/);
   });
 
-  it('should require the archive asset for stable releases', async () => {
+  it('should require the npm tarball for stable releases', async () => {
     const fetchImpl = async () =>
       fakeResponse(
         {
-          tag_name: 'v1.2.1',
-          draft: false,
-          prerelease: false,
-          assets: [],
+          name: '@tanaab/agentbox',
+          version: '1.2.1',
+          dist: {},
         },
         'json',
       );
 
     await assert.rejects(resolveLatestStableRelease({ fetchImpl }), {
-      code: 'release_assets_missing',
+      code: 'release_package_missing',
     });
   });
 
-  it('should require a GitHub SHA-256 digest for the archive asset', async () => {
+  it('should require npm SHA-512 integrity', async () => {
     const fetchImpl = async () =>
       fakeResponse(
         {
-          tag_name: 'v1.2.1',
-          draft: false,
-          prerelease: false,
-          assets: [
-            {
-              name: 'agentbox-v1.2.1.tar.gz',
-              browser_download_url: 'https://downloads.example/agentbox-v1.2.1.tar.gz',
-              digest: null,
-            },
-          ],
+          name: '@tanaab/agentbox',
+          version: '1.2.1',
+          dist: {
+            tarball: 'https://registry.npmjs.org/@tanaab/agentbox/-/agentbox-1.2.1.tgz',
+          },
         },
         'json',
       );
 
     await assert.rejects(resolveLatestStableRelease({ fetchImpl }), {
       code: 'release_digest_missing',
+    });
+  });
+
+  it('should reject a prerelease on the npm latest tag', async () => {
+    const fetchImpl = async () =>
+      fakeResponse(
+        {
+          name: '@tanaab/agentbox',
+          version: '1.2.1-beta.1',
+          dist: {
+            tarball: 'https://registry.npmjs.org/@tanaab/agentbox/-/agentbox-1.2.1-beta.1.tgz',
+            integrity: `sha512:${Buffer.alloc(64).toString('base64')}`,
+          },
+        },
+        'json',
+      );
+
+    await assert.rejects(resolveLatestStableRelease({ fetchImpl }), {
+      code: 'release_invalid',
     });
   });
 
@@ -212,16 +222,12 @@ describe('skills/agentbox-installer/lib/manage-installations-lib', function () {
       if (requests === 1) return { ok: false, status: 503 };
       return fakeResponse(
         {
-          tag_name: 'v1.2.1',
-          draft: false,
-          prerelease: false,
-          assets: [
-            {
-              name: 'agentbox-v1.2.1.tar.gz',
-              browser_download_url: 'https://downloads.example/agentbox-v1.2.1.tar.gz',
-              digest: `sha256:${'a'.repeat(64)}`,
-            },
-          ],
+          name: '@tanaab/agentbox',
+          version: '1.2.1',
+          dist: {
+            tarball: 'https://registry.npmjs.org/@tanaab/agentbox/-/agentbox-1.2.1.tgz',
+            integrity: `sha512:${Buffer.alloc(64).toString('base64')}`,
+          },
         },
         'json',
       );
@@ -244,7 +250,7 @@ describe('skills/agentbox-installer/lib/manage-installations-lib', function () {
     );
   });
 
-  it('should reject links extracted from a release archive', async () => {
+  it('should reject links extracted from the npm package', async () => {
     const fetchImpl = await createReleaseFetch(home, 'v1.2.1', null, async (releaseRoot) => {
       await symlink('/tmp', join(releaseRoot, 'unsafe-link'));
     });
@@ -435,8 +441,8 @@ describe('skills/agentbox-installer/lib/manage-installations-lib', function () {
     });
   });
 
-  it('should leave config untouched when digest verification fails', async () => {
-    const fetchImpl = await createReleaseFetch(home, 'v1.2.1', '0'.repeat(64));
+  it('should leave config untouched when integrity verification fails', async () => {
+    const fetchImpl = await createReleaseFetch(home, 'v1.2.1', Buffer.alloc(64).toString('base64'));
 
     await assert.rejects(installStableAgentbox({ env, fetchImpl }), {
       code: 'release_digest_mismatch',

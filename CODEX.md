@@ -29,9 +29,9 @@ Codex Tools registers the personal marketplace and installs the plugin. Append `
 to upgrade, then start a new Codex task or CLI session so the installed skills are available.
 The package does not run install-time scripts; keep Bun available to run the installed helpers.
 
-The GitHub Release also retains `agentbox-<tag>.tar.gz`. That separate, root-level archive is
-used by the stable executable installer below, which verifies its GitHub SHA-256 digest before
-extracting the host payload. Installing the Codex plugin does not require downloading it manually.
+The stable executable installer below uses the same npm package. It verifies the registry's
+SHA-512 integrity digest before extracting the host payload; no separate GitHub Release asset is
+required.
 
 ## Plugin Workflows
 
@@ -51,7 +51,7 @@ Use the installer when Codex does not yet have a configured stable release or so
 Use $tanaab-agentbox-installer to install the latest stable agentbox release and select it as the default.
 ```
 
-The installer verifies stable release archives with the digest published by GitHub. Creating an
+The installer verifies the stable npm package with the registry's integrity digest. Creating an
 `agentbox` command on `PATH` is opt-in and is not required for the other plugin skills.
 
 ### Bootstrap or Reconcile a Host

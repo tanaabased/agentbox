@@ -60,33 +60,6 @@ jobs:
           printf 'package=%s\nplugin=%s\n' "$package_version" "$plugin_version"
           test "$package_version" = "${{ env.STAMPED_VERSION }}"
           test "$plugin_version" = "${{ env.STAMPED_VERSION }}"
-      - name: Package release archive
-        id: archive
-        shell: bash
-        run: |
-          archive="$RUNNER_TEMP/agentbox-${{ env.STAMPED_VERSION }}.tar.gz"
-          tar --exclude-vcs --exclude='./node_modules' -czf "$archive" -C "$GITHUB_WORKSPACE" .
-          echo "path=$archive" >> "$GITHUB_OUTPUT"
-      - name: Verify release archive contents
-        id: extracted-archive
-        env:
-          RELEASE_ARCHIVE: ${{ steps.archive.outputs.path }}
-        run: |
-          tar -tzf "$RELEASE_ARCHIVE" | grep -F '.codex-plugin/plugin.json'
-          tar -tzf "$RELEASE_ARCHIVE" | grep -F 'skills/agentbox/SKILL.md'
-          tar -tzf "$RELEASE_ARCHIVE" | grep -F 'scripts/check-plugin-runtime.sh'
-          tar -tzf "$RELEASE_ARCHIVE" | grep -F 'dist/macos.sh'
-          if tar -tzf "$RELEASE_ARCHIVE" | grep -E '(^|/)node_modules(/|$)'; then
-            echo 'release archive must not include node_modules' >&2
-            exit 1
-          fi
-          archive_root="$(mktemp -d)"
-          tar -xzf "$RELEASE_ARCHIVE" -C "$archive_root"
-          echo "path=$archive_root" >> "$GITHUB_OUTPUT"
-      - name: Validate extracted Codex plugin
-        uses: tanaabased/actions/validate-codex-plugin@v1
-        with:
-          plugin-directory: ${{ steps.extracted-archive.outputs.path }}
       - name: Pack Codex plugin for npm
         id: pack
         uses: tanaabased/actions/npm-pack@v1

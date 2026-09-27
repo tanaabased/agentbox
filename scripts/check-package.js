@@ -25,6 +25,14 @@ assert.equal(existsSync(join(root, 'node_modules')), false, 'Do not ship node_mo
 for (const path of [
   'assets/composer-icon.svg',
   'assets/icon-large.png',
+  'assets/profile1.png',
+  'Brewfile',
+  'bin/health.sh',
+  'dist/macos.sh',
+  'launchd/dev.tanaab.agentbox.health.plist.in',
+  'launchd/dev.tanaab.agentbox.tailscaled.plist.in',
+  'launchd/dev.tanaab.agentbox.openclaw-finalize.plist.in',
+  'libexec/agentbox-openclaw-finalize.sh',
   'skills/agentbox/SKILL.md',
   'skills/agentbox-installer/SKILL.md',
   'skills/agentbox-doctor/SKILL.md',
@@ -38,6 +46,7 @@ for (const path of [
 
 for (const path of [
   'scripts/check-plugin-runtime.sh',
+  'dist/macos.sh',
   'skills/agentbox-installer/scripts/manage-installations.js',
   'skills/agentbox-doctor/scripts/check-host.js',
 ]) {

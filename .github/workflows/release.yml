@@ -5,15 +5,16 @@ on:
     types:
       - published
 
-permissions:
-  contents: write
-  id-token: write
-
 jobs:
-  release:
+  publish-repo:
+    name: Publish repo
     runs-on: ubuntu-24.04
+    env:
+      SITEMAP_LASTMOD: ${{ github.event.release.published_at }}
+    permissions:
+      contents: read
     steps:
-      - name: Checkout code
+      - name: Checkout release source
         uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
@@ -22,9 +23,7 @@ jobs:
         uses: tanaabased/actions/setup-bun@v1
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Export sitemap metadata
-        run: echo "SITEMAP_LASTMOD=${{ github.event.release.published_at }}" >> "${GITHUB_ENV}"
-      - name: Prepare release
+      - name: Publish repo
         uses: tanaabased/actions/publish-repo@v1
         with:
           commands: |
@@ -35,21 +34,43 @@ jobs:
             bun run build
             version-injector dist/macos.sh --style sh --version "$PREPARE_RELEASE_VERSION"
           sync-token: ${{ secrets.TANAAB_COAXIUM_INJECTOR }}
-      - name: Verify prepared repository
+
+  publish-npm:
+    name: Publish npm
+    runs-on: ubuntu-24.04
+    env:
+      SITEMAP_LASTMOD: ${{ github.event.release.published_at }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Install Bun
+        uses: tanaabased/actions/setup-bun@v1
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Validate source
         run: |
           bun run lint
           bun run test
-      - name: Package release archive
-        id: archive
-        shell: bash
-        run: |
-          archive="$RUNNER_TEMP/agentbox-${{ github.event.release.tag_name }}.tar.gz"
-          tar --exclude-vcs --exclude='./node_modules' -czf "$archive" -C "$GITHUB_WORKSPACE" .
-          echo "path=$archive" >> "$GITHUB_OUTPUT"
+      - name: Prepare release
+        uses: tanaabased/actions/prepare-release@v1
+        with:
+          commands: |
+            version-injector .codex-plugin/plugin.json --style json --version "$PREPARE_RELEASE_VERSION"
+            bun run format:write
+            bun run build
+            version-injector dist/macos.sh --style sh --version "$PREPARE_RELEASE_VERSION"
+      - name: Validate prepared package
+        run: bun run lint
       - name: Pack Codex plugin for npm
         id: pack
         uses: tanaabased/actions/npm-pack@v1
-      - name: Verify extracted npm package
+      - name: Check extracted npm package
         id: npm-package
         shell: bash
         env:
@@ -65,14 +86,13 @@ jobs:
         uses: tanaabased/actions/validate-codex-plugin@v1
         with:
           plugin-directory: ${{ steps.npm-package.outputs.path }}
-      - name: Upload release archive
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_ARCHIVE: ${{ steps.archive.outputs.path }}
-        run: |
-          gh release upload "${{ github.event.release.tag_name }}" "$RELEASE_ARCHIVE" \
-            --repo "$GITHUB_REPOSITORY" --clobber
-      - name: Publish npm package
+      - name: Dry-run npm publication
+        uses: tanaabased/actions/publish-npm@v1
+        with:
+          tarball: ${{ steps.pack.outputs.tarball-path }}
+          dry-run: true
+          update-prerelease-tag-on-stable: false
+      - name: Publish npm
         uses: tanaabased/actions/publish-npm@v1
         with:
           tarball: ${{ steps.pack.outputs.tarball-path }}
