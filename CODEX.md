@@ -8,6 +8,7 @@ require Codex.
 ## Requirements
 
 - Use a Codex surface that supports plugins, such as Codex in the ChatGPT desktop app or Codex CLI.
+- Have Node and npm available to install the published plugin with Codex Tools.
 - Install Bun `>=1.3.0 <1.4.0` on the Mac where the plugin workflows will run.
 - Run bootstrap, reconciliation, and doctor workflows on the Mac being managed. The plugin does not
   provide remote fleet orchestration.
@@ -17,56 +18,20 @@ supported Codex surfaces and plugin-browser behavior.
 
 ## Installation
 
-Each Codex-enabled GitHub Release includes a complete `agentbox-<tag>.tar.gz` archive containing the
-plugin manifest, skills, runtime helpers, and bootstrap payload.
-
-1. Download the archive for the desired version from
-   [GitHub Releases](https://github.com/tanaabased/agentbox/releases).
-   Verify its SHA-256 value against the digest GitHub publishes for that release asset.
-2. Extract it into an empty personal plugin directory:
+Install the published plugin from npm with [Codex Tools](https://github.com/tanaabased/codex-tools/blob/main/PLUGINS.md):
 
 ```sh
-mkdir -p "$HOME/.codex/plugins/agentbox"
-tar -xzf "$HOME/Downloads/agentbox-<tag>.tar.gz" \
-  -C "$HOME/.codex/plugins/agentbox"
+npx --yes --package=@tanaab/codex-tools@1 -- codex-tools install npm:@tanaab/agentbox
 ```
 
-When updating, replace the existing plugin directory with the new archive instead of overlaying
-files from different versions.
+Codex Tools registers the personal marketplace and installs the plugin. Append `@edge` or
+`@<version>` to `npm:@tanaab/agentbox` for a prerelease or fixed version. Run the command again
+to upgrade, then start a new Codex task or CLI session so the installed skills are available.
+The package does not run install-time scripts; keep Bun available to run the installed helpers.
 
-3. Create or update `~/.agents/plugins/marketplace.json`. If the file already exists, merge the
-   `agentbox` object into its existing `plugins` array instead of replacing the file:
-
-```json
-{
-  "name": "personal",
-  "interface": {
-    "displayName": "Personal Plugins"
-  },
-  "plugins": [
-    {
-      "name": "agentbox",
-      "source": {
-        "source": "local",
-        "path": "./.codex/plugins/agentbox"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Tanaab-based"
-    }
-  ]
-}
-```
-
-The source path is relative to the personal marketplace root. See the official
-[Build plugins](https://learn.chatgpt.com/docs/build-plugins) documentation for the marketplace
-format and local-plugin behavior.
-
-4. Restart the ChatGPT desktop app and install `agentbox` from the Plugins view, or open `/plugins`
-   in a new Codex CLI session and install it from the personal marketplace.
-5. Start a new task or CLI session so the installed skills are available.
+The GitHub Release also retains `agentbox-<tag>.tar.gz`. That separate, root-level archive is
+used by the stable executable installer below, which verifies its GitHub SHA-256 digest before
+extracting the host payload. Installing the Codex plugin does not require downloading it manually.
 
 ## Plugin Workflows
 

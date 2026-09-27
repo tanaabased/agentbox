@@ -45,6 +45,7 @@
   },
   "scripts": {
     "build": "bun ./scripts/build-dist.js",
+    "check:package": "node scripts/check-package.js",
     "codex:check": "codex-tools cache check --repo-root .",
     "codex:sync": "codex-tools cache sync --repo-root .",
     "format:check": "prettier . --check --ignore-unknown",
