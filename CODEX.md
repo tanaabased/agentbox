@@ -9,7 +9,7 @@ require Codex.
 
 - Use a Codex surface that supports plugins, such as Codex in the ChatGPT desktop app or Codex CLI.
 - Have Node and npm available to install the published plugin with Codex Tools.
-- Install Bun `>=1.3.0 <1.4.0` on the Mac where the plugin workflows will run.
+- Install Bun `>=1.3.0 <1.5.0` on the Mac where the plugin workflows will run.
 - Run bootstrap, reconciliation, and doctor workflows on the Mac being managed. The plugin does not
   provide remote fleet orchestration.
 

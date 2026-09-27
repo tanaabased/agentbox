@@ -7,9 +7,9 @@
   "repository": "https://github.com/tanaabased/agentbox",
   "bugs": "https://github.com/tanaabased/agentbox/issues",
   "homepage": "https://github.com/tanaabased/agentbox",
-  "packageManager": "bun@1.3.14",
+  "packageManager": "bun@1.4.2",
   "engines": {
-    "bun": ">=1.3.0 <1.4.0"
+    "bun": ">=1.3.0 <1.5.0"
   },
   "files": [
     ".codex-plugin/",
