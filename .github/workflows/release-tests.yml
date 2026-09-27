@@ -21,6 +21,10 @@ jobs:
         uses: tanaabased/actions/setup-bun@v1
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
+      - name: Validate source
+        run: |
+          bun run lint
+          bun run test
       - name: Verify source version alignment
         shell: bash
         run: |
@@ -38,14 +42,8 @@ jobs:
           commands: |
             version-injector .codex-plugin/plugin.json --style json --version "${{ env.STAMPED_VERSION }}"
             bun run format:write
-            bun run lint
-            bun run test
             bun run build
             version-injector dist/macos.sh --style sh --version "${{ env.STAMPED_VERSION }}"
-      - name: Verify prepared repository
-        run: |
-          bun run lint
-          bun run test
       - name: Verify stamped release entrypoint
         shell: bash
         run: |
@@ -84,4 +82,3 @@ jobs:
         with:
           dry-run: true
           tarball: ${{ steps.pack.outputs.tarball-path }}
-          update-prerelease-tag-on-stable: false
