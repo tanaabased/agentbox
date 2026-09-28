@@ -72,8 +72,8 @@ This is directional guidance, not the current public contract:
 - Keep `/llms.txt` concise in `site/llms.txt`; `scripts/build-dist.js` copies it into `dist/`.
 - Keep the source versions in `package.json` and `.codex-plugin/plugin.json` aligned. Release
   workflows must stamp both `dist/macos.sh` and the plugin manifest from the same release tag.
-- GitHub Releases publish `agentbox-<tag>.tar.gz` from the complete release-shaped repository. Keep
-  the plugin manifest, skills, plugin assets, and runtime payload files in that archive.
+- Publish one npm package containing the plugin manifest, skills, assets, and runtime payload.
+  The stable installer resolves the npm `latest` package and checks registry integrity.
 - Keep `--help` as the public CLI contract. Public option, env-var, help, status, debug, or
   failure-text changes must check `README.md`, `ADVANCED.md`, and affected examples.
 - Keep documentation ownership explicit: `README.md` leads with hosted bootstrap and common usage,
@@ -138,11 +138,11 @@ This is directional guidance, not the current public contract:
 
 - Keep skill-owned JavaScript entrypoints under the owning `skills/<skill>/scripts/` directory and
   support modules under the nearest role-specific `skills/<skill>/lib/` or `skills/<skill>/utils/`
-  directory. Do not hoist them merely because the full repository ships in the plugin archive.
+  directory. Do not hoist them merely because the full repository ships in the npm package.
 - Keep repository unit tests under `test/` as `*.spec.js` files and use the shared Mocha test shape.
 - Keep Codex plugin validation in CI through `tanaabased/actions/validate-codex-plugin@v1`; do not
   maintain a repository-local validator or duplicate the action's checks.
-- Keep `@tanaab/codex-tools` development-only and exclude `node_modules` from release archives;
+- Keep `@tanaab/codex-tools` development-only and exclude `node_modules` from the npm package;
   installed plugin payloads do not own source-cache maintenance tooling.
 - Treat `.codex-plugin/`, `.mcp.json`, `AGENTS.md`, `ADVANCED.md`, `CODEX.md`, `README.md`, `assets/`,
   `lib/`, `package.json`, `scripts/check-plugin-runtime.sh`, and `skills/` as the managed Codex plugin

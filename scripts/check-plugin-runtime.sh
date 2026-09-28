@@ -19,8 +19,8 @@ if ! bun_version="$("${bun_path}" --version 2>/dev/null)" || [ -z "${bun_version
 fi
 
 case "${bun_version}" in
-  1.3.[0-9]*)
-    bun_patch="${bun_version#1.3.}"
+  1.3.[0-9]* | 1.4.[0-9]*)
+    bun_patch="${bun_version#1.[34].}"
     case "${bun_patch}" in
       '' | *[!0-9]*) bun_supported="0" ;;
       *) bun_supported="1" ;;
@@ -32,7 +32,7 @@ esac
 if [ "${bun_supported}" != "1" ]; then
   printf '%s\n' \
     "agentbox plugin runtime unavailable: Bun ${bun_version} at ${bun_path} is unsupported." \
-    'This plugin requires Bun >=1.3.0 <1.4.0.' \
+    'This plugin requires Bun >=1.3.0 <1.5.0.' \
     'Install a supported Bun version before retrying.' >&2
   exit 2
 fi

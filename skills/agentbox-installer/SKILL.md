@@ -38,14 +38,14 @@ maintain a lowercase `agentbox` command link without running the host bootstrap 
 - Do not use it to diagnose the installed host health contract; use `$tanaab-agentbox-doctor`.
 - Do not treat `latest` or `edge` as installation keys. `update stable` is the explicit latest-release
   operation, and `source` is the moving development choice.
-- Do not install an unverified release when GitHub omits the archive asset's SHA-256 digest or the
+- Do not install an unverified release when npm omits the package's SHA-512 integrity digest or the
   downloaded bytes do not match it.
 
 ## Preconditions
 
 - Run the shared [plugin runtime preflight](../../scripts/check-plugin-runtime.sh) and require it to
   succeed before invoking Bun. If it fails, stop, relay its explanation, and do not install Bun.
-- Require `tar`, HTTPS access to GitHub Releases for stable operations, and a writable user home.
+- Require `tar`, HTTPS access to the npm registry for stable operations, and a writable user home.
 - Use `${XDG_CONFIG_HOME:-~/.config}/agentbox/config.json` for configuration.
 - Use `${XDG_DATA_HOME:-~/.local/share}/agentbox/releases/` for stable payloads unless the user chooses
   another install root.
@@ -77,7 +77,7 @@ maintain a lowercase `agentbox` command link without running the host bootstrap 
    replacing, or removing any PATH command. Preserve an already-enabled link on later operations
    without asking again.
 6. For `install stable` or `update stable`, explain the release destination, config path, network
-   access, and GitHub digest requirement. Include the command-link path only when linking is enabled
+   access, and npm integrity requirement. Include the command-link path only when linking is enabled
    or requested. Get confirmation, then run `bun scripts/manage-installations.js install stable` or
    the equivalent `update stable` command.
    Retain older verified release payloads and downloads as inert rollback cache. Do not expose them as
@@ -110,8 +110,8 @@ maintain a lowercase `agentbox` command link without running the host bootstrap 
   symlink; do not remove an unmanaged or stale command.
 - Before registering source, require a complete payload with executable `macos.sh`, Brewfile,
   health script, launchd templates, and bundled assets.
-- Before installing stable, require the matching release archive and a valid GitHub SHA-256 digest.
-  A failed download, extraction, version, or digest check must leave config unchanged.
+- Before installing stable, require the npm package's SHA-512 integrity digest. A failed download,
+  extraction, version, or digest check must leave config unchanged.
 
 ## Completion Criteria
 

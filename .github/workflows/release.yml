@@ -5,14 +5,16 @@ on:
     types:
       - published
 
-permissions:
-  contents: write
-
 jobs:
-  release:
+  publish-repo:
+    name: Publish repo
     runs-on: ubuntu-24.04
+    env:
+      SITEMAP_LASTMOD: ${{ github.event.release.published_at }}
+    permissions:
+      contents: read
     steps:
-      - name: Checkout code
+      - name: Checkout release source
         uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
@@ -21,29 +23,64 @@ jobs:
         uses: tanaabased/actions/setup-bun@v1
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Export sitemap metadata
-        run: echo "SITEMAP_LASTMOD=${{ github.event.release.published_at }}" >> "${GITHUB_ENV}"
-      - name: Prepare release
+      - name: Validate source
+        run: |
+          bun run lint
+          bun run test
+      - name: Publish repo
         uses: tanaabased/actions/publish-repo@v1
         with:
           commands: |
             version-injector .codex-plugin/plugin.json --style json --version "$PREPARE_RELEASE_VERSION"
             bun run format:write
-            bun run lint
-            bun run test
             bun run build
             version-injector dist/macos.sh --style sh --version "$PREPARE_RELEASE_VERSION"
           sync-token: ${{ secrets.TANAAB_COAXIUM_INJECTOR }}
-      - name: Verify prepared repository
+
+  publish-npm:
+    name: Publish npm
+    runs-on: ubuntu-24.04
+    env:
+      SITEMAP_LASTMOD: ${{ github.event.release.published_at }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Install Bun
+        uses: tanaabased/actions/setup-bun@v1
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Validate source
         run: |
           bun run lint
           bun run test
-      - name: Validate Codex plugin
-        uses: tanaabased/actions/validate-codex-plugin@v1
-      - name: Publish Codex plugin archive
-        uses: tanaabased/actions/publish-codex-plugin@v1
+      - name: Prepare release
+        uses: tanaabased/actions/prepare-release@v1
         with:
-          archive-name: agentbox-${{ github.event.release.tag_name }}.tar.gz
-          dependency-policy: exclude-node-modules
-          release-tag: ${{ github.event.release.tag_name }}
-          github-token: ${{ github.token }}
+          commands: |
+            version-injector .codex-plugin/plugin.json --style json --version "$PREPARE_RELEASE_VERSION"
+            bun run format:write
+            bun run build
+            version-injector dist/macos.sh --style sh --version "$PREPARE_RELEASE_VERSION"
+      - name: Pack Codex plugin for npm
+        id: pack
+        uses: tanaabased/actions/npm-pack@v1
+      - name: Verify npm package identity
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.pack.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.pack.outputs.package-version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          test "$PACKAGE_NAME" = '@tanaab/agentbox'
+          test "v$PACKAGE_VERSION" = "$RELEASE_TAG"
+      - name: Publish npm
+        uses: tanaabased/actions/publish-npm@v1
+        with:
+          tarball: ${{ steps.pack.outputs.tarball-path }}
+          channel-token: ${{ secrets.TANAAB_NPM_DEPLOY }}
