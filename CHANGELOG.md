@@ -1,7 +1,7 @@
 ## {{ UNRELEASED_VERSION }} - [{{ UNRELEASED_DATE }}]({{ UNRELEASED_LINK }})
 
 - Fixed Bun-dependent plugin workflows to accept Bun `1.4.x` from the core `Brewfile`. [#41](https://github.com/tanaabased/agentbox/pull/41)
-- Updated the optional Codex plugin and stable installer to use the integrity-verified `@tanaab/agentbox` npm package. [#41](https://github.com/tanaabased/agentbox/pull/41)
+- Moved the Codex plugin and stable installer to `@tanaab/agentbox` npm distribution with `latest` and `edge` channels. [#41](https://github.com/tanaabased/agentbox/pull/41)
 
 ## v1.0.0-beta.9 - [July 30, 2026](https://github.com/tanaabased/agentbox/releases/tag/v1.0.0-beta.9)
 
